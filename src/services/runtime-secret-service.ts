@@ -24,12 +24,22 @@ export function explicitRuntimeSecrets(env: Pick<Env, "API_AUTH_TOKEN" | "TELEGR
 export async function getRuntimeSecrets(env: Env): Promise<Partial<RuntimeSecrets>> {
   const explicit = explicitRuntimeSecrets(env);
   if (!env.DB) return explicit;
-  const stored = await new SettingsRepository(env.DB).get<Partial<RuntimeSecrets>>(SETTINGS_KEY) ?? {};
+  const stored = await readStoredRuntimeSecrets(env.DB);
   return {
     api_auth_token: explicit.api_auth_token ?? stored.api_auth_token,
     telegram_webhook_secret: explicit.telegram_webhook_secret ?? stored.telegram_webhook_secret,
     linode_token_encryption_key: explicit.linode_token_encryption_key ?? stored.linode_token_encryption_key
   };
+}
+
+async function readStoredRuntimeSecrets(db: D1Database): Promise<Partial<RuntimeSecrets>> {
+  try {
+    return await new SettingsRepository(db).get<Partial<RuntimeSecrets>>(SETTINGS_KEY) ?? {};
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("no such table: settings")) return {};
+    throw error;
+  }
 }
 
 export async function getLinodeTokenEncryptionKey(env: Env): Promise<string> {

@@ -89,7 +89,15 @@ async function shouldAllowBootstrapSetup(request: Request, env: Env): Promise<bo
   const url = new URL(request.url);
   if (request.method !== "POST" || !["/api/v1/setup/schema", "/api/v1/setup/initialize"].includes(url.pathname)) return false;
   if (!env.TELEGRAM_BOT_TOKEN) return false;
-  const secrets = await getRuntimeSecrets(env);
-  if (secrets.api_auth_token) return false;
+  if (typeof env.API_AUTH_TOKEN === "string" && env.API_AUTH_TOKEN.trim().length > 0) return false;
+
+  try {
+    const secrets = await getRuntimeSecrets(env);
+    if (secrets.api_auth_token) return false;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("no such table: settings")) throw error;
+  }
+
   return request.headers.get("Authorization") === `Bearer ${env.TELEGRAM_BOT_TOKEN}`;
 }

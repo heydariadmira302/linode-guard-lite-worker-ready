@@ -60,6 +60,7 @@ class FakeD1Database {
       return this.existingTables.has(table) ? ({ name: table } as T) : null;
     }
     if (sql.includes("FROM settings")) {
+      if (!this.existingTables.has("settings")) throw new Error("D1_ERROR: no such table: settings: SQLITE_ERROR");
       const value = this.settings.get(values[0] as string);
       return value ? ({ key: values[0], value_json: value } as T) : null;
     }
@@ -75,15 +76,20 @@ class FakeD1Database {
     const createTableMatch = sql.match(/CREATE TABLE IF NOT EXISTS\s+([a-z_]+)/i);
     if (createTableMatch) this.existingTables.add(createTableMatch[1]);
     if (sql.includes("INTO settings")) {
+      if (!this.existingTables.has("settings")) throw new Error("D1_ERROR: no such table: settings: SQLITE_ERROR");
       const key = values[0] as string;
       if (sql.includes("DO NOTHING") && this.settings.has(key)) return;
       this.settings.set(key, values[1] as string);
     }
     if (sql.includes("INTO jobs")) {
+      if (!this.existingTables.has("jobs")) throw new Error("D1_ERROR: no such table: jobs: SQLITE_ERROR");
       const name = values[0] as string;
       if (!this.jobs.has(name)) this.jobs.set(name, { name, type: values[1], enabled: values[2], last_run_at: null, last_status: null, summary: null });
     }
-    if (sql.includes("INTO admin_presence")) this.adminPresenceInitialized = true;
+    if (sql.includes("INTO admin_presence")) {
+      if (!this.existingTables.has("admin_presence")) throw new Error("D1_ERROR: no such table: admin_presence: SQLITE_ERROR");
+      this.adminPresenceInitialized = true;
+    }
   }
 }
 
@@ -175,6 +181,25 @@ describe("Phase 4 setup wizard and diagnostics", () => {
     expect(text).toContain("/api/v1/setup/initialize");
     expect(text).toContain("手动指定 runtime secrets");
     expect(text).toContain("留空自动生成");
+  });
+
+
+  it("allows one-click bootstrap initialize when settings table does not exist yet", async () => {
+    const db = new FakeD1Database();
+    db.existingTables.clear();
+    const env = { ...baseEnv, API_AUTH_TOKEN: undefined, TELEGRAM_WEBHOOK_SECRET: undefined, LINODE_TOKEN_ENCRYPTION_KEY: undefined, DB: db as unknown as D1Database };
+    const headers = new Headers({ Authorization: "Bearer bot-token", "content-type": "application/json" });
+
+    const response = await worker.fetch(new Request("https://example.com/api/v1/setup/initialize", { method: "POST", headers, body: JSON.stringify({ runtime_secrets: {} }) }), env as never);
+    const body = await response.json() as { ok: boolean; data: { schema?: { initialized: boolean; missing_after: string[] }; runtime_secrets: { values: unknown }; jobs: { created: string[] } } };
+
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.data.schema?.initialized).toBe(true);
+    expect(body.data.schema?.missing_after).toEqual([]);
+    expect(body.data.runtime_secrets.values).toBeTruthy();
+    expect(body.data.jobs.created).toEqual(expect.arrayContaining(["login_monitor", "security_event_cleanup"]));
+    expect(db.existingTables).toEqual(new Set(requiredTables));
   });
 
   it("initializes D1 schema from the deployed Worker before default settings and jobs", async () => {
