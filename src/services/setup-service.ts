@@ -72,8 +72,9 @@ export type InitializeSchemaResult = {
 };
 
 export type InitializeSetupResult = {
+  schema?: { initialized: boolean; missing_before: string[]; missing_after: string[] };
   settings: { created: string[]; existing: string[] };
-  runtime_secrets: { created: string[]; existing: string[]; values?: RuntimeSecrets };
+  runtime_secrets: { created: string[]; existing: string[]; manual?: string[]; values?: RuntimeSecrets };
   jobs: { created: string[]; existing: string[] };
   admin_presence: { initialized: boolean };
 };
@@ -161,19 +162,18 @@ export class SetupService {
     return { schema: { initialized: missingAfter.length === 0, missing_before: missingBefore, missing_after: missingAfter } };
   }
 
-  async initializeDefaults(): Promise<InitializeSetupResult> {
+  async initializeDefaults(manualSecrets: Partial<RuntimeSecrets> = {}): Promise<InitializeSetupResult> {
     if (!this.env.DB) {
       throw new Error("Missing D1 binding DB");
     }
 
     const missing = await listMissingTables(this.env.DB);
-    if (missing.length > 0) {
-      await this.initializeSchema();
-    }
+    const schema = missing.length > 0 ? await this.initializeSchema() : { schema: { initialized: true, missing_before: [], missing_after: [] } };
 
     const settingsRepository = new SettingsRepository(this.env.DB);
     const jobsRepository = new JobsRepository(this.env.DB);
     const result: InitializeSetupResult = {
+      schema: schema.schema,
       settings: { created: [], existing: [] },
       runtime_secrets: { created: [], existing: [] },
       jobs: { created: [], existing: [] },
@@ -190,9 +190,10 @@ export class SetupService {
       }
     }
 
-    const runtimeSecrets = await ensureRuntimeSecrets(this.env);
+    const runtimeSecrets = await ensureRuntimeSecrets(this.env, manualSecrets);
     result.runtime_secrets.created = runtimeSecrets.created;
     result.runtime_secrets.existing = runtimeSecrets.existing;
+    result.runtime_secrets.manual = runtimeSecrets.manual;
     result.runtime_secrets.values = runtimeSecrets.secrets;
 
     for (const name of DEFAULT_JOBS) {

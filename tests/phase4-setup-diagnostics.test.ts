@@ -169,12 +169,12 @@ describe("Phase 4 setup wizard and diagnostics", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/html");
-    expect(text).toContain("Linode Guard Lite 初始化安装");
-    expect(text).toContain("初始化数据库表结构");
-    expect(text).toContain("初始化默认设置和系统 jobs");
-    expect(text).toContain("/api/v1/setup/schema");
+    expect(text).toContain("Linode Guard Lite 一键安装");
+    expect(text).toContain("一键安装 / 初始化");
+    expect(text).toContain("自动完成建表、默认设置、系统 jobs 和运行时密钥初始化");
     expect(text).toContain("/api/v1/setup/initialize");
-    expect(text).toContain("自动生成独立的 API_AUTH_TOKEN、Telegram webhook secret 和加密密钥");
+    expect(text).toContain("手动指定 runtime secrets");
+    expect(text).toContain("留空自动生成");
   });
 
   it("initializes D1 schema from the deployed Worker before default settings and jobs", async () => {
