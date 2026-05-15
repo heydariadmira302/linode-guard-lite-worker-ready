@@ -26,7 +26,7 @@ export function handleSetupPage(request: Request): Response {
 <body>
   <h1>Linode Guard Lite 一键安装</h1>
   <p>这个页面会自动完成建表、默认设置、系统 jobs 和运行时密钥初始化。</p>
-  <p class="muted">页面版本：one-click-setup-v2</p>
+  <p class="muted">页面版本：one-click-setup-v3（支持首次安装前自动建 settings 表）</p>
   <p class="warn">先确认 Cloudflare Worker 已绑定 D1，Binding 变量名必须是 <code>DB</code>。</p>
 
   <div class="card">
@@ -65,7 +65,7 @@ function boot() {
   if (!installBtn || !checkBtn || !result) return;
   installBtn.addEventListener('click', oneClickInstall);
   checkBtn.addEventListener('click', checkAll);
-  result.textContent = '页面已加载，可以开始安装。';
+  result.textContent = '页面已加载，可以开始安装。版本：one-click-setup-v3。';
 }
 
 if (document.readyState === 'loading') {
