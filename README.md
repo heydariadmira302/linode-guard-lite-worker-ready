@@ -81,6 +81,7 @@ Apply `schema.sql` or `migrations/0001_initial.sql` to a D1 database bound as `D
 ## 文档
 
 - `docs/deployment/cloudflare.md`
+- `docs/deployment/cloudflare-zip-worker.md`
 - `docs/deployment/zip-upload.md`
 - `docs/api.md`
 - `docs/telegram.md`
