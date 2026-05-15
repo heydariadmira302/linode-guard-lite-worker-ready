@@ -1,0 +1,26 @@
+name = "linode-guard-lite"
+main = "src/index.ts"
+compatibility_date = "2026-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Keep runtime variables and secrets that were configured in the Cloudflare
+# Dashboard when deploying from GitHub/Wrangler.
+keep_vars = true
+
+# Cloudflare Cron Trigger: run the job runner every 5 minutes.
+[triggers]
+crons = ["*/5 * * * *"]
+
+# D1 binding used by the app. Cloudflare can provision/bind the database during
+# deploy, or you can bind an existing D1 database as DB in Worker Settings.
+[[d1_databases]]
+binding = "DB"
+database_name = "linode-guard-lite"
+
+# Non-secret defaults. Real secrets such as TELEGRAM_BOT_TOKEN should be
+# configured in Cloudflare Worker Settings -> Variables and Secrets.
+[vars]
+APP_TIMEZONE = "Asia/Shanghai"
+BATCH_CONCURRENCY = "5"
+OPERATION_LOG_RETENTION_DAYS = "1"
+LOGIN_EVENT_RETENTION_DAYS = "1"

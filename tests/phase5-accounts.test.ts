@@ -1,0 +1,337 @@
+import { describe, expect, it, vi } from "vitest";
+import worker from "../src/index";
+import { decryptLinodeToken, encryptLinodeToken } from "../src/crypto/token-crypto";
+import { createTokenFingerprint } from "../src/crypto/fingerprint";
+
+const baseEnv = {
+  API_AUTH_TOKEN: "secret-api-token",
+  TELEGRAM_WEBHOOK_SECRET: "telegram-secret",
+  SUPER_ADMIN_TELEGRAM_ID: "123456789",
+  TELEGRAM_BOT_TOKEN: "bot-token",
+  LINODE_TOKEN_ENCRYPTION_KEY: "encryption-key",
+  APP_TIMEZONE: "Asia/Shanghai",
+  BATCH_CONCURRENCY: "5",
+  OPERATION_LOG_RETENTION_DAYS: "1",
+  LOGIN_EVENT_RETENTION_DAYS: "1"
+};
+
+type AccountRecord = {
+  id: number;
+  alias: string;
+  encrypted_token: string;
+  token_fingerprint: string;
+  token_status: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
+type AuditRecord = {
+  request_id: string;
+  actor: string;
+  source: string;
+  action: string;
+  target_type: string;
+  target_id: string | null;
+  risk_level: string;
+  result: string;
+  error_code: string | null;
+  metadata_json: string | null;
+};
+
+class FakePreparedStatement {
+  constructor(private db: FakeD1Database, private sql: string) {}
+  private values: unknown[] = [];
+  bind(...values: unknown[]) { this.values = values; return this; }
+  first<T = unknown>() { return Promise.resolve(this.db.first<T>(this.sql, this.values)); }
+  all<T = unknown>() { return Promise.resolve({ results: this.db.all<T>(this.sql, this.values), success: true, meta: {} }); }
+  run() { const meta = this.db.run(this.sql, this.values); return Promise.resolve({ success: true, meta }); }
+}
+
+class FakeD1Database {
+  accounts: AccountRecord[] = [];
+  auditLogs: AuditRecord[] = [];
+  botSessions: Record<string, unknown>[] = [];
+  nextAccountId = 1;
+
+  prepare(sql: string) { return new FakePreparedStatement(this, sql); }
+
+  first<T>(sql: string, values: unknown[]): T | null {
+    if (sql.includes("FROM linode_accounts") && sql.includes("WHERE id = ?")) {
+      return (this.accounts.find((account) => account.id === Number(values[0])) as T | undefined) ?? null;
+    }
+    if (sql.includes("FROM linode_accounts") && sql.includes("WHERE alias = ?")) {
+      return (this.accounts.find((account) => account.alias === values[0] && account.status === "active") as T | undefined) ?? null;
+    }
+    if (sql.includes("FROM bot_sessions")) {
+      return (this.botSessions.find((session) => session.telegram_user_id === values[0]) as T | undefined) ?? null;
+    }
+    return null;
+  }
+
+  all<T>(sql: string, _values: unknown[] = []): T[] {
+    if (sql.includes("FROM linode_accounts")) {
+      return this.accounts.filter((account) => account.status === "active") as T[];
+    }
+    return [];
+  }
+
+  run(sql: string, values: unknown[]) {
+    if (sql.includes("INTO linode_accounts")) {
+      const now = new Date().toISOString();
+      const account: AccountRecord = {
+        id: this.nextAccountId++,
+        alias: values[0] as string,
+        encrypted_token: values[1] as string,
+        token_fingerprint: values[2] as string,
+        token_status: values[3] as string,
+        status: "active",
+        created_at: now,
+        updated_at: now,
+        deleted_at: null
+      };
+      this.accounts.push(account);
+      return { last_row_id: account.id };
+    }
+    if (sql.includes("UPDATE linode_accounts") && sql.includes("token_status")) {
+      const account = this.accounts.find((item) => item.id === Number(values[1]));
+      if (account) account.token_status = values[0] as string;
+      return {};
+    }
+    if (sql.includes("UPDATE linode_accounts") && sql.includes("status = 'deleted'")) {
+      const account = this.accounts.find((item) => item.id === Number(values[0]));
+      if (account) {
+        account.status = "deleted";
+        account.deleted_at = new Date().toISOString();
+      }
+      return {};
+    }
+    if (sql.includes("INTO audit_logs")) {
+      this.auditLogs.push({
+        request_id: values[0] as string,
+        actor: values[1] as string,
+        source: values[2] as string,
+        action: values[3] as string,
+        target_type: values[4] as string,
+        target_id: values[5] as string | null,
+        risk_level: values[6] as string,
+        result: values[7] as string,
+        error_code: values[8] as string | null,
+        metadata_json: values[9] as string | null
+      });
+      return {};
+    }
+    if (sql.includes("INTO bot_sessions")) {
+      this.botSessions = this.botSessions.filter((session) => session.telegram_user_id !== values[0]);
+      this.botSessions.push({ telegram_user_id: values[0], chat_id: values[1], state: values[2], data_json: values[3], expires_at: values[4] });
+      return {};
+    }
+    if (sql.includes("DELETE FROM bot_sessions")) {
+      this.botSessions = this.botSessions.filter((session) => session.telegram_user_id !== values[0]);
+      return {};
+    }
+    return {};
+  }
+}
+
+function apiRequest(path: string, init: RequestInit = {}) {
+  const headers = new Headers(init.headers);
+  if (!headers.has("Authorization")) headers.set("Authorization", "Bearer secret-api-token");
+  return new Request(`https://example.com${path}`, { ...init, headers });
+}
+
+function telegramRequest(update: unknown) {
+  return new Request("https://example.com/telegram/webhook", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "X-Telegram-Bot-Api-Secret-Token": "telegram-secret"
+    },
+    body: JSON.stringify(update)
+  });
+}
+
+function messageUpdate(text: string, messageId = 10) {
+  return {
+    update_id: messageId,
+    message: {
+      message_id: messageId,
+      chat: { id: 123456789, type: "private" },
+      from: { id: 123456789, is_bot: false, first_name: "Admin" },
+      text
+    }
+  };
+}
+
+function callbackUpdate(data: string) {
+  return {
+    update_id: 20,
+    callback_query: {
+      id: "cb_1",
+      from: { id: 123456789 },
+      message: { message_id: 11, chat: { id: 123456789 } },
+      data
+    }
+  };
+}
+
+describe("Phase 5 Linode account and token management", () => {
+  it("encrypts tokens with AES-GCM using independent IVs and can decrypt them", async () => {
+    const first = await encryptLinodeToken("linode-token-secret", "encryption-key");
+    const second = await encryptLinodeToken("linode-token-secret", "encryption-key");
+
+    expect(first).toMatch(/^v1:[A-Za-z0-9+/=]+:[A-Za-z0-9+/=]+$/);
+    expect(second).toMatch(/^v1:[A-Za-z0-9+/=]+:[A-Za-z0-9+/=]+$/);
+    expect(first).not.toBe(second);
+    expect(first).not.toContain("linode-token-secret");
+    await expect(decryptLinodeToken(first, "encryption-key")).resolves.toBe("linode-token-secret");
+  });
+
+  it("creates SHA-256 token fingerprints without leaking plaintext", async () => {
+    const fingerprint = await createTokenFingerprint("linode-token-secret");
+
+    expect(fingerprint).toMatch(/^fp_[a-f0-9]{12}$/);
+    expect(fingerprint).not.toContain("linode-token-secret");
+  });
+
+  it("adds, lists, tests, and soft deletes accounts via authenticated HTTP API without returning tokens", async () => {
+    const db = new FakeD1Database();
+    const env = { ...baseEnv, DB: db as unknown as D1Database };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ username: "admin" }), { status: 200 }));
+    try {
+      const createResponse = await worker.fetch(apiRequest("/api/v1/accounts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ alias: "default", token: "valid-linode-token" })
+      }), env as never);
+      const createBody = await createResponse.json() as { ok: boolean; data: { account: { id: number; alias: string; token_fingerprint: string; token_status: string; encrypted_token?: string; token?: string } } };
+
+      expect(createResponse.status).toBe(200);
+      expect(createBody.ok).toBe(true);
+      expect(createBody.data.account).toMatchObject({ id: 1, alias: "default", token_status: "valid" });
+      expect(createBody.data.account.token_fingerprint).toMatch(/^fp_[a-f0-9]{12}$/);
+      expect(createBody.data.account.encrypted_token).toBeUndefined();
+      expect(createBody.data.account.token).toBeUndefined();
+      expect(db.accounts[0].encrypted_token).toMatch(/^v1:/);
+      expect(db.accounts[0].encrypted_token).not.toContain("valid-linode-token");
+
+      const listResponse = await worker.fetch(apiRequest("/api/v1/accounts"), env as never);
+      const listBody = await listResponse.json() as { ok: boolean; data: { accounts: Array<Record<string, unknown>> } };
+      const rawList = JSON.stringify(listBody);
+      expect(listResponse.status).toBe(200);
+      expect(listBody.data.accounts).toHaveLength(1);
+      expect(rawList).not.toContain("valid-linode-token");
+      expect(rawList).not.toContain("encrypted_token");
+
+      const testResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/test", { method: "POST" }), env as never);
+      const testBody = await testResponse.json() as { ok: boolean; data: { account: { id: number; token_status: string } } };
+      expect(testResponse.status).toBe(200);
+      expect(testBody.data.account).toMatchObject({ id: 1, token_status: "valid" });
+
+      const deleteResponse = await worker.fetch(apiRequest("/api/v1/accounts/1", { method: "DELETE" }), env as never);
+      const deleteBody = await deleteResponse.json() as { ok: boolean; data: { deleted: boolean } };
+      expect(deleteResponse.status).toBe(200);
+      expect(deleteBody.data.deleted).toBe(true);
+      expect(db.accounts[0].status).toBe("deleted");
+      expect(db.auditLogs.map((log) => log.action)).toEqual(expect.arrayContaining(["account.create", "account.test", "account.delete"]));
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("returns unified errors for missing auth, duplicate alias, and invalid Linode token", async () => {
+    const db = new FakeD1Database();
+    const env = { ...baseEnv, DB: db as unknown as D1Database };
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({ username: "admin" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ errors: [{ reason: "Invalid Token" }] }), { status: 401 }));
+    try {
+      const unauthorized = await worker.fetch(new Request("https://example.com/api/v1/accounts"), env as never);
+      const unauthorizedBody = await unauthorized.json() as { ok: boolean; error: { code: string } };
+      expect(unauthorized.status).toBe(401);
+      expect(unauthorizedBody.error.code).toBe("UNAUTHORIZED");
+
+      await worker.fetch(apiRequest("/api/v1/accounts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ alias: "default", token: "valid-linode-token" })
+      }), env as never);
+      const duplicate = await worker.fetch(apiRequest("/api/v1/accounts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ alias: "default", token: "another-token" })
+      }), env as never);
+      const duplicateBody = await duplicate.json() as { ok: boolean; error: { code: string } };
+      expect(duplicate.status).toBe(400);
+      expect(duplicateBody.error.code).toBe("VALIDATION_ERROR");
+
+      const invalid = await worker.fetch(apiRequest("/api/v1/accounts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ alias: "backup", token: "bad-token" })
+      }), env as never);
+      const invalidBody = await invalid.json() as { ok: boolean; error: { code: string } };
+      expect(invalid.status).toBe(401);
+      expect(invalidBody.error.code).toBe("TOKEN_INVALID");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("renders Telegram accounts menu and account list", async () => {
+    const db = new FakeD1Database();
+    const env = { ...baseEnv, DB: db as unknown as D1Database };
+    db.accounts.push({ id: 1, alias: "default", encrypted_token: "v1:encrypted", token_fingerprint: "fp_123456789abc", token_status: "valid", status: "active", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", deleted_at: null });
+
+    const response = await worker.fetch(telegramRequest(callbackUpdate("menu:accounts")), env as never);
+    const body = await response.json() as { data: { telegram: { method: string; payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+
+    expect(response.status).toBe(200);
+    expect(body.data.telegram.method).toBe("editMessageText");
+    expect(body.data.telegram.payload.text).toContain("账号管理");
+    expect(body.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
+      { text: "查看账号列表", callback_data: "accounts:list" },
+      { text: "添加账号", callback_data: "accounts:add" }
+    ]));
+
+    const listResponse = await worker.fetch(telegramRequest(callbackUpdate("accounts:list")), env as never);
+    const listBody = await listResponse.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+    expect(listBody.data.telegram.payload.text).toContain("账号列表");
+    expect(listBody.data.telegram.payload.text).toContain("#1 default");
+    expect(listBody.data.telegram.payload.text).toContain("fp_123456789abc");
+    expect(JSON.stringify(listBody)).not.toContain("v1:encrypted");
+  });
+
+  it("runs Telegram add account flow without echoing token and attempts to delete token message", async () => {
+    const db = new FakeD1Database();
+    const env = { ...baseEnv, DB: db as unknown as D1Database };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ username: "admin" }), { status: 200 }));
+    try {
+      const startResponse = await worker.fetch(telegramRequest(callbackUpdate("accounts:add")), env as never);
+      const startBody = await startResponse.json() as { data: { telegram: { payload: { text: string } } } };
+      expect(startBody.data.telegram.payload.text).toContain("请输入账号别名");
+
+      const aliasResponse = await worker.fetch(telegramRequest(messageUpdate("default", 31)), env as never);
+      const aliasBody = await aliasResponse.json() as { data: { telegram: { payload: { text: string } } } };
+      expect(aliasBody.data.telegram.payload.text).toContain("请发送 Linode API Token");
+
+      const tokenResponse = await worker.fetch(telegramRequest(messageUpdate("valid-linode-token", 32)), env as never);
+      const tokenBody = await tokenResponse.json() as { data: { telegram: Array<{ method: string; payload: { text?: string; message_id?: number } }> } };
+      const rawTelegram = JSON.stringify(tokenBody);
+      expect(Array.isArray(tokenBody.data.telegram)).toBe(true);
+      expect(tokenBody.data.telegram).toEqual(expect.arrayContaining([
+        expect.objectContaining({ method: "deleteMessage", payload: expect.objectContaining({ message_id: 32 }) }),
+        expect.objectContaining({ method: "sendMessage", payload: expect.objectContaining({
+          text: expect.stringContaining("账号添加成功"),
+          reply_markup: expect.objectContaining({ inline_keyboard: expect.any(Array) })
+        }) })
+      ]));
+      expect(rawTelegram).not.toContain("valid-linode-token");
+      expect(db.accounts).toHaveLength(1);
+      expect(db.accounts[0].encrypted_token).not.toContain("valid-linode-token");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+});

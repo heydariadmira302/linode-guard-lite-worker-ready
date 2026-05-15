@@ -1,0 +1,16 @@
+node_modules/
+dist/
+dist-upload/
+dist-upload-test/
+release/
+.wrangler/
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+*.log
+.DS_Store
+.hermes/
+.local/
+.npm/
+.cache/
