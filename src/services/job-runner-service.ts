@@ -11,6 +11,7 @@ import { BotSessionsRepository } from "../storage/bot-sessions-repository";
 import { SecurityEventsRepository } from "../storage/events-repository";
 import { TelegramMessagesRepository } from "../storage/telegram-messages-repository";
 import { SecurityService, type SecurityCheckResult } from "./security-service";
+import { getSuperAdminChatId } from "./super-admin-service";
 import type { TelegramClientAction } from "../telegram/types";
 
 export type JobRunnerResult = { checked_jobs: number; executed_jobs: number; failed_jobs: number; result: "success" | "partial_failed" | "failed" | "skipped"; items: Array<{ job_name: string; status: string; summary?: unknown; error_code?: string }> };
@@ -58,10 +59,12 @@ export class JobRunnerService {
     const result = await new SecurityService(this.env).checkAccounts({ requestId: `cron_${Date.now()}`, actor: "cron:job_runner", source: "cron" });
     const newEvents = result.items.flatMap((item) => item.new_events.map((event) => ({ accountAlias: item.account_alias, event })));
     if (newEvents.length === 0) return { ...result, notifications_sent: 0 };
+    const chatId = await getSuperAdminChatId(this.env);
+    if (!chatId) return { ...result, notifications_sent: 0 };
     await sendTelegramAction(this.env.TELEGRAM_BOT_TOKEN, {
       method: "sendMessage",
       payload: {
-        chat_id: String(this.env.SUPER_ADMIN_TELEGRAM_ID),
+        chat_id: chatId,
         text: renderLoginAlertText(newEvents),
         reply_markup: {
           inline_keyboard: newEvents.slice(0, 5).map(({ event }) => [
@@ -116,16 +119,18 @@ export class JobRunnerService {
     const messages = new TelegramMessagesRepository(this.env.DB);
     const latest = await messages.getLatestPendingByPurpose("admin_presence_reminder");
     if (latest && now.getTime() - Date.parse(latest.created_at) < 60 * 60 * 1000) return;
+    const chatId = await getSuperAdminChatId(this.env);
+    if (!chatId) return;
     const result = await sendTelegramAction(this.env.TELEGRAM_BOT_TOKEN, {
       method: "sendMessage",
       payload: {
-        chat_id: String(this.env.SUPER_ADMIN_TELEGRAM_ID),
+        chat_id: chatId,
         text: renderPresenceReminderText(minutesSinceCheckin),
         reply_markup: { inline_keyboard: [[{ text: "我还在，立即确认", callback_data: "admin_presence:checkin" }], [{ text: "查看保活状态", callback_data: "menu:admin_presence" }]] }
       }
     });
     const messageId = readTelegramMessageId(result);
-    if (messageId !== null) await messages.create({ chat_id: String(this.env.SUPER_ADMIN_TELEGRAM_ID), message_id: String(messageId), purpose: "admin_presence_reminder", metadata: { policy_id: policy.id, rule_id: rule.rule_id, minutes_since_checkin: minutesSinceCheckin } });
+    if (messageId !== null) await messages.create({ chat_id: chatId, message_id: String(messageId), purpose: "admin_presence_reminder", metadata: { policy_id: policy.id, rule_id: rule.rule_id, minutes_since_checkin: minutesSinceCheckin } });
   }
 
   private async runMessageCleanup(now: Date): Promise<{ deleted_sessions: number }> {

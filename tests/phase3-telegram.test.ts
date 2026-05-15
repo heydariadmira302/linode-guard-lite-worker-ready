@@ -95,6 +95,8 @@ describe("Phase 3 Telegram webhook and menu", () => {
     expect(response.status).toBe(200);
     expect(body.ok).toBe(true);
     expect(body.data.telegram.method).toBe("sendMessage");
+    expect(fakeDb.settings.get("super_admin")).toContain("987654321");
+    expect(fakeDb.settings.get("super_admin")).toContain("chat_id");
     expect(fakeDb.botSessions.length).toBe(0);
   });
 

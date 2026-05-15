@@ -10,9 +10,10 @@ type Policy = { id: number; name: string; enabled: number; scope: string; rules_
 type Audit = { action: string; target_type: string; target_id: string | null; risk_level: string; result: string; error_code: string | null; metadata_json: string | null; request_id: string; actor: string; source: string };
 class FakePreparedStatement { constructor(private db: FakeD1Database, private sql: string) {} private values: unknown[] = []; bind(...values: unknown[]) { this.values = values; return this; } first<T=unknown>() { return Promise.resolve(this.db.first<T>(this.sql, this.values)); } all<T=unknown>() { return Promise.resolve({ results: this.db.all<T>(this.sql, this.values), success: true, meta: {} }); } run() { return Promise.resolve({ success: true, meta: this.db.run(this.sql, this.values) }); } }
 class FakeD1Database {
+ settings = new Map<string, string>();
  accounts: Account[]=[]; schedules: Schedule[]=[]; presence: Presence | null=null; policies: Policy[]=[]; scheduleRuns: unknown[]=[]; presenceRuns: unknown[]=[]; jobRuns: unknown[]=[]; auditLogs: Audit[]=[]; nextPresenceRunId=1;
  prepare(sql:string){return new FakePreparedStatement(this,sql)}
- first<T>(sql:string, values:unknown[]=[]):T|null{ if(sql.includes("FROM admin_presence_policy_runs")) return null; if(sql.includes("FROM admin_presence")) return this.presence as T|null; if(sql.includes("FROM login_events")) return null; if(sql.includes("FROM linode_accounts")&&sql.includes("WHERE id = ?")) return (this.accounts.find(a=>a.id===Number(values[0])) as T|undefined)??null; return null; }
+ first<T>(sql:string, values:unknown[]=[]):T|null{ if(sql.includes("FROM settings")){ const value=this.settings.get(values[0] as string); return value ? ({ value_json: value } as T) : null; } if(sql.includes("FROM admin_presence_policy_runs")) return null; if(sql.includes("FROM admin_presence")) return this.presence as T|null; if(sql.includes("FROM login_events")) return null; if(sql.includes("FROM linode_accounts")&&sql.includes("WHERE id = ?")) return (this.accounts.find(a=>a.id===Number(values[0])) as T|undefined)??null; return null; }
  all<T>(sql:string, values:unknown[]=[]):T[]{ if(sql.includes("FROM linode_accounts")) return this.accounts.filter(a=>a.status==="active") as T[]; if(sql.includes("FROM power_schedules")) return this.schedules.filter(s=>s.deleted_at===null).sort((a,b)=>b.id-a.id) as T[]; if(sql.includes("FROM admin_presence_policies")) return this.policies.filter(p=>p.deleted_at===null).sort((a,b)=>b.id-a.id) as T[]; if(sql.includes("FROM security_events")) return [] as T[]; if(sql.includes("FROM jobs")) return ["login_monitor","login_timeout","checkin_monitor","schedule_power","message_cleanup","audit_log_cleanup","security_event_cleanup"].map(name=>({name,type:"system",enabled:1,last_run_at:null,last_status:null,summary:null})) as T[]; return []; }
  run(sql:string, values:unknown[]){ const now=new Date().toISOString(); if(sql.includes("INTO schedule_runs")){this.scheduleRuns.push({values}); return {changes:1}} if(sql.includes("UPDATE power_schedules")&&sql.includes("last_run_at")){const s=this.schedules.find(x=>x.id===Number(values[2])); if(s){s.last_run_at=String(values[0]); s.next_run_at=values[1] as string|null;} return {changes:s?1:0}} if(sql.includes("INTO admin_presence_policy_runs")){this.presenceRuns.push({id:this.nextPresenceRunId++, values}); return {last_row_id:this.nextPresenceRunId-1,changes:1}} if(sql.includes("INTO job_runs")){this.jobRuns.push({values}); return {changes:1}} if(sql.includes("DELETE FROM audit_logs")){return {changes:0}} if(sql.includes("DELETE FROM security_events")){return {changes:0}} if(sql.includes("DELETE FROM login_events")){return {changes:0}} if(sql.includes("DELETE FROM bot_sessions")){return {changes:0}} if(sql.includes("UPDATE jobs")){return {changes:1}} if(sql.includes("INTO audit_logs")){this.auditLogs.push({request_id:values[0] as string,actor:values[1] as string,source:values[2] as string,action:values[3] as string,target_type:values[4] as string,target_id:values[5] as string|null,risk_level:values[6] as string,result:values[7] as string,error_code:values[8] as string|null,metadata_json:values[9] as string|null}); return {changes:1}} return {changes:0,last_row_id:1}; }
 }
@@ -41,4 +42,22 @@ describe("Phase 15 job runner",()=>{
    expect(raw).not.toContain("encrypted_token");
   } finally { fetchMock.mockRestore(); }
  });
+ it("uses bootstrapped Super Admin chat_id for cron Telegram notifications when env id is omitted", async()=>{
+  const db=new FakeD1Database(); await addAccount(db);
+  db.presence={id:1,last_checkin_at:"2026-01-01T00:00:00.000Z",last_checkin_actor:"api:default",current_cycle_id:"cycle_1",created_at:"2026-01-01T00:00:00.000Z",updated_at:"2026-01-01T00:00:00.000Z"};
+  db.policies.push({id:1,name:"notify stale",enabled:1,scope:"all",rules_json:JSON.stringify({rules:[{rule_id:"notify_1m",after_minutes:1,action:"notify"}]}),created_at:"2026-01-01T00:00:00.000Z",updated_at:"2026-01-01T00:00:00.000Z",deleted_at:null});
+  const env={...baseEnv,SUPER_ADMIN_TELEGRAM_ID:undefined,DB:db as unknown as D1Database};
+  const calls:Array<{url:string; body:string}>=[];
+  const fetchMock=vi.spyOn(globalThis,"fetch").mockImplementation(async(input,init)=>{
+    if(String(input).includes("api.linode.com")&&String(input).endsWith("/account/logins")) return new Response(JSON.stringify({data:[]}),{status:200});
+    if(String(input).includes("api.telegram.org")){ calls.push({url:String(input),body:String(init?.body??"")}); return new Response(JSON.stringify({ok:true,result:{message_id:88}}),{status:200}); }
+    return new Response(JSON.stringify({data:[]}),{status:200});
+  });
+  try{
+   db.settings = new Map([["super_admin", JSON.stringify({telegram_user_id:"987654321", chat_id:"987654321"})]]);
+   await worker.scheduled({ scheduledTime: Date.parse("2026-01-01T13:00:00.000Z"), cron: "*/5 * * * *", noRetry(){} } as ScheduledController, env as never, { waitUntil(promise:Promise<unknown>){ return promise; }, passThroughOnException(){} } as unknown as ExecutionContext);
+   expect(calls.some((call)=>call.url.includes("/sendMessage") && call.body.includes('"chat_id":"987654321"'))).toBe(true);
+  } finally { fetchMock.mockRestore(); }
+ });
+
 });
