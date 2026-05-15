@@ -23,14 +23,16 @@ export async function handleSetupSchema(_request: Request, env: Env, requestId: 
 
 export async function handleSetupInitialize(request: Request, env: Env, requestId: string): Promise<Response> {
   if (!env.DB) throw new AppError(ErrorCode.CONFIG_MISSING, "Missing D1 binding DB", requestId, 500);
-  const manualSecrets = await readManualSecrets(request);
-  const data = await new SetupService(env).initializeDefaults(manualSecrets);
+  const body = await readSetupInitializeBody(request);
+  const webhookUrl = new URL("/telegram/webhook", request.url).toString();
+  const data = await new SetupService(env).initializeDefaults({ manualSecrets: body.runtime_secrets ?? {}, configureTelegramWebhook: body.configure_telegram_webhook === true, webhookUrl });
   return createJsonResponse({ ok: true, data }, { requestId });
 }
 
-async function readManualSecrets(request: Request): Promise<Partial<RuntimeSecrets>> {
+type SetupInitializeBody = { runtime_secrets?: Partial<RuntimeSecrets>; configure_telegram_webhook?: boolean };
+
+async function readSetupInitializeBody(request: Request): Promise<SetupInitializeBody> {
   const contentType = request.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) return {};
-  const body = await request.json().catch(() => ({})) as { runtime_secrets?: Partial<RuntimeSecrets> };
-  return body.runtime_secrets ?? {};
+  return await request.json().catch(() => ({})) as SetupInitializeBody;
 }

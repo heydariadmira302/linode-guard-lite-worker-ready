@@ -107,8 +107,8 @@ async function oneClickInstall() {
   try {
     validateAscii(token, '管理 Token');
     btn.disabled = true;
-    result.textContent = '正在一键安装：建表、写入默认设置、初始化 jobs、生成 runtime secrets...';
-    const data = await callApi('/api/v1/setup/initialize', 'POST', { runtime_secrets: getManualSecrets() });
+    result.textContent = '正在一键安装：建表、写入默认设置、初始化 jobs、生成 runtime secrets、配置 Telegram Webhook...';
+    const data = await callApi('/api/v1/setup/initialize', 'POST', { runtime_secrets: getManualSecrets(), configure_telegram_webhook: true });
     result.textContent = formatInstallResult(data);
   } catch (err) {
     result.textContent = String(err && err.message ? err.message : err);
@@ -158,16 +158,21 @@ function formatInstallResult(response) {
     'TELEGRAM_WEBHOOK_SECRET=' + (values.telegram_webhook_secret || ''),
     'LINODE_TOKEN_ENCRYPTION_KEY=' + (values.linode_token_encryption_key || ''),
     '',
-    '下一步：用下面命令设置 Telegram Webhook（把 <TELEGRAM_BOT_TOKEN> 换成 BotFather token）：',
-    'curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" -H "Content-Type: application/json" -d ' + JSON.stringify(JSON.stringify({ url: origin + '/telegram/webhook', secret_token: values.telegram_webhook_secret || '' })),
+    'Telegram Webhook：' + formatWebhookStatus(data.telegram_webhook),
     '',
-    'Webhook 设置成功后，给 bot 发送 /start；如果未手动设置 SUPER_ADMIN_TELEGRAM_ID，第一位发消息的人会自动绑定为管理员。',
+    '如果 Webhook 显示成功，直接给 bot 发送 /start；如果未手动设置 SUPER_ADMIN_TELEGRAM_ID，第一位发消息的人会自动绑定为管理员。',
     '',
     '后续进入 /setup 使用 API_AUTH_TOKEN，不要再使用 Bot Token。',
     '',
     '完整结果：',
     JSON.stringify(response, null, 2)
   ].join(String.fromCharCode(10));
+}
+
+function formatWebhookStatus(webhook) {
+  if (!webhook || !webhook.attempted) return '未尝试自动配置';
+  if (webhook.ok) return '✅ 已自动设置成功：' + webhook.webhook_url;
+  return '⚠️ 自动设置失败：' + (webhook.error || '未知错误') + '。安装已完成，请检查 TELEGRAM_BOT_TOKEN 后重新点一键安装。';
 }
 </script>
 </body>

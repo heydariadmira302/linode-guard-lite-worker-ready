@@ -75,8 +75,15 @@ export type InitializeSetupResult = {
   schema?: { initialized: boolean; missing_before: string[]; missing_after: string[] };
   settings: { created: string[]; existing: string[] };
   runtime_secrets: { created: string[]; existing: string[]; manual?: string[]; values?: RuntimeSecrets };
+  telegram_webhook?: { attempted: boolean; ok: boolean; webhook_url?: string; error?: string };
   jobs: { created: string[]; existing: string[] };
   admin_presence: { initialized: boolean };
+};
+
+export type InitializeSetupOptions = {
+  manualSecrets?: Partial<RuntimeSecrets>;
+  configureTelegramWebhook?: boolean;
+  webhookUrl?: string;
 };
 
 function hasValue(value: unknown): boolean {
@@ -162,7 +169,7 @@ export class SetupService {
     return { schema: { initialized: missingAfter.length === 0, missing_before: missingBefore, missing_after: missingAfter } };
   }
 
-  async initializeDefaults(manualSecrets: Partial<RuntimeSecrets> = {}): Promise<InitializeSetupResult> {
+  async initializeDefaults(options: InitializeSetupOptions = {}): Promise<InitializeSetupResult> {
     if (!this.env.DB) {
       throw new Error("Missing D1 binding DB");
     }
@@ -190,11 +197,15 @@ export class SetupService {
       }
     }
 
-    const runtimeSecrets = await ensureRuntimeSecrets(this.env, manualSecrets);
+    const runtimeSecrets = await ensureRuntimeSecrets(this.env, options.manualSecrets ?? {});
     result.runtime_secrets.created = runtimeSecrets.created;
     result.runtime_secrets.existing = runtimeSecrets.existing;
     result.runtime_secrets.manual = runtimeSecrets.manual;
     result.runtime_secrets.values = runtimeSecrets.secrets;
+
+    if (options.configureTelegramWebhook && options.webhookUrl) {
+      result.telegram_webhook = await configureTelegramWebhook(this.env.TELEGRAM_BOT_TOKEN, options.webhookUrl, runtimeSecrets.secrets.telegram_webhook_secret);
+    }
 
     for (const name of DEFAULT_JOBS) {
       const existed = (await jobsRepository.getByName(name)) !== null;
@@ -206,5 +217,23 @@ export class SetupService {
     await this.env.DB.prepare("INSERT INTO admin_presence (id) VALUES (1) ON CONFLICT(id) DO NOTHING").run();
     result.admin_presence.initialized = true;
     return result;
+  }
+}
+
+async function configureTelegramWebhook(botToken: string, webhookUrl: string, secretToken: string): Promise<{ attempted: boolean; ok: boolean; webhook_url?: string; error?: string }> {
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${botToken}/setWebhook`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: webhookUrl, secret_token: secretToken })
+    });
+    const text = await response.text();
+    let data: { ok?: boolean; description?: string } = {};
+    try { data = JSON.parse(text) as { ok?: boolean; description?: string }; } catch {}
+    return response.ok && data.ok === true
+      ? { attempted: true, ok: true, webhook_url: webhookUrl }
+      : { attempted: true, ok: false, webhook_url: webhookUrl, error: data.description ?? text ?? `HTTP ${response.status}` };
+  } catch (error) {
+    return { attempted: true, ok: false, webhook_url: webhookUrl, error: error instanceof Error ? error.message : String(error) };
   }
 }
