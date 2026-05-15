@@ -87,6 +87,8 @@ Apply `schema.sql` or `migrations/0001_initial.sql` to a D1 database bound as `D
 - `docs/telegram.md`
 - `docs/security.md`
 - `docs/troubleshooting.md`
+- `docs/PRODUCT_NEXT.md`
+- `docs/SESSION_NOTES.md`
 
 ## 风险说明
 
