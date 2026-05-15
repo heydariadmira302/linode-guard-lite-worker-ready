@@ -25,8 +25,8 @@ export function handleSetupPage(request: Request): Response {
 
   <div class="card">
     <label for="token">管理 Token</label>
-    <input id="token" type="password" autocomplete="off" placeholder="输入你初始化后生成的 API_AUTH_TOKEN；如果还没生成，可先用 TELEGRAM_BOT_TOKEN 进入 /setup initialize" />
-    <p class="muted">首次 initialize 会自动生成独立的 API_AUTH_TOKEN、Telegram webhook secret 和加密密钥，并保存到 D1。Token 只在当前浏览器里用于请求本 Worker，不会保存到服务器。</p>
+    <input id="token" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="首次初始化前：粘贴 BotFather 给你的 TELEGRAM_BOT_TOKEN" />
+    <p class="muted">这里不是重新配置变量，而是验证你是部署者。首次初始化前请输入 Cloudflare Secret 中已配置的 TELEGRAM_BOT_TOKEN；初始化后请改用生成的 API_AUTH_TOKEN。不要粘贴中文说明文字。</p>
   </div>
 
   <div class="card">
@@ -56,7 +56,11 @@ async function callApi(path, method = 'POST') {
   const token = document.getElementById('token').value.trim();
   const result = document.getElementById('result');
   if (!token) {
-    result.textContent = '请先输入管理 Token（初始化后生成的 API_AUTH_TOKEN，或首次初始化前使用 TELEGRAM_BOT_TOKEN）';
+    result.textContent = '请先输入管理 Token：首次初始化前填 BotFather 给你的 TELEGRAM_BOT_TOKEN；初始化后填生成的 API_AUTH_TOKEN。';
+    return;
+  }
+  if (!/^[\x20-\x7E]+$/.test(token)) {
+    result.textContent = 'Token 里包含中文或全角字符。请只粘贴 BotFather 给你的机器人 token，或初始化后生成的 API_AUTH_TOKEN，不要粘贴说明文字。';
     return;
   }
   result.textContent = '请求中...';
