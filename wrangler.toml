@@ -1,4 +1,4 @@
-name = "linode-guard-lite"
+name = "linode-guard-lite-worker-ready"
 main = "src/index.ts"
 compatibility_date = "2026-01-01"
 compatibility_flags = ["nodejs_compat"]
