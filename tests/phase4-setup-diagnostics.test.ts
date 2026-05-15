@@ -181,6 +181,8 @@ describe("Phase 4 setup wizard and diagnostics", () => {
     expect(text).toContain("/api/v1/setup/initialize");
     expect(text).toContain("手动指定 runtime secrets");
     expect(text).toContain("留空自动生成");
+    const script = text.split("<script>")[1]?.split("</script>")[0] ?? "";
+    expect(() => new Function(script)).not.toThrow();
   });
 
 

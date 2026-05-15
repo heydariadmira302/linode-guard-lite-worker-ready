@@ -162,7 +162,7 @@ function formatError(err) {
       '',
       '如果忘记 API_AUTH_TOKEN：',
       '1. 打开 Cloudflare -> D1 -> linode-guard-lite -> 控制台',
-      '2. 执行：SELECT value_json FROM settings WHERE key = \'runtime_secrets\';',
+      '2. 执行：SELECT value_json FROM settings WHERE key = "runtime_secrets";',
       '3. 复制里面的 api_auth_token 再回来填写。',
       '',
       '原始错误：',
