@@ -26,7 +26,7 @@ export function handleSetupPage(request: Request): Response {
 <body>
   <h1>Linode Guard Lite 一键安装</h1>
   <p>这个页面会自动完成建表、默认设置、系统 jobs 和运行时密钥初始化。</p>
-  <p class="muted">页面版本：one-click-setup-v3（支持首次安装前自动建 settings 表）</p>
+  <p class="muted">页面版本：one-click-setup-v4（自动配置 webhook，优化 Token 错误提示）</p>
   <p class="warn">先确认 Cloudflare Worker 已绑定 D1，Binding 变量名必须是 <code>DB</code>。</p>
 
   <div class="card">
@@ -65,7 +65,7 @@ function boot() {
   if (!installBtn || !checkBtn || !result) return;
   installBtn.addEventListener('click', oneClickInstall);
   checkBtn.addEventListener('click', checkAll);
-  result.textContent = '页面已加载，可以开始安装。版本：one-click-setup-v3。';
+  result.textContent = '页面已加载，可以开始安装。版本：one-click-setup-v4。';
 }
 
 if (document.readyState === 'loading') {
@@ -111,7 +111,7 @@ async function oneClickInstall() {
     const data = await callApi('/api/v1/setup/initialize', 'POST', { runtime_secrets: getManualSecrets(), configure_telegram_webhook: true });
     result.textContent = formatInstallResult(data);
   } catch (err) {
-    result.textContent = String(err && err.message ? err.message : err);
+    result.textContent = formatError(err);
   } finally {
     btn.disabled = false;
   }
@@ -124,7 +124,7 @@ async function checkAll() {
     const jobs = await callApi('/api/v1/diagnostics/jobs', 'GET');
     result.textContent = JSON.stringify({ deployment, jobs }, null, 2);
   } catch (err) {
-    result.textContent = String(err && err.message ? err.message : err);
+    result.textContent = formatError(err);
   }
 }
 
@@ -143,8 +143,33 @@ async function callApi(path, method = 'POST', body) {
   const text = await res.text();
   let json;
   try { json = JSON.parse(text); } catch { throw new Error(text); }
-  if (!res.ok || json.ok === false) throw new Error(JSON.stringify(json, null, 2));
+  if (!res.ok || json.ok === false) {
+    const error = new Error((json.error && json.error.message) || '请求失败');
+    error.code = json.error && json.error.code;
+    error.payload = json;
+    throw error;
+  }
   return json;
+}
+
+function formatError(err) {
+  if (err && err.code === 'UNAUTHORIZED') {
+    return [
+      '❌ 管理 Token 不正确。',
+      '',
+      '如果这是第一次全新安装：请填写 BotFather 给你的 TELEGRAM_BOT_TOKEN。',
+      '如果已经安装/初始化过：请填写初始化结果里的 API_AUTH_TOKEN。',
+      '',
+      '如果忘记 API_AUTH_TOKEN：',
+      '1. 打开 Cloudflare -> D1 -> linode-guard-lite -> 控制台',
+      '2. 执行：SELECT value_json FROM settings WHERE key = \'runtime_secrets\';',
+      '3. 复制里面的 api_auth_token 再回来填写。',
+      '',
+      '原始错误：',
+      JSON.stringify(err.payload || { message: err.message }, null, 2)
+    ].join(String.fromCharCode(10));
+  }
+  return String(err && err.message ? err.message : err);
 }
 
 function formatInstallResult(response) {
