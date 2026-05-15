@@ -80,7 +80,8 @@ export async function routeRequest(request: Request, env: Env, requestId: string
     throw new AppError(ErrorCode.VALIDATION_ERROR, "Route not found", requestId, 404);
   } catch (error) {
     if (error instanceof AppError) return createErrorResponse(error);
-    return createErrorResponse(new AppError(ErrorCode.JOB_FAILED, "Internal server error", requestId, 500));
+    const message = error instanceof Error ? error.message : "Internal server error";
+    return createErrorResponse(new AppError(ErrorCode.JOB_FAILED, message, requestId, 500));
   }
 }
 
