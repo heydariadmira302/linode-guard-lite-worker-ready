@@ -10,6 +10,7 @@ import { createJsonResponse } from "../utils/json-response";
 import { parseTelegramUpdate } from "./update-parser";
 import { handleTelegramMessageCommand } from "./commands";
 import { routeTelegramCallback } from "./callbacks";
+import { sendTelegramResult } from "./action-sender";
 
 export async function handleTelegramWebhook(request: Request, env: Env, requestId: string): Promise<Response> {
   if (!(await verifyTelegramWebhookSecret(request, env))) {
@@ -33,7 +34,8 @@ export async function handleTelegramWebhook(request: Request, env: Env, requestI
   const telegram = update.kind === "message"
     ? await handleTelegramMessageCommand(update, client, sessionService, env, requestId)
     : await routeTelegramCallback(update, client, sessionService, env, requestId);
+  const sent = await sendTelegramResult(env.TELEGRAM_BOT_TOKEN, telegram);
 
-  return createJsonResponse({ ok: true, data: { telegram } }, { requestId });
+  return createJsonResponse({ ok: true, data: { telegram, sent } }, { requestId });
 }
 

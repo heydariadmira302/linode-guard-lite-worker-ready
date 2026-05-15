@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 import { BotSessionsRepository } from "../src/storage/bot-sessions-repository";
 import { parseTelegramUpdate } from "../src/telegram/update-parser";
@@ -127,7 +127,7 @@ describe("Phase 3 Telegram webhook and menu", () => {
 
   it("handles /start with main menu text and inline keyboard", async () => {
     const response = await worker.fetch(telegramRequest(messageUpdate("/start")), env as never);
-    const body = await response.json() as { ok: boolean; data: { telegram: { method: string; payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+    const body = await response.json() as { ok: boolean; data: { telegram: { method: string; payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } }; sent: unknown[] } };
 
     expect(response.status).toBe(200);
     expect(body.ok).toBe(true);
@@ -138,6 +138,24 @@ describe("Phase 3 Telegram webhook and menu", () => {
       { text: "账号管理", callback_data: "menu:accounts" },
       { text: "系统自检", callback_data: "menu:diagnostics" }
     ]));
+    expect(body.data.sent).toEqual([expect.objectContaining({ ok: true, dry_run: true, method: "sendMessage" })]);
+  });
+
+  it("sends Telegram webhook actions through Telegram API outside test dry-run tokens", async () => {
+    const calls: Array<{ url: string; body: string }> = [];
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      calls.push({ url: String(input), body: String(init?.body ?? "") });
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 100 } }), { status: 200 });
+    });
+    try {
+      const response = await worker.fetch(telegramRequest(messageUpdate("/start")), { ...env, TELEGRAM_BOT_TOKEN: "123456:realish-token" } as never);
+      expect(response.status).toBe(200);
+      expect(calls).toHaveLength(1);
+      expect(calls[0].url).toBe("https://api.telegram.org/bot123456:realish-token/sendMessage");
+      expect(calls[0].body).toContain("Linode Guard Lite");
+    } finally {
+      fetchMock.mockRestore();
+    }
   });
 
   it("handles /help and /setup wizard", async () => {

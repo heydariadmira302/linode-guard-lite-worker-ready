@@ -12,6 +12,7 @@ import { SecurityEventsRepository } from "../storage/events-repository";
 import { TelegramMessagesRepository } from "../storage/telegram-messages-repository";
 import { SecurityService, type SecurityCheckResult } from "./security-service";
 import { getSuperAdminChatId } from "./super-admin-service";
+import { sendTelegramAction } from "../telegram/action-sender";
 import type { TelegramClientAction } from "../telegram/types";
 
 export type JobRunnerResult = { checked_jobs: number; executed_jobs: number; failed_jobs: number; result: "success" | "partial_failed" | "failed" | "skipped"; items: Array<{ job_name: string; status: string; summary?: unknown; error_code?: string }> };
@@ -218,12 +219,3 @@ function readTelegramMessageId(result: unknown): number | null {
   return typeof value.result?.message_id === "number" ? value.result.message_id : null;
 }
 
-async function sendTelegramAction(botToken: string, action: TelegramClientAction): Promise<unknown> {
-  const response = await fetch(`https://api.telegram.org/bot${botToken}/${action.method}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(action.payload)
-  });
-  if (!response.ok) throw new AppError(ErrorCode.TELEGRAM_API_ERROR, "Telegram API error", "req_telegram", 502);
-  return await response.json().catch(() => ({}));
-}

@@ -4,6 +4,7 @@ import { ErrorCode } from "../errors/error-codes";
 import { AdminPresenceRepository, type AdminPresencePolicyRecord, type AdminPresenceRecord } from "../storage/admin-presence-repository";
 import { AuditRepository } from "../storage/audit-repository";
 import { TelegramMessagesRepository } from "../storage/telegram-messages-repository";
+import { sendTelegramAction } from "../telegram/action-sender";
 import type { TelegramClientAction } from "../telegram/types";
 import { AuditService } from "./audit-service";
 
@@ -203,11 +204,3 @@ function normalizeOffset(offset: number | undefined): number {
   return Math.max(0, Math.trunc(offset ?? 0));
 }
 
-async function sendTelegramAction(botToken: string, action: TelegramClientAction): Promise<void> {
-  const response = await fetch(`https://api.telegram.org/bot${botToken}/${action.method}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(action.payload)
-  });
-  if (!response.ok) throw new AppError(ErrorCode.TELEGRAM_API_ERROR, "Telegram API error", "req_telegram", 502);
-}
