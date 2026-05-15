@@ -5,6 +5,8 @@ import { JobsRepository } from "../storage/jobs-repository";
 import { SCHEMA_SQL } from "../storage/schema";
 import { SettingsRepository } from "../storage/settings-repository";
 import { ensureRuntimeSecrets, getRuntimeSecrets, type RuntimeSecrets } from "./runtime-secret-service";
+import { getSuperAdminChatId } from "./super-admin-service";
+import { sendTelegramAction } from "../telegram/action-sender";
 
 export const DEFAULT_JOBS = [
   "login_monitor",
@@ -76,6 +78,7 @@ export type InitializeSetupResult = {
   settings: { created: string[]; existing: string[] };
   runtime_secrets: { created: string[]; existing: string[]; manual?: string[]; values?: RuntimeSecrets };
   telegram_webhook?: { attempted: boolean; ok: boolean; webhook_url?: string; error?: string };
+  install_notification?: { attempted: boolean; ok: boolean; chat_id?: string; error?: string };
   jobs: { created: string[]; existing: string[] };
   admin_presence: { initialized: boolean };
 };
@@ -216,7 +219,32 @@ export class SetupService {
 
     await this.env.DB.prepare("INSERT INTO admin_presence (id) VALUES (1) ON CONFLICT(id) DO NOTHING").run();
     result.admin_presence.initialized = true;
+    result.install_notification = await sendInstallNotification(this.env, options.webhookUrl ?? null, Boolean(result.telegram_webhook?.ok));
     return result;
+  }
+}
+
+async function sendInstallNotification(env: Env, webhookUrl: string | null, webhookOk: boolean): Promise<{ attempted: boolean; ok: boolean; chat_id?: string; error?: string }> {
+  const chatId = await getSuperAdminChatId(env);
+  if (!chatId) return { attempted: false, ok: false, error: "SUPER_ADMIN_TELEGRAM_ID 未设置，且还没有 Telegram 自动绑定管理员" };
+  try {
+    await sendTelegramAction(env.TELEGRAM_BOT_TOKEN, {
+      method: "sendMessage",
+      payload: {
+        chat_id: chatId,
+        text: [
+          "✅ Linode Guard Lite 安装成功",
+          "",
+          `Webhook：${webhookOk ? "已自动配置" : "未确认成功"}`,
+          webhookUrl ? `地址：${webhookUrl}` : "",
+          "",
+          "请回到 bot 发送 /start 打开主菜单。"
+        ].filter(Boolean).join("\n")
+      }
+    });
+    return { attempted: true, ok: true, chat_id: chatId };
+  } catch (error) {
+    return { attempted: true, ok: false, chat_id: chatId, error: error instanceof Error ? error.message : String(error) };
   }
 }
 

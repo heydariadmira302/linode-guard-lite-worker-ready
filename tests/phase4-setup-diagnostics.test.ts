@@ -208,7 +208,7 @@ describe("Phase 4 setup wizard and diagnostics", () => {
   it("one-click initialize can configure Telegram webhook automatically", async () => {
     const db = new FakeD1Database();
     db.existingTables.clear();
-    const env = { ...baseEnv, API_AUTH_TOKEN: undefined, TELEGRAM_WEBHOOK_SECRET: undefined, LINODE_TOKEN_ENCRYPTION_KEY: undefined, DB: db as unknown as D1Database };
+    const env = { ...baseEnv, TELEGRAM_BOT_TOKEN: "123456:realish-token", API_AUTH_TOKEN: undefined, TELEGRAM_WEBHOOK_SECRET: undefined, LINODE_TOKEN_ENCRYPTION_KEY: undefined, DB: db as unknown as D1Database };
     const calls: Array<{ url: string; body: string }> = [];
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -216,16 +216,19 @@ describe("Phase 4 setup wizard and diagnostics", () => {
       return new Response(JSON.stringify({ ok: true, result: true, description: "Webhook was set" }), { status: 200 });
     }) as typeof fetch;
     try {
-      const headers = new Headers({ Authorization: "Bearer bot-token", "content-type": "application/json" });
+      const headers = new Headers({ Authorization: "Bearer 123456:realish-token", "content-type": "application/json" });
       const response = await worker.fetch(new Request("https://worker.example.com/api/v1/setup/initialize", { method: "POST", headers, body: JSON.stringify({ runtime_secrets: {}, configure_telegram_webhook: true }) }), env as never);
       const body = await response.json() as { ok: boolean; data: { telegram_webhook?: { ok: boolean; webhook_url?: string } } };
 
       expect(response.status).toBe(200);
       expect(body.ok).toBe(true);
       expect(body.data.telegram_webhook).toMatchObject({ ok: true, webhook_url: "https://worker.example.com/telegram/webhook" });
-      expect(calls).toHaveLength(1);
-      expect(calls[0].url).toBe("https://api.telegram.org/botbot-token/setWebhook");
+      expect(body.data).toMatchObject({ install_notification: { attempted: true, ok: true, chat_id: "123456789" } });
+      expect(calls).toHaveLength(2);
+      expect(calls[0].url).toBe("https://api.telegram.org/bot123456:realish-token/setWebhook");
       expect(calls[0].body).toContain("https://worker.example.com/telegram/webhook");
+      expect(calls[1].url).toBe("https://api.telegram.org/bot123456:realish-token/sendMessage");
+      expect(calls[1].body).toContain("安装成功");
     } finally {
       globalThis.fetch = originalFetch;
     }

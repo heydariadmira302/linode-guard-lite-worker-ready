@@ -184,8 +184,9 @@ function formatInstallResult(response) {
     'LINODE_TOKEN_ENCRYPTION_KEY=' + (values.linode_token_encryption_key || ''),
     '',
     'Telegram Webhook：' + formatWebhookStatus(data.telegram_webhook),
+    '安装成功通知：' + formatNotificationStatus(data.install_notification),
     '',
-    '如果 Webhook 显示成功，直接给 bot 发送 /start；如果未手动设置 SUPER_ADMIN_TELEGRAM_ID，第一位发消息的人会自动绑定为管理员。',
+    '如果 Webhook 显示成功，直接给 bot 发送 /start；如果设置了 SUPER_ADMIN_TELEGRAM_ID，系统也会尝试主动发送安装成功通知。',
     '',
     '后续进入 /setup 使用 API_AUTH_TOKEN，不要再使用 Bot Token。',
     '',
@@ -198,6 +199,12 @@ function formatWebhookStatus(webhook) {
   if (!webhook || !webhook.attempted) return '未尝试自动配置';
   if (webhook.ok) return '✅ 已自动设置成功：' + webhook.webhook_url;
   return '⚠️ 自动设置失败：' + (webhook.error || '未知错误') + '。安装已完成，请检查 TELEGRAM_BOT_TOKEN 后重新点一键安装。';
+}
+
+function formatNotificationStatus(notification) {
+  if (!notification || !notification.attempted) return '未主动发送（未设置 SUPER_ADMIN_TELEGRAM_ID，或尚未绑定管理员）';
+  if (notification.ok) return '✅ 已发送到 chat_id=' + notification.chat_id;
+  return '⚠️ 发送失败：' + (notification.error || '未知错误') + '。如果你还没和 bot 说过话，请先给 bot 发 /start。';
 }
 </script>
 </body>
