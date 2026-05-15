@@ -26,6 +26,7 @@ export function handleSetupPage(request: Request): Response {
 <body>
   <h1>Linode Guard Lite 一键安装</h1>
   <p>这个页面会自动完成建表、默认设置、系统 jobs 和运行时密钥初始化。</p>
+  <p class="muted">页面版本：one-click-setup-v2</p>
   <p class="warn">先确认 Cloudflare Worker 已绑定 D1，Binding 变量名必须是 <code>DB</code>。</p>
 
   <div class="card">
@@ -47,8 +48,8 @@ export function handleSetupPage(request: Request): Response {
       <label for="encryptionKey">LINODE_TOKEN_ENCRYPTION_KEY（可选）</label>
       <input id="encryptionKey" type="text" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="留空自动生成，例如 lg_enc_..." />
     </details>
-    <button id="installBtn" onclick="oneClickInstall()">一键安装 / 初始化</button>
-    <button class="secondary" onclick="checkAll()">自检</button>
+    <button id="installBtn" type="button">一键安装 / 初始化</button>
+    <button id="checkBtn" class="secondary" type="button">自检</button>
   </div>
 
   <h2>结果</h2>
@@ -56,6 +57,22 @@ export function handleSetupPage(request: Request): Response {
 
 <script>
 const origin = ${JSON.stringify(origin)};
+
+function boot() {
+  const installBtn = document.getElementById('installBtn');
+  const checkBtn = document.getElementById('checkBtn');
+  const result = document.getElementById('result');
+  if (!installBtn || !checkBtn || !result) return;
+  installBtn.addEventListener('click', oneClickInstall);
+  checkBtn.addEventListener('click', checkAll);
+  result.textContent = '页面已加载，可以开始安装。';
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', boot);
+} else {
+  boot();
+}
 
 function getToken() {
   return document.getElementById('token').value.trim();
