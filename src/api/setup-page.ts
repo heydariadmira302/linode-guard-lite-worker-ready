@@ -162,7 +162,7 @@ function formatInstallResult(response) {
     '',
     '完整结果：',
     JSON.stringify(response, null, 2)
-  ].join('\n');
+  ].join(String.fromCharCode(10));
 }
 </script>
 </body>
