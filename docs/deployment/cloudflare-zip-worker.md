@@ -1,104 +1,119 @@
-# Cloudflare Worker ZIP 上传部署教程
+# Cloudflare Worker 部署：下载 ZIP 后怎么部署
 
-本文适合不想用 GitHub 自动部署、只想下载源码压缩包后在 Cloudflare 上传部署的用户。
+> 重要：不要选择“上传静态文件”。
+>
+> Cloudflare 中文后台里的“上传静态文件”通常是 Pages / 静态网站入口，只适合 HTML/CSS/JS 静态站点。本项目是 Cloudflare Worker 后端项目，包含 TypeScript、D1、Telegram Webhook、Cron，不是静态文件项目。
 
-## 0. 下载源码 ZIP
+## 推荐方式：GitHub 导入部署
 
-打开仓库：
+即使你是先下载 ZIP，也建议把源码上传到 GitHub 仓库，再让 Cloudflare 从 GitHub 部署。
+
+仓库地址：
 
 ```text
 https://github.com/heydariadmira302/linode-guard-lite-worker-ready
 ```
 
-点击：
+## 中文后台操作路径
+
+### 1. 进入 Workers
+
+Cloudflare 后台左侧进入：
 
 ```text
-Code -> Download ZIP
+Workers 和 Pages
 ```
 
-下载后解压。
-
-确认解压后的项目根目录里能看到：
+然后选择：
 
 ```text
-package.json
-wrangler.toml
-src/
-schema.sql
-migrations/
+创建应用程序 / 创建
 ```
 
-如果 ZIP 解压后多了一层目录，比如：
+不要选：
 
 ```text
-linode-guard-lite-worker-ready-main/package.json
+Pages -> 上传资产 / 上传静态文件
 ```
 
-上传前建议进入 `linode-guard-lite-worker-ready-main` 文件夹，把里面的内容重新压成一个 ZIP，确保 ZIP 根目录就是项目根目录。
+应该选择 Worker 或从 Git 仓库导入。
 
-## 1. 创建 D1 数据库
-
-Cloudflare 后台进入：
+常见中文入口可能叫：
 
 ```text
-Workers & Pages -> D1
+Workers
+从 Git 开始
+导入存储库
+连接到 Git
 ```
 
-创建数据库，建议名称：
+不同 Cloudflare 后台版本文字略有不同，但原则是：
 
 ```text
-linode-guard-lite
+选 Worker，不选 Pages 静态上传。
 ```
 
-## 2. 创建 Worker
+### 2. 连接 GitHub 仓库
 
-进入：
+选择 GitHub 仓库：
 
 ```text
-Workers & Pages -> Create
+heydariadmira302/linode-guard-lite-worker-ready
 ```
 
-选择 Worker 项目，并上传 ZIP 源码。
+如果你自己 fork 或重新上传到了自己的 GitHub，就选择你自己的仓库。
 
-如果页面让你填写构建命令，可以使用：
+### 3. 构建设置
+
+如果页面要求填写构建命令，可填：
 
 ```text
-npm install
 npm run typecheck
+```
+
+如果页面要求部署命令，可填：
+
+```text
 npx wrangler deploy
 ```
 
-如果 Cloudflare 自动识别 `wrangler.toml`，保持默认也可以。
+如果 Cloudflare 自动识别 `wrangler.toml`，可以保持默认。
 
-## 3. 绑定 D1
-
-进入 Worker 设置：
+项目根目录：
 
 ```text
-Settings -> Bindings -> Add binding -> D1 database
+/
 ```
 
-绑定名必须是：
+### 4. 绑定 D1
+
+进入 Worker 项目设置：
+
+```text
+设置 -> 绑定 -> 添加绑定 -> D1 数据库
+```
+
+绑定变量名必须是：
 
 ```text
 DB
 ```
 
-数据库选择刚才创建的：
+数据库选择你创建的：
 
 ```text
 linode-guard-lite
 ```
 
-## 4. 添加最小 Secret
+### 5. 添加 Secret
 
 进入：
 
 ```text
-Settings -> Variables and Secrets -> Secrets
+设置 -> 变量和机密 -> 机密
 ```
 
-只需要先添加：
+先只添加：
 
 ```text
 TELEGRAM_BOT_TOKEN
@@ -106,7 +121,7 @@ TELEGRAM_BOT_TOKEN
 
 值是 BotFather 给你的 Telegram Bot Token。
 
-下面三个不要先填也可以，首次初始化会自动生成：
+下面三个不用先填，初始化会自动生成：
 
 ```text
 API_AUTH_TOKEN
@@ -114,25 +129,15 @@ TELEGRAM_WEBHOOK_SECRET
 LINODE_TOKEN_ENCRYPTION_KEY
 ```
 
-## 5. 部署 Worker
+### 6. 部署后初始化
 
-保存设置并部署。
-
-部署成功后会得到 Worker 地址，例如：
-
-```text
-https://linode-guard-lite-worker-ready.xxx.workers.dev
-```
-
-## 6. 初始化
-
-打开：
+部署成功后访问：
 
 ```text
 https://你的-worker地址/setup
 ```
 
-第一次初始化前，可以用：
+第一次初始化前，用：
 
 ```text
 TELEGRAM_BOT_TOKEN
@@ -140,13 +145,7 @@ TELEGRAM_BOT_TOKEN
 
 进入 setup 页面。
 
-然后依次执行：
-
-1. 初始化 Schema
-2. 初始化默认设置
-3. 初始化 Jobs / runtime secrets
-
-初始化完成后，页面会返回并生成：
+初始化后保存系统生成的：
 
 ```text
 API_AUTH_TOKEN
@@ -154,28 +153,20 @@ TELEGRAM_WEBHOOK_SECRET
 LINODE_TOKEN_ENCRYPTION_KEY
 ```
 
-请保存好这些值。
+### 7. 设置 Telegram Webhook
 
-后续进入 `/setup` 或调用 HTTP API 时，使用 `API_AUTH_TOKEN`，不要再使用 Bot Token。
-
-## 7. 设置 Telegram Webhook
-
-把下面命令里的三个值换成自己的：
-
-- `<TELEGRAM_BOT_TOKEN>`：BotFather 给你的 token
-- `<WORKER_URL>`：你的 Worker 地址
-- `<TELEGRAM_WEBHOOK_SECRET>`：初始化生成的 webhook secret
+用初始化生成的 `TELEGRAM_WEBHOOK_SECRET` 设置 webhook：
 
 ```bash
 curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
   -H "Content-Type: application/json" \
   -d '{
-    "url": "<WORKER_URL>/telegram/webhook",
+    "url": "https://你的-worker地址/telegram/webhook",
     "secret_token": "<TELEGRAM_WEBHOOK_SECRET>"
   }'
 ```
 
-## 8. 绑定管理员
+### 8. 绑定管理员
 
 给 Telegram bot 发送：
 
@@ -185,34 +176,23 @@ curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
 
 如果没有手动设置 `SUPER_ADMIN_TELEGRAM_ID`，第一次给 bot 发消息的人会自动绑定为 Super Admin。
 
-因此第一次消息必须由你本人发送。
+## 如果你一定要用 ZIP
 
-## 9. 添加 Linode Token
+Cloudflare 后台的“上传静态文件”不适合本项目。
 
-进入 Telegram bot 菜单后添加 Linode 账号 Token。
+ZIP 的正确用法是：
 
-Linode Token 不需要填 Cloudflare 环境变量。它会通过 bot 添加，并加密保存到 D1。
+1. 下载 ZIP
+2. 解压
+3. 上传到 GitHub 仓库
+4. Cloudflare 从 GitHub 导入部署
 
-## 最小配置总结
+或者在本地安装 Wrangler 后，在解压目录执行：
 
-手动配置：
-
-```text
-D1 binding: DB
-Secret: TELEGRAM_BOT_TOKEN
-Cron: */5 * * * *
+```bash
+npm install
+npx wrangler login
+npx wrangler deploy
 ```
 
-初始化自动生成：
-
-```text
-API_AUTH_TOKEN
-TELEGRAM_WEBHOOK_SECRET
-LINODE_TOKEN_ENCRYPTION_KEY
-```
-
-通过 bot 添加：
-
-```text
-Linode Token
-```
+但对小白用户来说，GitHub 导入部署更稳。
