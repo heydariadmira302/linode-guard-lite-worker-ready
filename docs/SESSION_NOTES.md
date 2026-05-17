@@ -264,3 +264,10 @@ npm test
 - 验证常用 callback：`schedules:create`、`schedules:list`、`groups:list`、`admin_presence:policies`、`security:events:open` 均返回对应页面。
 - 联调中发现旧本地 D1 只执行过旧 schema，缺少 `groups` 表和 `linode_accounts.group_id`，已在本地补齐；生产/新部署应使用最新 `schema.sql` / `migrations/0001_initial.sql`，旧部署需要执行兼容迁移。
 - 联调中发现 `⏰ 定时任务` 等主菜单文字入口未映射，已修复 `src/telegram/commands.ts`，新增测试覆盖，并提交推送：`156dfe5 Handle Telegram text menu entries`。
+
+## 2026-05-17 Phase 8D 保活策略编辑
+
+- 按 API-first / Service-first 原则补齐保活策略编辑：新增 `AdminPresenceService.updatePolicy(...)` 和 `AdminPresenceRepository.updatePolicy(...)`，支持局部更新名称、启用状态、最终动作、作用范围、提醒时间、最终动作时间。
+- 新增 API：`PATCH /api/v1/admin-presence/policies/:policy_id`，响应继续只返回公开策略字段和解析后的规则，不返回 `rules_json`、token 明文或 `encrypted_token`；写入 `admin_presence.policy.update` 审计日志。
+- Telegram 策略详情页新增「编辑」入口；支持修改名称、最终动作、作用范围（全部账号 / 单账号 / 分组）、提醒时间、最终动作时间。选择 `删除全部服务器` 时仍展示高危警告。
+- 更新 `docs/api.md`、`docs/telegram.md`、`tests/phase13-admin-presence.test.ts`，覆盖 API 编辑、Telegram 编辑入口、名称编辑、动作/范围/时间编辑、审计日志和敏感信息不泄露。

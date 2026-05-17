@@ -36,6 +36,13 @@ export async function handleCreateAdminPresencePolicy(request: Request, env: Env
   return createJsonResponse({ ok: true, data }, { requestId });
 }
 
+export async function handleUpdateAdminPresencePolicy(request: Request, env: Env, requestId: string, policyId: number): Promise<Response> {
+  ensureDb(env, requestId);
+  const input = await readJson(request);
+  const data = await new AdminPresenceService(env).updatePolicy(policyId, input, { requestId, actor: "api:default", source: "api" });
+  return createJsonResponse({ ok: true, data }, { requestId });
+}
+
 export async function handleEnableAdminPresencePolicy(_request: Request, env: Env, requestId: string, policyId: number): Promise<Response> {
   ensureDb(env, requestId);
   const data = await new AdminPresenceService(env).enablePolicy(policyId, { requestId, actor: "api:default", source: "api" });

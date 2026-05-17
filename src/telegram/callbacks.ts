@@ -14,7 +14,7 @@ import { DiagnosticsService } from "../services/setup-service";
 import { SecurityService } from "../services/security-service";
 import { AuditRepository } from "../storage/audit-repository";
 import type { ParsedTelegramUpdate, TelegramClientResult } from "./types";
-import { renderAdminPresenceCheckinText, renderAdminPresenceDeletePolicyWarning, renderAdminPresenceMenuKeyboard, renderAdminPresenceMenuText, renderAdminPresencePoliciesKeyboard, renderAdminPresencePoliciesText, renderAdminPresencePolicyAccountKeyboard, renderAdminPresencePolicyAccountText, renderAdminPresencePolicyActionKeyboard, renderAdminPresencePolicyActionText, renderAdminPresencePolicyCreateKeyboard, renderAdminPresencePolicyCreateText, renderAdminPresencePolicyDeleteConfirmKeyboard, renderAdminPresencePolicyDeleteConfirmText, renderAdminPresencePolicyDeletedText, renderAdminPresencePolicyDetailKeyboard, renderAdminPresencePolicyDetailText, renderAdminPresencePolicyFinalTimeKeyboard, renderAdminPresencePolicyFinalTimeText, renderAdminPresencePolicyGroupKeyboard, renderAdminPresencePolicyGroupText, renderAdminPresencePolicyNamePrompt, renderAdminPresencePolicyScopeKeyboard, renderAdminPresencePolicyScopeText, renderAdminPresencePolicyTimeKeyboard, renderAdminPresencePolicyTimeText } from "./admin-presence-renderer";
+import { renderAdminPresenceCheckinText, renderAdminPresenceDeletePolicyWarning, renderAdminPresenceMenuKeyboard, renderAdminPresenceMenuText, renderAdminPresencePoliciesKeyboard, renderAdminPresencePoliciesText, renderAdminPresencePolicyAccountKeyboard, renderAdminPresencePolicyAccountText, renderAdminPresencePolicyActionKeyboard, renderAdminPresencePolicyActionText, renderAdminPresencePolicyCreateKeyboard, renderAdminPresencePolicyCreateText, renderAdminPresencePolicyDeleteConfirmKeyboard, renderAdminPresencePolicyDeleteConfirmText, renderAdminPresencePolicyDeletedText, renderAdminPresencePolicyDetailKeyboard, renderAdminPresencePolicyDetailText, renderAdminPresencePolicyEditAccountKeyboard, renderAdminPresencePolicyEditActionKeyboard, renderAdminPresencePolicyEditGroupKeyboard, renderAdminPresencePolicyEditKeyboard, renderAdminPresencePolicyEditScopeKeyboard, renderAdminPresencePolicyEditText, renderAdminPresencePolicyEditTimeKeyboard, renderAdminPresencePolicyFinalTimeKeyboard, renderAdminPresencePolicyFinalTimeText, renderAdminPresencePolicyGroupKeyboard, renderAdminPresencePolicyGroupText, renderAdminPresencePolicyNamePrompt, renderAdminPresencePolicyScopeKeyboard, renderAdminPresencePolicyScopeText, renderAdminPresencePolicyTimeKeyboard, renderAdminPresencePolicyTimeText, renderAdminPresencePolicyUpdatedText } from "./admin-presence-renderer";
 import { renderAuditLogsKeyboard, renderAuditLogsText } from "./audit-renderer";
 import { renderBatchAccountsKeyboard, renderBatchAccountsText, renderBatchConfirmKeyboard, renderBatchConfirmText, renderBatchMenuKeyboard, renderBatchMenuText, renderBatchResultKeyboard, renderBatchResultText } from "./batch-renderer";
 import { renderScheduleActionResultKeyboard, renderScheduleActionResultText, renderScheduleBulkToggleConfirmKeyboard, renderScheduleBulkToggleConfirmText, renderScheduleBulkToggleResultText, renderScheduleCreateAccountKeyboard, renderScheduleCreateAccountText, renderScheduleCreateActionKeyboard, renderScheduleCreateActionText, renderScheduleCreateGroupKeyboard, renderScheduleCreateGroupText, renderScheduleCreatePresetKeyboard, renderScheduleCreatePresetText, renderScheduleCreateScopeKeyboard, renderScheduleCreateScopeText, renderScheduleCustomTimePrompt, renderScheduleDeleteConfirmKeyboard, renderScheduleDeleteConfirmText, renderScheduleListKeyboard, renderScheduleListText, renderSchedulesMenuKeyboard, renderSchedulesMenuText } from "./schedule-renderer";
@@ -594,6 +594,119 @@ export async function routeTelegramCallback(
       text: renderAdminPresencePolicyNamePrompt(action, remindAfter, finalAfter, scope),
       reply_markup: renderCheckinInlineKeyboard()
     });
+  }
+
+  const adminPresencePolicyEditMatch = update.data.match(/^admin_presence:policy:edit:(\d+)$/);
+  if (adminPresencePolicyEditMatch && env?.DB) {
+    try {
+      const data = await new AdminPresenceService(env).getPolicy(Number(adminPresencePolicyEditMatch[1]), requestId);
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAdminPresencePolicyEditText(data.policy), reply_markup: renderAdminPresencePolicyEditKeyboard(data.policy) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const adminPresencePolicyEditNameMatch = update.data.match(/^admin_presence:policy:edit_name:(\d+)$/);
+  if (adminPresencePolicyEditNameMatch && sessions) {
+    await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "editing_admin_presence_policy_name", data: { policy_id: Number(adminPresencePolicyEditNameMatch[1]) } });
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: "编辑保活策略\n\n请输入新的策略名称。", reply_markup: renderCheckinInlineKeyboard() });
+  }
+
+  const adminPresencePolicyEditActionMatch = update.data.match(/^admin_presence:policy:edit_action:(\d+)$/);
+  if (adminPresencePolicyEditActionMatch) {
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: "编辑保活策略\n\n请选择新的最终动作。", reply_markup: renderAdminPresencePolicyEditActionKeyboard(Number(adminPresencePolicyEditActionMatch[1])) });
+  }
+
+  const adminPresencePolicyEditActionToMatch = update.data.match(/^admin_presence:policy:edit_action_to:(\d+):(notify|shutdown_all_instances|delete_all_instances)$/);
+  if (adminPresencePolicyEditActionToMatch && env?.DB) {
+    try {
+      const action = adminPresencePolicyEditActionToMatch[2];
+      const warning = action === "delete_all_instances" ? [renderAdminPresenceDeletePolicyWarning(), ""].join("\n") : "";
+      const data = await new AdminPresenceService(env).updatePolicy(Number(adminPresencePolicyEditActionToMatch[1]), { action }, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: `${warning}${renderAdminPresencePolicyUpdatedText(data.policy)}`, reply_markup: renderAdminPresencePolicyDetailKeyboard(data.policy) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const adminPresencePolicyEditScopeMatch = update.data.match(/^admin_presence:policy:edit_scope:(\d+)$/);
+  if (adminPresencePolicyEditScopeMatch) {
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: "编辑保活策略\n\n请选择新的作用范围。", reply_markup: renderAdminPresencePolicyEditScopeKeyboard(Number(adminPresencePolicyEditScopeMatch[1])) });
+  }
+
+  const adminPresencePolicyEditScopeToMatch = update.data.match(/^admin_presence:policy:edit_scope_to:(\d+):(all|account|group)$/);
+  if (adminPresencePolicyEditScopeToMatch && env?.DB) {
+    const policyId = Number(adminPresencePolicyEditScopeToMatch[1]);
+    const scope = adminPresencePolicyEditScopeToMatch[2];
+    try {
+      if (scope === "all") {
+        const data = await new AdminPresenceService(env).updatePolicy(policyId, { scope: "all" }, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+        return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAdminPresencePolicyUpdatedText(data.policy), reply_markup: renderAdminPresencePolicyDetailKeyboard(data.policy) });
+      }
+      if (scope === "account") {
+        const accounts = await new AccountService(env).listAccounts();
+        return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: "编辑保活策略\n\n范围：单账号\n请选择账号：", reply_markup: renderAdminPresencePolicyEditAccountKeyboard(policyId, accounts) });
+      }
+      const groups = (await new GroupService(env).listGroups()).groups;
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: "编辑保活策略\n\n范围：分组\n请选择分组：", reply_markup: renderAdminPresencePolicyEditGroupKeyboard(policyId, groups) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const adminPresencePolicyEditAccountToMatch = update.data.match(/^admin_presence:policy:edit_account_to:(\d+):(\d+)$/);
+  if (adminPresencePolicyEditAccountToMatch && env?.DB) {
+    try {
+      const data = await new AdminPresenceService(env).updatePolicy(Number(adminPresencePolicyEditAccountToMatch[1]), { scope: "account", account_id: Number(adminPresencePolicyEditAccountToMatch[2]) }, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAdminPresencePolicyUpdatedText(data.policy), reply_markup: renderAdminPresencePolicyDetailKeyboard(data.policy) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const adminPresencePolicyEditGroupToMatch = update.data.match(/^admin_presence:policy:edit_group_to:(\d+):(\d+)$/);
+  if (adminPresencePolicyEditGroupToMatch && env?.DB) {
+    try {
+      const data = await new AdminPresenceService(env).updatePolicy(Number(adminPresencePolicyEditGroupToMatch[1]), { scope: "group", group_id: Number(adminPresencePolicyEditGroupToMatch[2]) }, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAdminPresencePolicyUpdatedText(data.policy), reply_markup: renderAdminPresencePolicyDetailKeyboard(data.policy) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const adminPresencePolicyEditRemindMatch = update.data.match(/^admin_presence:policy:edit_remind:(\d+)$/);
+  if (adminPresencePolicyEditRemindMatch) {
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: "编辑保活策略\n\n请选择新的提醒时间。", reply_markup: renderAdminPresencePolicyEditTimeKeyboard(Number(adminPresencePolicyEditRemindMatch[1]), "remind") });
+  }
+
+  const adminPresencePolicyEditRemindToMatch = update.data.match(/^admin_presence:policy:edit_remind_to:(\d+):(\d+)$/);
+  if (adminPresencePolicyEditRemindToMatch && env?.DB) {
+    try {
+      const data = await new AdminPresenceService(env).updatePolicy(Number(adminPresencePolicyEditRemindToMatch[1]), { remind_after_minutes: Number(adminPresencePolicyEditRemindToMatch[2]) }, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAdminPresencePolicyUpdatedText(data.policy), reply_markup: renderAdminPresencePolicyDetailKeyboard(data.policy) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const adminPresencePolicyEditFinalMatch = update.data.match(/^admin_presence:policy:edit_final:(\d+)$/);
+  if (adminPresencePolicyEditFinalMatch && env?.DB) {
+    try {
+      const policy = (await new AdminPresenceService(env).getPolicy(Number(adminPresencePolicyEditFinalMatch[1]), requestId)).policy;
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: "编辑保活策略\n\n请选择新的最终动作时间。", reply_markup: renderAdminPresencePolicyEditTimeKeyboard(policy.id, "final", policy.remind_after_minutes ?? 0) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const adminPresencePolicyEditFinalToMatch = update.data.match(/^admin_presence:policy:edit_final_to:(\d+):(\d+)$/);
+  if (adminPresencePolicyEditFinalToMatch && env?.DB) {
+    try {
+      const data = await new AdminPresenceService(env).updatePolicy(Number(adminPresencePolicyEditFinalToMatch[1]), { final_after_minutes: Number(adminPresencePolicyEditFinalToMatch[2]) }, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAdminPresencePolicyUpdatedText(data.policy), reply_markup: renderAdminPresencePolicyDetailKeyboard(data.policy) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
   }
 
   const adminPresencePolicyDeleteConfirmMatch = update.data.match(/^admin_presence:policy:delete_confirm:(\d+)$/);

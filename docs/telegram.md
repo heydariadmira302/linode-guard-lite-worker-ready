@@ -279,7 +279,18 @@ callback: menu:admin_presence
 - 启用：`admin_presence:policy:enable:<policy_id>`
 - 停用：`admin_presence:policy:disable:<policy_id>`
 
-点击启用 / 停用时，Telegram 适配层调用 `AdminPresenceService.enablePolicy(...)` / `AdminPresenceService.disablePolicy(...)`，并展示中文结果。
+策略详情页支持编辑：
+
+- 编辑入口：`admin_presence:policy:edit:<policy_id>`
+- 修改名称：`admin_presence:policy:edit_name:<policy_id>`，随后输入新名称
+- 修改最终动作：`admin_presence:policy:edit_action:<policy_id>` → `admin_presence:policy:edit_action_to:<policy_id>:notify|shutdown_all_instances|delete_all_instances`
+- 修改作用范围：`admin_presence:policy:edit_scope:<policy_id>` → `admin_presence:policy:edit_scope_to:<policy_id>:all|account|group`
+- 选择账号：`admin_presence:policy:edit_account_to:<policy_id>:<account_id>`
+- 选择分组：`admin_presence:policy:edit_group_to:<policy_id>:<group_id>`
+- 修改提醒时间：`admin_presence:policy:edit_remind:<policy_id>` → `admin_presence:policy:edit_remind_to:<policy_id>:<minutes>`
+- 修改最终动作时间：`admin_presence:policy:edit_final:<policy_id>` → `admin_presence:policy:edit_final_to:<policy_id>:<minutes>`
+
+点击启用 / 停用 / 编辑时，Telegram 适配层调用 `AdminPresenceService`，并展示中文结果。
 
 Telegram 支持查看保活策略详情和新建保活策略：
 
@@ -294,7 +305,7 @@ Telegram 支持查看保活策略详情和新建保活策略：
 
 选择 `删除全部服务器` 时会先展示高危警告，但不会要求第二次文本确认；该策略规则生效后到达触发条件会直接执行。Telegram 只负责提醒和收集时间/名称，不再做额外的删除确认。
 
-管理员保活确认支持 `scope=all`（全部账号）、`account:<account_id>`（单账号）和 `group:<group_id>`（分组）。支持的策略动作是 `notify`、`shutdown_all_instances`、`delete_all_instances`。Cloudflare Cron 会通过 Job Runner 执行到期策略，其中关机 / 删除策略会按策略范围调用批量操作路径；同一周期内同一策略规则只应触发一次。不支持单台实例范围、标签、实例组、网页管理界面、多人管理员或第三方登录。Telegram 不展示 token 明文、`encrypted_token` 或 `rules_json` 原文。当前 Telegram 支持查看详情、启用、停用、删除和新建保活策略。
+管理员保活确认支持 `scope=all`（全部账号）、`account:<account_id>`（单账号）和 `group:<group_id>`（分组）。支持的策略动作是 `notify`、`shutdown_all_instances`、`delete_all_instances`。Cloudflare Cron 会通过 Job Runner 执行到期策略，其中关机 / 删除策略会按策略范围调用批量操作路径；同一周期内同一策略规则只应触发一次。不支持单台实例范围、标签、实例组、网页管理界面、多人管理员或第三方登录。Telegram 不展示 token 明文、`encrypted_token` 或 `rules_json` 原文。当前 Telegram 支持查看详情、新建、编辑、启用、停用和删除保活策略。
 
 ## 定时任务
 

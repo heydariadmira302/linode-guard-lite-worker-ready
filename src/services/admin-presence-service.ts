@@ -107,19 +107,46 @@ export class AdminPresenceService {
 
   async createPolicy(input: { name?: unknown; scope?: unknown; account_id?: unknown; group_id?: unknown; action?: unknown; enabled?: unknown; remind_after_minutes?: unknown; final_after_minutes?: unknown }, context: AdminPresenceContext): Promise<{ policy: PublicAdminPresencePolicy }> {
     const name = typeof input.name === "string" && input.name.trim() ? input.name.trim() : "管理员保活确认策略";
-    const action = validateAction(input.action, context.requestId);
-    const scope = await this.resolveScope(input, context.requestId);
-    const remindAfter = normalizePolicyMinutes(input.remind_after_minutes, 12 * 60, "提醒时间", context.requestId);
-    const finalAfter = normalizePolicyMinutes(input.final_after_minutes, 24 * 60, "最终动作时间", context.requestId);
-    if (finalAfter <= remindAfter) throw new AppError(ErrorCode.VALIDATION_ERROR, "Final action time must be later than reminder time", context.requestId, 400);
-    const rules = buildRules(action, remindAfter, finalAfter);
-    const risk = riskForAction(action);
+    const config = await this.resolvePolicyConfig(input, context.requestId);
+    const risk = riskForAction(config.action);
     try {
-      const policy = toPublicPolicy(await this.repository.createPolicy({ name, enabled: input.enabled !== false, scope, rules_json: JSON.stringify({ rules }) }));
+      const policy = toPublicPolicy(await this.repository.createPolicy({ name, enabled: input.enabled !== false, scope: config.scope, rules_json: JSON.stringify({ rules: config.rules }) }));
       await this.auditPolicyChange("admin_presence.policy.create", policy, risk, context, "success");
       return { policy };
     } catch (error) {
       await this.audit?.record({ request_id: context.requestId, actor: context.actor, source: context.source, action: "admin_presence.policy.create", target_type: "admin_presence_policy", target_id: null, risk_level: risk, result: "failed", error_code: error instanceof AppError ? error.code : ErrorCode.D1_ERROR, metadata_json: null });
+      throw error;
+    }
+  }
+
+  async updatePolicy(id: number, input: { name?: unknown; scope?: unknown; account_id?: unknown; group_id?: unknown; action?: unknown; enabled?: unknown; remind_after_minutes?: unknown; final_after_minutes?: unknown }, context: AdminPresenceContext): Promise<{ policy: PublicAdminPresencePolicy }> {
+    const current = await this.getPolicy(id, context.requestId).then((data) => data.policy);
+    const nextName = input.name === undefined ? current.name : normalizePolicyName(input.name, context.requestId);
+    const nextEnabled = input.enabled === undefined ? Number(current.enabled) === 1 : input.enabled !== false;
+    const touchesConfig = input.scope !== undefined || input.account_id !== undefined || input.group_id !== undefined || input.action !== undefined || input.remind_after_minutes !== undefined || input.final_after_minutes !== undefined;
+    const nextAction = input.action ?? current.action;
+    const risk = riskForAction(validateAction(nextAction, context.requestId));
+    try {
+      if (!touchesConfig) {
+        const policy = toPublicPolicy(await this.repository.updatePolicy(id, { name: nextName, enabled: nextEnabled }));
+        await this.auditPolicyChange("admin_presence.policy.update", policy, risk, context, "success");
+        return { policy };
+      }
+      const actionChanged = input.action !== undefined && input.action !== current.action;
+      const configInput = {
+        action: nextAction,
+        scope: input.scope ?? current.scope,
+        account_id: input.account_id ?? current.account_id ?? undefined,
+        group_id: input.group_id ?? current.group_id ?? undefined,
+        remind_after_minutes: input.remind_after_minutes ?? (Number(current.remind_after_minutes) > 0 ? current.remind_after_minutes : 12 * 60),
+        final_after_minutes: input.final_after_minutes ?? (actionChanged ? 24 * 60 : Number(current.final_after_minutes) > 0 ? current.final_after_minutes : Number(current.remind_after_minutes) > 0 ? current.remind_after_minutes : 24 * 60)
+      };
+      const config = await this.resolvePolicyConfig(configInput, context.requestId);
+      const policy = toPublicPolicy(await this.repository.updatePolicy(id, { name: nextName, enabled: nextEnabled, scope: config.scope, rules_json: JSON.stringify({ rules: config.rules }) }));
+      await this.auditPolicyChange("admin_presence.policy.update", policy, riskForAction(config.action), context, "success");
+      return { policy };
+    } catch (error) {
+      await this.audit?.record({ request_id: context.requestId, actor: context.actor, source: context.source, action: "admin_presence.policy.update", target_type: "admin_presence_policy", target_id: String(id), risk_level: risk, result: "failed", error_code: error instanceof AppError ? error.code : ErrorCode.D1_ERROR, metadata_json: null });
       throw error;
     }
   }
@@ -166,6 +193,15 @@ export class AdminPresenceService {
     await this.audit?.record({ request_id: context.requestId, actor: context.actor, source: context.source, action, target_type: "admin_presence_policy", target_id: String(policy.id), risk_level, result, error_code: null, metadata_json: JSON.stringify({ scope: policy.scope, action: policy.action }) });
   }
 
+  private async resolvePolicyConfig(input: { scope?: unknown; account_id?: unknown; group_id?: unknown; action?: unknown; remind_after_minutes?: unknown; final_after_minutes?: unknown }, requestId: string): Promise<{ action: AdminPresenceAction; scope: string; remindAfter: number; finalAfter: number; rules: AdminPresenceRule[] }> {
+    const action = validateAction(input.action, requestId);
+    const scope = await this.resolveScope(input, requestId);
+    const remindAfter = normalizePolicyMinutes(input.remind_after_minutes, 12 * 60, "提醒时间", requestId);
+    const finalAfter = action === "notify" ? remindAfter : normalizePolicyMinutes(input.final_after_minutes, 24 * 60, "最终动作时间", requestId);
+    if (action !== "notify" && finalAfter <= remindAfter) throw new AppError(ErrorCode.VALIDATION_ERROR, "Final action time must be later than reminder time", requestId, 400);
+    return { action, scope, remindAfter, finalAfter, rules: buildRules(action, remindAfter, finalAfter) };
+  }
+
   private async resolveScope(input: { scope?: unknown; account_id?: unknown; group_id?: unknown }, requestId: string): Promise<string> {
     const rawScope = input.scope ?? "all";
     if (rawScope === "all" || rawScope === undefined || rawScope === null) return "all";
@@ -210,6 +246,11 @@ export class AdminPresenceService {
 function validateAction(action: unknown, requestId: string): AdminPresenceAction {
   if (action === "notify" || action === "shutdown_all_instances" || action === "delete_all_instances") return action;
   throw new AppError(ErrorCode.VALIDATION_ERROR, "Unsupported admin presence action", requestId, 400);
+}
+
+function normalizePolicyName(name: unknown, requestId: string): string {
+  if (typeof name !== "string" || !name.trim() || name.trim().length > 64) throw new AppError(ErrorCode.VALIDATION_ERROR, "Policy name must be 1-64 characters", requestId, 400);
+  return name.trim();
 }
 
 function riskForAction(action: AdminPresenceAction): "medium" | "high" | "critical" {

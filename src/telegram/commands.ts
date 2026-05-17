@@ -13,7 +13,7 @@ import { renderInstancesMenuKeyboard, renderInstancesMenuText } from "./instance
 import { GroupService } from "../services/group-service";
 import { renderGroupSelectKeyboard, renderGroupSelectText, renderGroupsMenuKeyboard, renderGroupsMenuText } from "./group-renderer";
 import { renderSetupWizardText } from "./setup-renderer";
-import { renderAdminPresenceMenuKeyboard, renderAdminPresenceMenuText, renderAdminPresencePolicyCreatedText, renderAdminPresencePolicyNamePrompt, renderAdminPresencePolicyTimeKeyboard, renderAdminPresencePolicyTimeText } from "./admin-presence-renderer";
+import { renderAdminPresenceMenuKeyboard, renderAdminPresenceMenuText, renderAdminPresencePolicyCreatedText, renderAdminPresencePolicyDetailKeyboard, renderAdminPresencePolicyNamePrompt, renderAdminPresencePolicyTimeKeyboard, renderAdminPresencePolicyTimeText, renderAdminPresencePolicyUpdatedText } from "./admin-presence-renderer";
 import { renderScheduleActionResultKeyboard, renderScheduleActionResultText, renderSchedulesMenuKeyboard, renderSchedulesMenuText } from "./schedule-renderer";
 import { renderSecurityMenuKeyboard, renderSecurityMenuText } from "./security-renderer";
 import { SecurityService } from "../services/security-service";
@@ -212,7 +212,22 @@ async function continueAdminPresencePolicyFlow(
 ): Promise<TelegramClientResult | null> {
   if (!env.DB) return null;
   const session = await sessions.getCurrentSession(update.fromId);
-  if (!session || !["creating_admin_presence_policy_remind", "creating_admin_presence_policy_final", "creating_admin_presence_policy_name"].includes(session.state)) return null;
+  if (!session || !["creating_admin_presence_policy_remind", "creating_admin_presence_policy_final", "creating_admin_presence_policy_name", "editing_admin_presence_policy_name"].includes(session.state)) return null;
+  if (session.state === "editing_admin_presence_policy_name") {
+    const parsed = parseSessionData(session.data_json);
+    const policyId = Number(parsed.policy_id);
+    if (!Number.isInteger(policyId) || policyId <= 0) {
+      await sessions.clearCurrentSession(update.fromId);
+      return client.sendMessage({ chat_id: update.chatId, text: "保活策略编辑会话已失效，请重新进入策略详情。", reply_markup: renderCheckinInlineKeyboard() });
+    }
+    try {
+      const data = await new AdminPresenceService(env).updatePolicy(policyId, { name: update.text }, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      await sessions.clearCurrentSession(update.fromId);
+      return client.sendMessage({ chat_id: update.chatId, text: renderAdminPresencePolicyUpdatedText(data.policy), reply_markup: renderAdminPresencePolicyDetailKeyboard(data.policy) });
+    } catch {
+      return client.sendMessage({ chat_id: update.chatId, text: "保活策略名称更新失败，请输入 1-64 个字符，或发送 /cancel 取消。", reply_markup: renderCheckinInlineKeyboard() });
+    }
+  }
   const parsed = parseSessionData(session.data_json);
   const action = typeof parsed.action === "string" ? parsed.action : "notify";
   const scope = typeof parsed.scope === "string" ? parsed.scope : "all";

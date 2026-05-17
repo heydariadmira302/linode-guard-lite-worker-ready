@@ -10,7 +10,7 @@ import { handleAccountBatch, handleAllAccountsBatch, handleGroupBatch } from "./
 import { handleDeploymentDiagnostics, handleJobsDiagnostics, handleSetupInitialize, handleSetupSchema } from "./api/diagnostics";
 import { handleBootAccountInstance, handleDeleteAccountInstance, handleGetAccountInstance, handleListAccountInstances, handleListAllInstances, handleRebootAccountInstance, handleShutdownAccountInstance } from "./api/instances";
 import { handleHealth } from "./api/health";
-import { handleAdminPresenceCheckin, handleAdminPresenceStatus, handleCreateAdminPresencePolicy, handleDeleteAdminPresencePolicy, handleDisableAdminPresencePolicy, handleEnableAdminPresencePolicy, handleGetAdminPresencePolicy, handleListAdminPresencePolicies } from "./api/admin-presence";
+import { handleAdminPresenceCheckin, handleAdminPresenceStatus, handleCreateAdminPresencePolicy, handleDeleteAdminPresencePolicy, handleDisableAdminPresencePolicy, handleEnableAdminPresencePolicy, handleGetAdminPresencePolicy, handleListAdminPresencePolicies, handleUpdateAdminPresencePolicy } from "./api/admin-presence";
 import { handleConfirmSecurityEvent, handleListSecurityEvents, handleMarkSecurityEventSuspicious, handleSecurityCheck } from "./api/security";
 import { handleCreateSchedule, handleDeleteSchedule, handleDisableAllSchedules, handleDisableSchedule, handleEnableAllSchedules, handleEnableSchedule, handleListSchedules } from "./api/schedules";
 import { handleSetupPage } from "./api/setup-page";
@@ -64,6 +64,7 @@ export async function routeRequest(request: Request, env: Env, requestId: string
       if (request.method === "POST" && url.pathname === "/api/v1/admin-presence/policies") return await handleCreateAdminPresencePolicy(request, env, requestId);
       const adminPresencePolicyGetMatch = url.pathname.match(/^\/api\/v1\/admin-presence\/policies\/(\d+)$/);
       if (request.method === "GET" && adminPresencePolicyGetMatch) return await handleGetAdminPresencePolicy(request, env, requestId, Number(adminPresencePolicyGetMatch[1]));
+      if (request.method === "PATCH" && adminPresencePolicyGetMatch) return await handleUpdateAdminPresencePolicy(request, env, requestId, Number(adminPresencePolicyGetMatch[1]));
       const adminPresencePolicyActionMatch = url.pathname.match(/^\/api\/v1\/admin-presence\/policies\/(\d+)\/(enable|disable)$/);
       if (request.method === "POST" && adminPresencePolicyActionMatch && adminPresencePolicyActionMatch[2] === "enable") return await handleEnableAdminPresencePolicy(request, env, requestId, Number(adminPresencePolicyActionMatch[1]));
       if (request.method === "POST" && adminPresencePolicyActionMatch && adminPresencePolicyActionMatch[2] === "disable") return await handleDisableAdminPresencePolicy(request, env, requestId, Number(adminPresencePolicyActionMatch[1]));

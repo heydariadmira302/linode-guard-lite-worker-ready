@@ -206,11 +206,89 @@ export function renderAdminPresencePolicyDetailKeyboard(policy: PublicAdminPrese
   return {
     inline_keyboard: [
       [Number(policy.enabled) === 1 ? { text: "停用", callback_data: `admin_presence:policy:disable:${policy.id}` } : { text: "启用", callback_data: `admin_presence:policy:enable:${policy.id}` }],
+      [{ text: "编辑", callback_data: `admin_presence:policy:edit:${policy.id}` }],
       [{ text: "删除", callback_data: `admin_presence:policy:delete_confirm:${policy.id}` }],
       [{ text: "返回策略组", callback_data: "admin_presence:policies" }],
       [{ text: "❤️ 打卡", callback_data: "admin_presence:checkin" }]
     ]
   };
+}
+
+export function renderAdminPresencePolicyEditText(policy: PublicAdminPresencePolicy): string {
+  return ["编辑保活策略", "", ...renderAdminPresencePolicyDetailLines(policy), "", "请选择要修改的内容："].join("\n");
+}
+
+export function renderAdminPresencePolicyEditKeyboard(policy: PublicAdminPresencePolicy): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "修改名称", callback_data: `admin_presence:policy:edit_name:${policy.id}` }],
+      [{ text: "修改最终动作", callback_data: `admin_presence:policy:edit_action:${policy.id}` }],
+      [{ text: "修改作用范围", callback_data: `admin_presence:policy:edit_scope:${policy.id}` }],
+      [{ text: "修改提醒时间", callback_data: `admin_presence:policy:edit_remind:${policy.id}` }],
+      policy.action === "notify" ? [] : [{ text: "修改最终动作时间", callback_data: `admin_presence:policy:edit_final:${policy.id}` }],
+      [{ text: "返回详情", callback_data: `admin_presence:policy:detail:${policy.id}` }],
+      [{ text: "❤️ 打卡", callback_data: "admin_presence:checkin" }]
+    ].filter((row) => row.length > 0)
+  };
+}
+
+export function renderAdminPresencePolicyEditActionKeyboard(policyId: number): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "只通知", callback_data: `admin_presence:policy:edit_action_to:${policyId}:notify` }],
+      [{ text: "关闭全部服务器", callback_data: `admin_presence:policy:edit_action_to:${policyId}:shutdown_all_instances` }],
+      [{ text: "删除全部服务器", callback_data: `admin_presence:policy:edit_action_to:${policyId}:delete_all_instances` }],
+      [{ text: "取消", callback_data: `admin_presence:policy:edit:${policyId}` }]
+    ]
+  };
+}
+
+export function renderAdminPresencePolicyEditScopeKeyboard(policyId: number): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "全部账号", callback_data: `admin_presence:policy:edit_scope_to:${policyId}:all` }],
+      [{ text: "选择账号", callback_data: `admin_presence:policy:edit_scope_to:${policyId}:account` }],
+      [{ text: "选择分组", callback_data: `admin_presence:policy:edit_scope_to:${policyId}:group` }],
+      [{ text: "取消", callback_data: `admin_presence:policy:edit:${policyId}` }]
+    ]
+  };
+}
+
+export function renderAdminPresencePolicyEditAccountKeyboard(policyId: number, accounts: PublicAccount[]): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      ...accounts.slice(0, 10).map((account) => [{ text: `#${account.id} ${account.alias}`, callback_data: `admin_presence:policy:edit_account_to:${policyId}:${account.id}` }]),
+      [{ text: "返回选择范围", callback_data: `admin_presence:policy:edit_scope:${policyId}` }]
+    ]
+  };
+}
+
+export function renderAdminPresencePolicyEditGroupKeyboard(policyId: number, groups: Array<{ id: number; name: string }>): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      ...groups.slice(0, 10).map((group) => [{ text: group.name, callback_data: `admin_presence:policy:edit_group_to:${policyId}:${group.id}` }]),
+      [{ text: "返回选择范围", callback_data: `admin_presence:policy:edit_scope:${policyId}` }]
+    ]
+  };
+}
+
+export function renderAdminPresencePolicyEditTimeKeyboard(policyId: number, field: "remind" | "final", minMinutes = 0): TelegramInlineKeyboardMarkup {
+  const options = [
+    { text: "12 小时后", minutes: 720 },
+    { text: "24 小时后", minutes: 1440 },
+    { text: "3 天后", minutes: 4320 },
+    { text: "7 天后", minutes: 10080 }
+  ].filter((option) => option.minutes > minMinutes);
+  return {
+    inline_keyboard: [
+      ...options.map((option) => [{ text: option.text, callback_data: `admin_presence:policy:edit_${field}_to:${policyId}:${option.minutes}` }]),
+      [{ text: "取消", callback_data: `admin_presence:policy:edit:${policyId}` }]
+    ]
+  };
+}
+
+export function renderAdminPresencePolicyUpdatedText(policy: PublicAdminPresencePolicy): string {
+  return ["✅ 保活策略已更新", "", ...renderAdminPresencePolicyDetailLines(policy)].join("\n");
 }
 
 export function renderAdminPresencePolicyCreatedText(policy: PublicAdminPresencePolicy): string {

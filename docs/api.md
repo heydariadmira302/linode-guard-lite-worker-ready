@@ -451,7 +451,7 @@ Cron 执行可能有数分钟延迟，不适合秒级任务调度。
 
 ### POST /api/v1/admin-presence/policies
 
-创建保活策略组。支持 `scope=all`（全部账号）、`scope=account` + `account_id`（单账号）、`scope=group` + `group_id`（分组）。支持配置提醒时间和最终动作时间，单位为分钟；最终动作时间必须晚于提醒时间。
+创建保活策略组。支持 `scope=all`（全部账号）、`scope=account` + `account_id`（单账号）、`scope=group` + `group_id`（分组）。支持配置提醒时间和最终动作时间，单位为分钟；关机 / 删除类策略的最终动作时间必须晚于提醒时间。
 
 请求体示例：
 
@@ -504,6 +504,25 @@ Cron 执行可能有数分钟延迟，不适合秒级任务调度。
 
 当前支持全部账号、单账号、分组三类范围；不支持指定单台服务器、标签或实例组。
 
+### PATCH /api/v1/admin-presence/policies/:policy_id
+
+编辑保活策略组。支持局部更新：`name`、`enabled`、`action`、`scope`、`account_id`、`group_id`、`remind_after_minutes`、`final_after_minutes`。
+
+示例：
+
+```json
+{
+  "name": "group delete stale",
+  "scope": "group",
+  "group_id": 2,
+  "action": "delete_all_instances",
+  "remind_after_minutes": 1440,
+  "final_after_minutes": 4320
+}
+```
+
+响应仍只返回公开策略字段和解析后的规则，不返回 `rules_json` 原文、token 明文或 `encrypted_token`。审计日志：`admin_presence.policy.update`。
+
 ### POST /api/v1/admin-presence/policies/:policy_id/enable
 
 启用策略组。
@@ -519,6 +538,7 @@ Cron 执行可能有数分钟延迟，不适合秒级任务调度。
 策略组变更审计日志：
 
 - `admin_presence.policy.create`
+- `admin_presence.policy.update`
 - `admin_presence.policy.enable`
 - `admin_presence.policy.disable`
 - `admin_presence.policy.delete`

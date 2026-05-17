@@ -148,6 +148,17 @@ class FakeD1Database {
       this.policies.push(policy);
       return { last_row_id: policy.id, changes: 1 };
     }
+    if (sql.includes("UPDATE admin_presence_policies") && sql.includes("SET name = ?")) {
+      const policy = this.policies.find((item) => item.id === Number(values[4]) && item.deleted_at === null);
+      if (policy) {
+        policy.name = String(values[0]);
+        policy.enabled = Number(values[1]);
+        policy.scope = String(values[2]);
+        policy.rules_json = String(values[3]);
+        policy.updated_at = now;
+      }
+      return { changes: policy ? 1 : 0 };
+    }
     if (sql.includes("UPDATE admin_presence_policies") && sql.includes("enabled = 1")) {
       const policy = this.policies.find((item) => item.id === Number(values[0]) && item.deleted_at === null);
       if (policy) { policy.enabled = 1; policy.updated_at = now; }
@@ -281,7 +292,7 @@ describe("Phase 13 admin presence", () => {
     expect(invalidAction.status).toBe(400);
     expect(await invalidAction.text()).toContain("VALIDATION_ERROR");
 
-    const invalidTime = await worker.fetch(apiRequest("/api/v1/admin-presence/policies", { method: "POST", body: JSON.stringify({ name: "bad time", scope: "all", action: "notify", remind_after_minutes: 1440, final_after_minutes: 720 }) }), env as never);
+    const invalidTime = await worker.fetch(apiRequest("/api/v1/admin-presence/policies", { method: "POST", body: JSON.stringify({ name: "bad time", scope: "all", action: "shutdown_all_instances", remind_after_minutes: 1440, final_after_minutes: 720 }) }), env as never);
     expect(invalidTime.status).toBe(400);
     expect(await invalidTime.text()).toContain("VALIDATION_ERROR");
 
@@ -325,12 +336,19 @@ describe("Phase 13 admin presence", () => {
     expect(remove.status).toBe(200);
     expect(db.policies[0].deleted_at).toEqual(expect.any(String));
 
+    const update = await worker.fetch(apiRequest("/api/v1/admin-presence/policies/2", { method: "PATCH", body: JSON.stringify({ name: "delete stale group", scope: "group", group_id: 1, remind_after_minutes: 1440, final_after_minutes: 4320 }) }), env as never);
+    const updateBody = await update.json() as { data: { policy: { name: string; scope: string; remind_after_minutes: number; final_after_minutes: number; rules_json?: unknown } } };
+    expect(update.status).toBe(200);
+    expect(updateBody.data.policy).toMatchObject({ name: "delete stale group", scope: "group:1", remind_after_minutes: 1440, final_after_minutes: 4320 });
+    expect(updateBody.data.policy.rules_json).toBeUndefined();
+
     expect(db.auditLogs).toEqual(expect.arrayContaining([
       expect.objectContaining({ action: "admin_presence.policy.create", target_type: "admin_presence_policy", target_id: "1", risk_level: "medium", result: "success" }),
       expect.objectContaining({ action: "admin_presence.policy.create", target_type: "admin_presence_policy", target_id: "2", risk_level: "critical", result: "success" }),
       expect.objectContaining({ action: "admin_presence.policy.disable", target_type: "admin_presence_policy", target_id: "1", risk_level: "medium", result: "success" }),
       expect.objectContaining({ action: "admin_presence.policy.enable", target_type: "admin_presence_policy", target_id: "1", risk_level: "medium", result: "success" }),
-      expect.objectContaining({ action: "admin_presence.policy.delete", target_type: "admin_presence_policy", target_id: "1", risk_level: "medium", result: "success" })
+      expect.objectContaining({ action: "admin_presence.policy.delete", target_type: "admin_presence_policy", target_id: "1", risk_level: "medium", result: "success" }),
+      expect.objectContaining({ action: "admin_presence.policy.update", target_type: "admin_presence_policy", target_id: "2", risk_level: "critical", result: "success" })
     ]));
     expect(raw).not.toContain("encrypted_token");
     expect(raw).not.toContain("plain-token");
@@ -375,8 +393,58 @@ describe("Phase 13 admin presence", () => {
     expect(detailBody.data.telegram.payload.text).toContain("更新时间：");
     expect(detailBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
       { text: "停用", callback_data: "admin_presence:policy:disable:1" },
+      { text: "编辑", callback_data: "admin_presence:policy:edit:1" },
       { text: "删除", callback_data: "admin_presence:policy:delete_confirm:1" }
     ]));
+
+    const editResponse = await worker.fetch(telegramRequest(callbackUpdate("admin_presence:policy:edit:1")), env as never);
+    const editBody = await editResponse.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+    expect(editBody.data.telegram.payload.text).toContain("编辑保活策略");
+    expect(editBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
+      { text: "修改名称", callback_data: "admin_presence:policy:edit_name:1" },
+      { text: "修改最终动作", callback_data: "admin_presence:policy:edit_action:1" },
+      { text: "修改作用范围", callback_data: "admin_presence:policy:edit_scope:1" },
+      { text: "修改提醒时间", callback_data: "admin_presence:policy:edit_remind:1" }
+    ]));
+
+    const editName = await worker.fetch(telegramRequest(callbackUpdate("admin_presence:policy:edit_name:1")), env as never);
+    const editNameBody = await editName.json() as { data: { telegram: { payload: { text: string } } } };
+    expect(editNameBody.data.telegram.payload.text).toContain("请输入新的策略名称");
+    expect(db.botSessions.at(-1)?.state).toBe("editing_admin_presence_policy_name");
+
+    const renamed = await worker.fetch(telegramRequest(messageUpdate("新的保活名称")), env as never);
+    const renamedBody = await renamed.json() as { data: { telegram: { payload: { text: string } } } };
+    expect(renamedBody.data.telegram.payload.text).toContain("保活策略已更新");
+    expect(renamedBody.data.telegram.payload.text).toContain("新的保活名称");
+    expect(db.policies[0].name).toBe("新的保活名称");
+
+    const editAction = await worker.fetch(telegramRequest(callbackUpdate("admin_presence:policy:edit_action_to:1:shutdown_all_instances")), env as never);
+    const editActionBody = await editAction.json() as { data: { telegram: { payload: { text: string } } } };
+    expect(editActionBody.data.telegram.payload.text).toContain("保活策略已更新");
+    expect(editActionBody.data.telegram.payload.text).toContain("最终动作：关闭全部服务器");
+    expect(JSON.parse(db.policies[0].rules_json).rules).toEqual([
+      { rule_id: "notify", after_minutes: 720, action: "notify" },
+      { rule_id: "shutdown_all_instances", after_minutes: 1440, action: "shutdown_all_instances" }
+    ]);
+
+    const editScope = await worker.fetch(telegramRequest(callbackUpdate("admin_presence:policy:edit_scope_to:1:group")), env as never);
+    const editScopeBody = await editScope.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+    expect(editScopeBody.data.telegram.payload.text).toContain("范围：分组");
+    expect(editScopeBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([{ text: "未分组", callback_data: "admin_presence:policy:edit_group_to:1:1" }]));
+
+    const editGroup = await worker.fetch(telegramRequest(callbackUpdate("admin_presence:policy:edit_group_to:1:1")), env as never);
+    const editGroupBody = await editGroup.json() as { data: { telegram: { payload: { text: string } } } };
+    expect(editGroupBody.data.telegram.payload.text).toContain("范围：分组 #1");
+    expect(db.policies[0].scope).toBe("group:1");
+
+    const editRemind = await worker.fetch(telegramRequest(callbackUpdate("admin_presence:policy:edit_remind_to:1:720")), env as never);
+    const editRemindBody = await editRemind.json() as { data: { telegram: { payload: { text: string } } } };
+    expect(editRemindBody.data.telegram.payload.text).toContain("提醒时间：12 小时后");
+
+    const editFinal = await worker.fetch(telegramRequest(callbackUpdate("admin_presence:policy:edit_final_to:1:1440")), env as never);
+    const editFinalBody = await editFinal.json() as { data: { telegram: { payload: { text: string } } } };
+    expect(editFinalBody.data.telegram.payload.text).toContain("最终动作时间：1 天后");
+    expect(db.auditLogs).toEqual(expect.arrayContaining([expect.objectContaining({ action: "admin_presence.policy.update", source: "telegram", target_id: "1" })]));
 
     const checkinResponse = await worker.fetch(telegramRequest(callbackUpdate("admin_presence:checkin")), env as never);
     const checkinBody = await checkinResponse.json() as { data: { telegram: { payload: { text: string; reply_markup?: unknown } } } };

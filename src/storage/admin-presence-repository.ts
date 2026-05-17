@@ -25,6 +25,8 @@ export type AdminPresencePolicyInput = {
   rules_json: string;
 };
 
+export type AdminPresencePolicyUpdateInput = Partial<Pick<AdminPresencePolicyInput, "name" | "enabled" | "scope" | "rules_json">>;
+
 export type AdminPresencePolicyListParams = {
   limit?: number;
   offset?: number;
@@ -64,6 +66,22 @@ export class AdminPresenceRepository {
       .bind(input.name, input.enabled ? 1 : 0, input.scope, input.rules_json)
       .run();
     return await this.getPolicy(Number(result.meta.last_row_id));
+  }
+
+  async updatePolicy(id: number, input: AdminPresencePolicyUpdateInput): Promise<AdminPresencePolicyRecord> {
+    const current = await this.getPolicy(id);
+    await this.db.prepare(`UPDATE admin_presence_policies
+      SET name = ?, enabled = ?, scope = ?, rules_json = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND deleted_at IS NULL`)
+      .bind(
+        input.name ?? current.name,
+        input.enabled === undefined ? current.enabled : input.enabled ? 1 : 0,
+        input.scope ?? current.scope,
+        input.rules_json ?? current.rules_json,
+        id
+      )
+      .run();
+    return await this.getPolicy(id);
   }
 
   async getPolicy(id: number): Promise<AdminPresencePolicyRecord> {
