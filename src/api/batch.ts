@@ -11,6 +11,13 @@ export async function handleAccountBatch(_request: Request, env: Env, requestId:
   return createJsonResponse({ ok: true, data }, { requestId });
 }
 
+export async function handleGroupBatch(_request: Request, env: Env, requestId: string, groupId: number, action: BatchAction): Promise<Response> {
+  ensureDb(env, requestId);
+  const options = await parseBatchOptions(_request, requestId);
+  const data = await new BatchService(env).runGroupBatch(groupId, action, { requestId, actor: "api:default", source: "api" }, options);
+  return createJsonResponse({ ok: true, data }, { requestId });
+}
+
 export async function handleAllAccountsBatch(_request: Request, env: Env, requestId: string, action: BatchAction): Promise<Response> {
   ensureDb(env, requestId);
   const options = await parseBatchOptions(_request, requestId);

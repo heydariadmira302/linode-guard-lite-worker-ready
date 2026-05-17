@@ -6,10 +6,11 @@ import { AppError } from "../errors/app-error";
 import { ErrorCode } from "../errors/error-codes";
 import { AccountsRepository, type LinodeAccountRecord } from "../storage/accounts-repository";
 import { AuditRepository } from "../storage/audit-repository";
+import { GroupsRepository } from "../storage/groups-repository";
 import { AuditService } from "./audit-service";
 
 export type BatchAction = "boot" | "shutdown" | "delete";
-export type BatchScope = "account" | "all";
+export type BatchScope = "account" | "group" | "all";
 export type BatchResultStatus = "success" | "partial_failed" | "failed";
 
 export interface BatchServiceContext {
@@ -66,16 +67,33 @@ export class BatchService {
     return await this.runTargets("account", action, context, instances.map((instance) => ({ account, token, instance })));
   }
 
+  async runGroupBatch(groupId: number, action: BatchAction, context: BatchServiceContext, options: BatchOperationOptions = {}): Promise<BatchOperationResult> {
+    this.validateAction(action, context.requestId);
+    if (!Number.isInteger(groupId) || groupId <= 0) throw new AppError(ErrorCode.VALIDATION_ERROR, "Invalid group id", context.requestId, 400);
+    if (!this.env.DB) throw new AppError(ErrorCode.CONFIG_MISSING, "Missing D1 binding DB", context.requestId, 500);
+    await new GroupsRepository(this.env.DB).getById(groupId).catch(() => {
+      throw new AppError(ErrorCode.VALIDATION_ERROR, "Group not found", context.requestId, 404);
+    });
+    const accounts = (await this.accounts.listActive()).filter((account) => Number(account.group_id ?? 1) === groupId);
+    const targets = await this.resolveAccountTargets(accounts, context.requestId, options);
+    return await this.runTargets("group", action, context, targets);
+  }
+
   async runAllAccountsBatch(action: BatchAction, context: BatchServiceContext, options: BatchOperationOptions = {}): Promise<BatchOperationResult> {
     this.validateAction(action, context.requestId);
     const accounts = await this.accounts.listActive();
+    const targets = await this.resolveAccountTargets(accounts, context.requestId, options);
+    return await this.runTargets("all", action, context, targets);
+  }
+
+  private async resolveAccountTargets(accounts: LinodeAccountRecord[], requestId: string, options: BatchOperationOptions): Promise<BatchTarget[]> {
     const targets: BatchTarget[] = [];
     for (const account of accounts) {
       const token = await decryptLinodeToken(account.encrypted_token, await getLinodeTokenEncryptionKey(this.env));
-      const instances = await this.resolveInstances(token, context.requestId, options.instanceIds);
+      const instances = await this.resolveInstances(token, requestId, options.instanceIds);
       targets.push(...instances.map((instance) => ({ account, token, instance })));
     }
-    return await this.runTargets("all", action, context, targets);
+    return targets;
   }
 
   private async runTargets(scope: BatchScope, action: BatchAction, context: BatchServiceContext, targets: BatchTarget[]): Promise<BatchOperationResult> {

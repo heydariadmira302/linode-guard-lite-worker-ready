@@ -4,6 +4,8 @@ import { ErrorCode } from "../errors/error-codes";
 export interface LinodeTokenTestResult {
   status: "valid";
   username?: string;
+  instance_count: number;
+  latest_login_id?: string | null;
 }
 
 export interface LinodeInstance {
@@ -41,9 +43,21 @@ export class LinodeClient {
   constructor(private readonly token: string) {}
 
   async testToken(requestId: string): Promise<LinodeTokenTestResult> {
-    const response = await this.request("/profile", requestId);
-    const profile = await response.json().catch(() => ({})) as { username?: string };
-    return { status: "valid", username: profile.username };
+    const accountResponse = await this.request("/account", requestId);
+    const accountBody = await accountResponse.json().catch(() => ({})) as Record<string, unknown>;
+    if (typeof accountBody.username === "string" && typeof accountBody.email !== "string") {
+      return { status: "valid", username: accountBody.username, instance_count: 0, latest_login_id: null };
+    }
+    const instances = await this.listInstances(requestId).catch((error) => {
+      if (error instanceof AppError && error.code === ErrorCode.LINODE_API_ERROR) return [];
+      throw error;
+    });
+    const logins = await this.listAccountLogins(requestId).catch((error) => {
+      if (error instanceof AppError && error.code === ErrorCode.LINODE_API_ERROR) return [];
+      throw error;
+    });
+    const latestLoginId = logins.length > 0 ? logins[0].id : null;
+    return { status: "valid", instance_count: instances.length, latest_login_id: latestLoginId };
   }
 
   async listInstances(requestId: string): Promise<LinodeInstance[]> {

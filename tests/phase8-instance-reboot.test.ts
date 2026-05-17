@@ -211,9 +211,9 @@ describe("Phase 8 single instance reboot", () => {
       const detailBody = await detailResponse.json() as { data: { telegram: { payload: { reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
       const detailKeyboard = detailBody.data.telegram.payload.reply_markup.inline_keyboard.flat();
       const rawDetail = JSON.stringify(detailBody);
-      expect(detailKeyboard).toEqual(expect.arrayContaining([{ text: "开机", callback_data: "instances:boot:1:101" }]));
       expect(detailKeyboard).toEqual(expect.arrayContaining([{ text: "关机", callback_data: "instances:shutdown:1:101" }]));
       expect(detailKeyboard).toEqual(expect.arrayContaining([{ text: "重启", callback_data: "instances:reboot:1:101" }]));
+      expect(detailKeyboard).not.toContainEqual({ text: "开机", callback_data: "instances:boot:1:101" });
       expect(rawDetail).not.toContain("batch");
       expect(rawDetail).not.toContain("批量");
 

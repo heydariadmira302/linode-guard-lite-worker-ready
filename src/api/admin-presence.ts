@@ -16,6 +16,12 @@ export async function handleAdminPresenceCheckin(_request: Request, env: Env, re
   return createJsonResponse({ ok: true, data }, { requestId });
 }
 
+export async function handleGetAdminPresencePolicy(_request: Request, env: Env, requestId: string, policyId: number): Promise<Response> {
+  ensureDb(env, requestId);
+  const data = await new AdminPresenceService(env).getPolicy(policyId, requestId);
+  return createJsonResponse({ ok: true, data }, { requestId });
+}
+
 export async function handleListAdminPresencePolicies(request: Request, env: Env, requestId: string): Promise<Response> {
   ensureDb(env, requestId);
   const url = new URL(request.url);

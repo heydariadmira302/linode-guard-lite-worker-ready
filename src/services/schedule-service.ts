@@ -7,9 +7,10 @@ import { AuditService } from "./audit-service";
 import { BatchService, type BatchAction, type BatchOperationResult } from "./batch-service";
 
 export type ScheduleAction = "boot" | "shutdown";
-export type ScheduleScope = "all" | "account";
+export type ScheduleScope = "all" | "account" | "group";
 export type ScheduleContext = { requestId: string; actor: string; source: string };
 export type ScheduleListResult = { schedules: PowerScheduleRecord[]; limit: number; offset: number };
+export type ScheduleBulkToggleResult = { affected: number; schedules: PowerScheduleRecord[] };
 export type ScheduleRunItem = { schedule_id: number; name: string; result: "success" | "partial_failed" | "failed"; batch?: BatchOperationResult; error_code?: string };
 export type ScheduleRunResult = { checked: number; executed: number; failed: number; result: "success" | "partial_failed" | "failed" | "skipped"; items: ScheduleRunItem[] };
 
@@ -26,11 +27,12 @@ export class ScheduleService {
   async createSchedule(input: Record<string, unknown>, context: ScheduleContext): Promise<{ schedule: PowerScheduleRecord }> {
     const action = validateAction(input.action, context.requestId);
     const scope = validateScope(input.scope, context.requestId);
-    const accountId = scope === "account" ? validateAccountId(input.account_id, context.requestId) : null;
+    const accountId = scope === "account" ? validateEntityId(input.account_id, "account_id is required for account scope", context.requestId) : null;
+    const groupId = scope === "group" ? validateEntityId(input.group_id, "group_id is required for group scope", context.requestId) : null;
     const cronExpr = validateCron(input.cron_expr, context.requestId);
     const name = typeof input.name === "string" && input.name.trim() ? input.name.trim() : `${action} schedule`;
     const timezone = typeof input.timezone === "string" && input.timezone.trim() ? input.timezone.trim() : this.env.APP_TIMEZONE ?? "Asia/Shanghai";
-    const schedule = await this.repository.create({ name, enabled: input.enabled !== false, action, scope, account_id: accountId, cron_expr: cronExpr, timezone, next_run_at: computeNextRunAt(cronExpr, new Date()) });
+    const schedule = await this.repository.create({ name, enabled: input.enabled !== false, action, scope, account_id: accountId, group_id: groupId, cron_expr: cronExpr, timezone, next_run_at: computeNextRunAt(cronExpr, new Date()) });
     await this.auditSchedule(context, "schedule.create", schedule, "success", null);
     return { schedule };
   }
@@ -57,6 +59,18 @@ export class ScheduleService {
     return { schedule };
   }
 
+  async enableAllSchedules(context: ScheduleContext): Promise<ScheduleBulkToggleResult> {
+    const result = await this.repository.enableAll();
+    await this.auditScheduleBulk(context, "schedule.enable_all", result);
+    return result;
+  }
+
+  async disableAllSchedules(context: ScheduleContext): Promise<ScheduleBulkToggleResult> {
+    const result = await this.repository.disableAll();
+    await this.auditScheduleBulk(context, "schedule.disable_all", result);
+    return result;
+  }
+
   async runDueSchedules(context: ScheduleContext, now = new Date()): Promise<ScheduleRunResult> {
     const due = await this.repository.listDue(now.toISOString());
     const items: ScheduleRunItem[] = [];
@@ -71,9 +85,12 @@ export class ScheduleService {
   private async runOne(schedule: PowerScheduleRecord, context: ScheduleContext, now: Date): Promise<ScheduleRunItem> {
     const started = now.toISOString();
     try {
+      const batchService = new BatchService(this.env);
       const batch = schedule.scope === "account"
-        ? await new BatchService(this.env).runAccountBatch(Number(schedule.account_id), schedule.action as BatchAction, context)
-        : await new BatchService(this.env).runAllAccountsBatch(schedule.action as BatchAction, context);
+        ? await batchService.runAccountBatch(Number(schedule.account_id), schedule.action as BatchAction, context)
+        : schedule.scope === "group"
+          ? await batchService.runGroupBatch(Number(schedule.group_id), schedule.action as BatchAction, context)
+          : await batchService.runAllAccountsBatch(schedule.action as BatchAction, context);
       await this.repository.createRun({ schedule_id: schedule.id, action: schedule.action, scope: schedule.scope, started_at: started, finished_at: new Date().toISOString(), status: batch.result, summary: JSON.stringify({ total: batch.total, success: batch.success, failed: batch.failed }), metadata_json: JSON.stringify({ result: batch.result }) });
       await this.repository.markRun(schedule.id, started, computeNextRunAt(schedule.cron_expr, now));
       return { schedule_id: schedule.id, name: schedule.name, result: batch.result === "failed" ? "failed" : batch.result, batch };
@@ -97,7 +114,11 @@ export class ScheduleService {
   }
 
   private async auditSchedule(context: ScheduleContext, action: string, schedule: PowerScheduleRecord, result: string, errorCode: string | null): Promise<void> {
-    await this.audit?.record({ request_id: context.requestId, actor: context.actor, source: context.source, action, target_type: "power_schedule", target_id: String(schedule.id), risk_level: "medium", result, error_code: errorCode, metadata_json: JSON.stringify({ schedule_action: schedule.action, scope: schedule.scope, account_id: schedule.account_id }) });
+    await this.audit?.record({ request_id: context.requestId, actor: context.actor, source: context.source, action, target_type: "power_schedule", target_id: String(schedule.id), risk_level: "medium", result, error_code: errorCode, metadata_json: JSON.stringify({ schedule_action: schedule.action, scope: schedule.scope, account_id: schedule.account_id, group_id: schedule.group_id }) });
+  }
+
+  private async auditScheduleBulk(context: ScheduleContext, action: string, result: ScheduleBulkToggleResult): Promise<void> {
+    await this.audit?.record({ request_id: context.requestId, actor: context.actor, source: context.source, action, target_type: "power_schedule", target_id: null, risk_level: "medium", result: "success", error_code: null, metadata_json: JSON.stringify({ affected: result.affected, schedule_ids: result.schedules.map((schedule) => schedule.id) }) });
   }
 }
 
@@ -106,12 +127,12 @@ function validateAction(value: unknown, requestId: string): ScheduleAction {
   throw new AppError(ErrorCode.VALIDATION_ERROR, "Power schedule only supports boot/shutdown", requestId, 400);
 }
 function validateScope(value: unknown, requestId: string): ScheduleScope {
-  if (value === "all" || value === "account") return value;
-  throw new AppError(ErrorCode.VALIDATION_ERROR, "Power schedule only supports all/account scope", requestId, 400);
+  if (value === "all" || value === "account" || value === "group") return value;
+  throw new AppError(ErrorCode.VALIDATION_ERROR, "Power schedule only supports all/account/group scope", requestId, 400);
 }
-function validateAccountId(value: unknown, requestId: string): number {
+function validateEntityId(value: unknown, message: string, requestId: string): number {
   const id = Number(value);
-  if (!Number.isInteger(id) || id <= 0) throw new AppError(ErrorCode.VALIDATION_ERROR, "account_id is required for account scope", requestId, 400);
+  if (!Number.isInteger(id) || id <= 0) throw new AppError(ErrorCode.VALIDATION_ERROR, message, requestId, 400);
   return id;
 }
 function validateCron(value: unknown, requestId: string): string {

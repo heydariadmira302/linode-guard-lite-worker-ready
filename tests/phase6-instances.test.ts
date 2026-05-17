@@ -21,10 +21,12 @@ type AccountRecord = {
   token_fingerprint: string;
   token_status: string;
   status: string;
+  group_id: number | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
 };
+type GroupRecord = { id: number; name: string; is_default: number; created_at: string; updated_at: string; deleted_at: string | null };
 
 class FakePreparedStatement {
   constructor(private db: FakeD1Database, private sql: string) {}
@@ -37,6 +39,7 @@ class FakePreparedStatement {
 
 class FakeD1Database {
   accounts: AccountRecord[] = [];
+  groups: GroupRecord[] = [{ id: 1, name: "未分组", is_default: 1, created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", deleted_at: null }];
 
   prepare(sql: string) { return new FakePreparedStatement(this, sql); }
 
@@ -44,12 +47,21 @@ class FakeD1Database {
     if (sql.includes("FROM linode_accounts") && sql.includes("WHERE id = ?")) {
       return (this.accounts.find((account) => account.id === Number(values[0])) as T | undefined) ?? null;
     }
+    if (sql.includes("FROM groups") && sql.includes("WHERE id = ?")) {
+      return (this.groups.find((group) => group.id === Number(values[0]) && group.deleted_at === null) as T | undefined) ?? null;
+    }
+    if (sql.includes("FROM groups") && sql.includes("WHERE is_default = 1")) {
+      return (this.groups.find((group) => group.is_default === 1 && group.deleted_at === null) as T | undefined) ?? null;
+    }
     return null;
   }
 
   all<T>(sql: string): T[] {
     if (sql.includes("FROM linode_accounts")) {
       return this.accounts.filter((account) => account.status === "active") as T[];
+    }
+    if (sql.includes("FROM groups")) {
+      return this.groups.filter((group) => group.deleted_at === null).map((group) => ({ ...group, account_count: this.accounts.filter((account) => Number(account.group_id ?? 1) === group.id && account.status === "active").length })) as T[];
     }
     return [];
   }
@@ -92,6 +104,7 @@ async function addAccount(db: FakeD1Database, input: { id: number; alias: string
     token_fingerprint: `fp_${String(input.id).padStart(12, "0")}`,
     token_status: "valid",
     status: input.status ?? "active",
+    group_id: 1,
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
     deleted_at: input.status === "deleted" ? "2026-01-02T00:00:00.000Z" : null
@@ -217,16 +230,24 @@ describe("Phase 6 Linode instance read-only management", () => {
       expect(menuBody.data.telegram.payload.text).toContain("服务器管理");
       expect(menuBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
         { text: "查看全部服务器", callback_data: "instances:list:all" },
+        { text: "按分组查看", callback_data: "instances:groups" },
         { text: "选择账号", callback_data: "instances:accounts" }
       ]));
 
-      const listResponse = await worker.fetch(telegramRequest(callbackUpdate("instances:list:all")), env as never);
-      const listBody = await listResponse.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
-      const keyboard = listBody.data.telegram.payload.reply_markup.inline_keyboard.flat();
-      const raw = JSON.stringify(listBody);
-      expect(listBody.data.telegram.payload.text).toContain("服务器列表");
-      expect(listBody.data.telegram.payload.text).toContain("default-web");
-      expect(keyboard).toEqual(expect.arrayContaining([{ text: "详情 #101", callback_data: "instances:detail:1:101" }]));
+      const groupsResponse = await worker.fetch(telegramRequest(callbackUpdate("instances:groups")), env as never);
+      const groupsBody = await groupsResponse.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+      expect(groupsBody.data.telegram.payload.text).toContain("选择分组查看服务器");
+      expect(groupsBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "未分组", callback_data: "instances:list:group:1" });
+
+      const groupListResponse = await worker.fetch(telegramRequest(callbackUpdate("instances:list:group:1")), env as never);
+      const groupListBody = await groupListResponse.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+      const groupKeyboard = groupListBody.data.telegram.payload.reply_markup.inline_keyboard.flat();
+      const raw = JSON.stringify(groupListBody);
+      expect(groupListBody.data.telegram.payload.text).toContain("按分组查看服务器");
+      expect(groupListBody.data.telegram.payload.text).toContain("分组：未分组");
+      expect(groupListBody.data.telegram.payload.text).toContain("default-web");
+      expect(groupListBody.data.telegram.payload.text).toContain("IPv4：203.0.113.10");
+      expect(groupKeyboard).toEqual(expect.arrayContaining([{ text: "详情 #101", callback_data: "instances:detail:1:101" }]));
       expect(raw).not.toContain("开机");
       expect(raw).not.toContain("关机");
       expect(raw).not.toContain("重启");

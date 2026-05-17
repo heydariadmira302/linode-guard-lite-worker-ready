@@ -21,6 +21,7 @@ type AccountRecord = {
   token_fingerprint: string;
   token_status: string;
   status: string;
+  group_id?: number | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -50,16 +51,20 @@ class FakePreparedStatement {
 
 class FakeD1Database {
   accounts: AccountRecord[] = [];
+  groups = [{ id: 1, name: "未分组", is_default: 1, created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", deleted_at: null }];
   auditLogs: AuditRecord[] = [];
   prepare(sql: string) { return new FakePreparedStatement(this, sql); }
   first<T>(sql: string, values: unknown[]): T | null {
     if (sql.includes("FROM linode_accounts") && sql.includes("WHERE id = ?")) {
       return (this.accounts.find((account) => account.id === Number(values[0])) as T | undefined) ?? null;
     }
+    if (sql.includes("FROM groups") && sql.includes("WHERE id = ?")) return (this.groups.find((group) => group.id === Number(values[0]) && group.deleted_at === null) as T | undefined) ?? null;
+    if (sql.includes("FROM groups") && sql.includes("WHERE is_default = 1")) return (this.groups.find((group) => group.is_default === 1 && group.deleted_at === null) as T | undefined) ?? null;
     return null;
   }
   all<T>(sql: string, _values: unknown[] = []): T[] {
     if (sql.includes("FROM linode_accounts")) return this.accounts.filter((account) => account.status === "active") as T[];
+    if (sql.includes("FROM groups")) return this.groups.filter((group) => group.deleted_at === null).map((group) => ({ ...group, account_count: this.accounts.filter((account) => Number(account.group_id ?? 1) === group.id && account.status === "active").length })) as T[];
     return [];
   }
   run(sql: string, values: unknown[]) {
@@ -107,7 +112,7 @@ function callbackUpdate(data: string) {
   };
 }
 
-async function addAccount(db: FakeD1Database, input: { id: number; alias: string; token: string; status?: string }) {
+async function addAccount(db: FakeD1Database, input: { id: number; alias: string; token: string; status?: string; group_id?: number | null }) {
   db.accounts.push({
     id: input.id,
     alias: input.alias,
@@ -115,6 +120,7 @@ async function addAccount(db: FakeD1Database, input: { id: number; alias: string
     token_fingerprint: `fp_${String(input.id).padStart(12, "0")}`,
     token_status: "valid",
     status: input.status ?? "active",
+    group_id: input.group_id ?? 1,
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
     deleted_at: input.status === "deleted" ? "2026-01-02T00:00:00.000Z" : null
@@ -217,6 +223,55 @@ describe("Phase 11 batch operations", () => {
     }
   });
 
+  it("runs group-scoped batch through API and Telegram via BatchService", async () => {
+    const db = new FakeD1Database();
+    db.groups.push({ id: 2, name: "西班牙", is_default: 0, created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", deleted_at: null });
+    await addAccount(db, { id: 1, alias: "西班牙1", token: "token-spain-1", group_id: 2 });
+    await addAccount(db, { id: 2, alias: "默认1", token: "token-default", group_id: 1 });
+    const env = { ...baseEnv, DB: db as unknown as D1Database };
+    const calls: string[] = [];
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      calls.push(`${init?.method ?? "GET"} ${String(input)} ${new Headers(init?.headers).get("authorization")}`);
+      if (String(input).endsWith("/linode/instances")) return new Response(JSON.stringify(instanceList(301)), { status: 200 });
+      return new Response(null, { status: 200 });
+    });
+    try {
+      const apiResponse = await worker.fetch(apiRequest("/api/v1/groups/2/instances/batch/boot", { method: "POST" }), env as never);
+      const apiBody = await apiResponse.json() as { data: { action: string; scope: string; total: number; success: number; failed: number } };
+      expect(apiResponse.status).toBe(200);
+      expect(apiBody.data).toMatchObject({ action: "boot", scope: "group", total: 1, success: 1, failed: 0 });
+      expect(calls).toEqual(expect.arrayContaining([
+        "POST https://api.linode.com/v4/linode/instances/301/boot Bearer token-spain-1"
+      ]));
+      expect(calls.join("\n")).not.toContain("token-default");
+
+      const detail = await worker.fetch(telegramRequest(callbackUpdate("groups:detail:2")), env as never);
+      const detailBody = await detail.json() as { data: { telegram: { payload: { reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+      expect(detailBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
+        { text: "分组批量开机", callback_data: "batch:group:boot:2" },
+        { text: "分组批量删除", callback_data: "batch:group:delete:2" }
+      ]));
+
+      const confirm = await worker.fetch(telegramRequest(callbackUpdate("batch:group:delete:2")), env as never);
+      const confirmBody = await confirm.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+      expect(confirmBody.data.telegram.payload.text).toContain("范围：分组 西班牙");
+      expect(confirmBody.data.telegram.payload.text).toContain("批量删除服务器不可恢复");
+      expect(confirmBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
+        { text: "确认删除", callback_data: "batch:group:run:delete:2" },
+        { text: "取消", callback_data: "groups:detail:2" }
+      ]));
+
+      const run = await worker.fetch(telegramRequest(callbackUpdate("batch:group:run:shutdown:2")), env as never);
+      const runBody = await run.json() as { data: { telegram: { payload: { text: string } } } };
+      expect(runBody.data.telegram.payload.text).toContain("批量操作结果");
+      expect(runBody.data.telegram.payload.text).toContain("范围：分组");
+      expect(JSON.stringify(runBody)).not.toContain("token-spain-1");
+      expect(JSON.stringify(runBody)).not.toContain("encrypted_token");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
   it("exposes Telegram batch menu, account/all entry callbacks, and renders summary through Service Layer", async () => {
     const db = new FakeD1Database();
     await addAccount(db, { id: 1, alias: "default", token: "token-default" });
@@ -243,11 +298,30 @@ describe("Phase 11 batch operations", () => {
         { text: "#1 default", callback_data: "batch:account:shutdown:1" }
       ]));
 
-      const runResponse = await worker.fetch(telegramRequest(callbackUpdate("batch:account:shutdown:1")), env as never);
+      const confirmResponse = await worker.fetch(telegramRequest(callbackUpdate("batch:account:shutdown:1")), env as never);
+      const confirmBody = await confirmResponse.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+      expect(confirmBody.data.telegram.payload.text).toContain("批量操作确认");
+      expect(confirmBody.data.telegram.payload.text).toContain("动作：关机");
+      expect(confirmBody.data.telegram.payload.text).toContain("范围：单账号 #1");
+      expect(confirmBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
+        { text: "确认执行", callback_data: "batch:account:run:shutdown:1" },
+        { text: "取消", callback_data: "batch:accounts:shutdown" }
+      ]));
+
+      const allDeleteConfirm = await worker.fetch(telegramRequest(callbackUpdate("batch:all:delete")), env as never);
+      const allDeleteConfirmBody = await allDeleteConfirm.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+      expect(allDeleteConfirmBody.data.telegram.payload.text).toContain("高危操作");
+      expect(allDeleteConfirmBody.data.telegram.payload.text).toContain("批量删除服务器不可恢复");
+      expect(allDeleteConfirmBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
+        { text: "确认删除", callback_data: "batch:all:run:delete" },
+        { text: "取消", callback_data: "menu:batch" }
+      ]));
+
+      const runResponse = await worker.fetch(telegramRequest(callbackUpdate("batch:account:run:shutdown:1")), env as never);
       const runBody = await runResponse.json() as { data: { telegram: { payload: { text: string } } } };
       const raw = JSON.stringify(runBody);
       expect(runBody.data.telegram.payload.text).toContain("批量操作结果");
-      expect(runBody.data.telegram.payload.text).toContain("动作：shutdown");
+      expect(runBody.data.telegram.payload.text).toContain("动作：关机");
       expect(runBody.data.telegram.payload.text).toContain("总数：2");
       expect(runBody.data.telegram.payload.text).toContain("成功：1");
       expect(runBody.data.telegram.payload.text).toContain("失败：1");
@@ -269,7 +343,7 @@ describe("Phase 11 batch operations", () => {
     expect(apiDoc).toContain("不会返回 token 明文或 encrypted_token");
     expect(telegramDoc).toContain("callback: menu:batch");
     expect(telegramDoc).toContain("batch:account:delete:<account_id>");
-    expect(telegramDoc).toContain("不做二次确认");
+    expect(telegramDoc).toContain("二次确认");
     expect(telegramDoc).toContain("不实现 protected instance");
     expect(telegramDoc).not.toContain("Web UI");
   });

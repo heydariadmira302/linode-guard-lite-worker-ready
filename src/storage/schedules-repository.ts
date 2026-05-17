@@ -5,6 +5,7 @@ export type PowerScheduleRecord = {
   action: string;
   scope: string;
   account_id: number | null;
+  group_id: number | null;
   cron_expr: string;
   timezone: string;
   last_run_at: string | null;
@@ -31,14 +32,14 @@ export type ScheduleRunRecord = {
 export class SchedulesRepository {
   constructor(private readonly db: D1Database) {}
 
-  async create(input: { name: string; enabled: boolean; action: string; scope: string; account_id: number | null; cron_expr: string; timezone: string; next_run_at: string | null; metadata_json?: string | null }): Promise<PowerScheduleRecord> {
-    const result = await this.db.prepare(`INSERT INTO power_schedules (name, enabled, action, scope, account_id, cron_expr, timezone, next_run_at, metadata_json)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(input.name, input.enabled ? 1 : 0, input.action, input.scope, input.account_id, input.cron_expr, input.timezone, input.next_run_at, input.metadata_json ?? null).run();
+  async create(input: { name: string; enabled: boolean; action: string; scope: string; account_id: number | null; group_id?: number | null; cron_expr: string; timezone: string; next_run_at: string | null; metadata_json?: string | null }): Promise<PowerScheduleRecord> {
+    const result = await this.db.prepare(`INSERT INTO power_schedules (name, enabled, action, scope, account_id, group_id, cron_expr, timezone, next_run_at, metadata_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(input.name, input.enabled ? 1 : 0, input.action, input.scope, input.account_id, input.group_id ?? null, input.cron_expr, input.timezone, input.next_run_at, input.metadata_json ?? null).run();
     return this.getById(Number(result.meta.last_row_id));
   }
 
   async getById(id: number): Promise<PowerScheduleRecord> {
-    const row = await this.db.prepare(`SELECT id, name, enabled, action, scope, account_id, cron_expr, timezone, last_run_at, next_run_at, created_at, updated_at, deleted_at, metadata_json
+    const row = await this.db.prepare(`SELECT id, name, enabled, action, scope, account_id, group_id, cron_expr, timezone, last_run_at, next_run_at, created_at, updated_at, deleted_at, metadata_json
       FROM power_schedules WHERE id = ? AND deleted_at IS NULL`).bind(id).first<PowerScheduleRecord>();
     if (!row) {
       const fallback = (await this.list({ limit: 100, offset: 0 })).find((item) => item.id === id);
@@ -51,7 +52,7 @@ export class SchedulesRepository {
   async list(params: { limit?: number; offset?: number } = {}): Promise<PowerScheduleRecord[]> {
     const limit = clampLimit(params.limit);
     const offset = normalizeOffset(params.offset);
-    const result = await this.db.prepare(`SELECT id, name, enabled, action, scope, account_id, cron_expr, timezone, last_run_at, next_run_at, created_at, updated_at, deleted_at, metadata_json
+    const result = await this.db.prepare(`SELECT id, name, enabled, action, scope, account_id, group_id, cron_expr, timezone, last_run_at, next_run_at, created_at, updated_at, deleted_at, metadata_json
       FROM power_schedules WHERE deleted_at IS NULL ORDER BY id DESC LIMIT ? OFFSET ?`).bind(limit, offset).all<PowerScheduleRecord>();
     return result.results ?? [];
   }
@@ -69,6 +70,20 @@ export class SchedulesRepository {
   async disable(id: number): Promise<PowerScheduleRecord> {
     await this.db.prepare(`UPDATE power_schedules SET enabled = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL`).bind(id).run();
     return this.getById(id);
+  }
+
+  async enableAll(): Promise<{ affected: number; schedules: PowerScheduleRecord[] }> {
+    const schedules = await this.list({ limit: 100, offset: 0 });
+    const targets = schedules.filter((schedule) => Number(schedule.enabled) !== 1);
+    await this.db.prepare(`UPDATE power_schedules SET enabled = 1, updated_at = CURRENT_TIMESTAMP WHERE deleted_at IS NULL AND enabled != 1`).run();
+    return { affected: targets.length, schedules: targets.map((schedule) => ({ ...schedule, enabled: 1 })) };
+  }
+
+  async disableAll(): Promise<{ affected: number; schedules: PowerScheduleRecord[] }> {
+    const schedules = await this.list({ limit: 100, offset: 0 });
+    const targets = schedules.filter((schedule) => Number(schedule.enabled) === 1);
+    await this.db.prepare(`UPDATE power_schedules SET enabled = 0, updated_at = CURRENT_TIMESTAMP WHERE deleted_at IS NULL AND enabled = 1`).run();
+    return { affected: targets.length, schedules: targets.map((schedule) => ({ ...schedule, enabled: 0 })) };
   }
 
   async delete(id: number): Promise<PowerScheduleRecord> {

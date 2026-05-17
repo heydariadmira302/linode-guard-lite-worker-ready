@@ -18,10 +18,14 @@ const baseEnv = {
 type AccountRecord = {
   id: number;
   alias: string;
+  group_id?: number | null;
   encrypted_token: string;
   token_fingerprint: string;
   token_status: string;
   status: string;
+  last_seen_login_id?: string | null;
+  last_login_check_at?: string | null;
+  security_baseline_at?: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -53,6 +57,7 @@ class FakeD1Database {
   accounts: AccountRecord[] = [];
   auditLogs: AuditRecord[] = [];
   botSessions: Record<string, unknown>[] = [];
+  groups = [{ id: 1, name: "未分组", is_default: 1, created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", deleted_at: null }];
   nextAccountId = 1;
 
   prepare(sql: string) { return new FakePreparedStatement(this, sql); }
@@ -64,6 +69,18 @@ class FakeD1Database {
     if (sql.includes("FROM linode_accounts") && sql.includes("WHERE alias = ?")) {
       return (this.accounts.find((account) => account.alias === values[0] && account.status === "active") as T | undefined) ?? null;
     }
+    if (sql.includes("FROM groups") && sql.includes("WHERE name = ?")) {
+      return (this.groups.find((group) => group.name === values[0] && group.deleted_at === null) as T | undefined) ?? null;
+    }
+    if (sql.includes("FROM groups") && sql.includes("WHERE is_default = 1")) {
+      return (this.groups.find((group) => group.is_default === 1 && group.deleted_at === null) as T | undefined) ?? null;
+    }
+    if (sql.includes("FROM groups") && sql.includes("WHERE id = ?")) {
+      return (this.groups.find((group) => group.id === Number(values[0]) && group.deleted_at === null) as T | undefined) ?? null;
+    }
+    if (sql.includes("SELECT COUNT(*) AS count FROM linode_accounts WHERE group_id = ?")) {
+      return ({ count: 0 } as T);
+    }
     if (sql.includes("FROM bot_sessions")) {
       return (this.botSessions.find((session) => session.telegram_user_id === values[0]) as T | undefined) ?? null;
     }
@@ -71,6 +88,9 @@ class FakeD1Database {
   }
 
   all<T>(sql: string, _values: unknown[] = []): T[] {
+    if (sql.includes("FROM groups")) {
+      return this.groups.map((group) => ({ ...group, account_count: this.accounts.filter((account) => Number(account.group_id ?? 1) === group.id && account.status === "active").length })) as T[];
+    }
     if (sql.includes("FROM linode_accounts")) {
       return this.accounts.filter((account) => account.status === "active") as T[];
     }
@@ -86,6 +106,10 @@ class FakeD1Database {
         encrypted_token: values[1] as string,
         token_fingerprint: values[2] as string,
         token_status: values[3] as string,
+        group_id: Number(values[4] ?? 1),
+        last_seen_login_id: values[5] as string | null,
+        last_login_check_at: values[6] as string | null,
+        security_baseline_at: values[7] as string | null,
         status: "active",
         created_at: now,
         updated_at: now,
@@ -93,6 +117,19 @@ class FakeD1Database {
       };
       this.accounts.push(account);
       return { last_row_id: account.id };
+    }
+    if (sql.includes("UPDATE linode_accounts") && sql.includes("encrypted_token")) {
+      const account = this.accounts.find((item) => item.id === Number(values[6]));
+      if (account) {
+        account.encrypted_token = values[0] as string;
+        account.token_fingerprint = values[1] as string;
+        account.token_status = values[2] as string;
+        account.last_seen_login_id = values[3] as string | null;
+        account.last_login_check_at = values[4] as string | null;
+        account.security_baseline_at = values[5] as string | null;
+        account.updated_at = new Date().toISOString();
+      }
+      return {};
     }
     if (sql.includes("UPDATE linode_accounts") && sql.includes("token_status")) {
       const account = this.accounts.find((item) => item.id === Number(values[1]));
@@ -105,6 +142,11 @@ class FakeD1Database {
         account.status = "deleted";
         account.deleted_at = new Date().toISOString();
       }
+      return {};
+    }
+    if (sql.includes("UPDATE linode_accounts SET group_id")) {
+      const account = this.accounts.find((item) => item.id === Number(values[1]));
+      if (account) account.group_id = Number(values[0]);
       return {};
     }
     if (sql.includes("INTO audit_logs")) {
@@ -121,6 +163,11 @@ class FakeD1Database {
         metadata_json: values[9] as string | null
       });
       return {};
+    }
+    if (sql.includes("INTO groups")) {
+      const group = { id: this.groups.length + 1, name: values[0] as string, is_default: Number(values[1] ?? 0), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), deleted_at: null };
+      this.groups.push(group);
+      return { last_row_id: group.id };
     }
     if (sql.includes("INTO bot_sessions")) {
       this.botSessions = this.botSessions.filter((session) => session.telegram_user_id !== values[0]);
@@ -215,6 +262,7 @@ describe("Phase 5 Linode account and token management", () => {
       expect(createBody.data.account.token).toBeUndefined();
       expect(db.accounts[0].encrypted_token).toMatch(/^v1:/);
       expect(db.accounts[0].encrypted_token).not.toContain("valid-linode-token");
+      expect(db.accounts[0].group_id).toBe(1);
 
       const listResponse = await worker.fetch(apiRequest("/api/v1/accounts"), env as never);
       const listBody = await listResponse.json() as { ok: boolean; data: { accounts: Array<Record<string, unknown>> } };
@@ -223,6 +271,28 @@ describe("Phase 5 Linode account and token management", () => {
       expect(listBody.data.accounts).toHaveLength(1);
       expect(rawList).not.toContain("valid-linode-token");
       expect(rawList).not.toContain("encrypted_token");
+
+      const detailResponse = await worker.fetch(apiRequest("/api/v1/accounts/1"), env as never);
+      const detailBody = await detailResponse.json() as { ok: boolean; data: { account: Record<string, unknown> } };
+      const rawDetail = JSON.stringify(detailBody);
+      expect(detailResponse.status).toBe(200);
+      expect(detailBody.data.account).toMatchObject({ id: 1, alias: "default", token_status: "valid", group_id: 1 });
+      expect(rawDetail).not.toContain("valid-linode-token");
+      expect(rawDetail).not.toContain("encrypted_token");
+
+      const updateTokenResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/token", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: "new-valid-linode-token" })
+      }), env as never);
+      const updateTokenBody = await updateTokenResponse.json() as { ok: boolean; data: { account: { id: number; token_status: string; token_fingerprint: string; encrypted_token?: string; token?: string } } };
+      const rawUpdateToken = JSON.stringify(updateTokenBody);
+      expect(updateTokenResponse.status).toBe(200);
+      expect(updateTokenBody.data.account).toMatchObject({ id: 1, token_status: "valid" });
+      expect(updateTokenBody.data.account.token_fingerprint).toMatch(/^fp_[a-f0-9]{12}$/);
+      expect(rawUpdateToken).not.toContain("new-valid-linode-token");
+      expect(rawUpdateToken).not.toContain("encrypted_token");
+      expect(db.accounts[0].encrypted_token).not.toContain("new-valid-linode-token");
 
       const testResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/test", { method: "POST" }), env as never);
       const testBody = await testResponse.json() as { ok: boolean; data: { account: { id: number; token_status: string } } };
@@ -234,7 +304,7 @@ describe("Phase 5 Linode account and token management", () => {
       expect(deleteResponse.status).toBe(200);
       expect(deleteBody.data.deleted).toBe(true);
       expect(db.accounts[0].status).toBe("deleted");
-      expect(db.auditLogs.map((log) => log.action)).toEqual(expect.arrayContaining(["account.create", "account.test", "account.delete"]));
+      expect(db.auditLogs.map((log) => log.action)).toEqual(expect.arrayContaining(["account.create", "account.token.update", "account.test", "account.delete"]));
     } finally {
       fetchMock.mockRestore();
     }
@@ -300,7 +370,89 @@ describe("Phase 5 Linode account and token management", () => {
     expect(listBody.data.telegram.payload.text).toContain("账号列表");
     expect(listBody.data.telegram.payload.text).toContain("#1 default");
     expect(listBody.data.telegram.payload.text).toContain("fp_123456789abc");
+    expect(listBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "详情 #1 default", callback_data: "accounts:detail:1" });
     expect(JSON.stringify(listBody)).not.toContain("v1:encrypted");
+  });
+
+  it("supports Telegram account detail, token test, move group, and delete confirmation", async () => {
+    const db = new FakeD1Database();
+    db.groups.push({ id: 2, name: "西班牙", is_default: 0, created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", deleted_at: null });
+    db.accounts.push({ id: 1, alias: "default", group_id: 1, encrypted_token: await encryptLinodeToken("valid-linode-token", "encryption-key"), token_fingerprint: "fp_123456789abc", token_status: "valid", status: "active", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", deleted_at: null });
+    const env = { ...baseEnv, DB: db as unknown as D1Database };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ username: "admin" }), { status: 200 }));
+    try {
+      const detail = await worker.fetch(telegramRequest(callbackUpdate("accounts:detail:1")), env as never);
+      const detailBody = await detail.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+      expect(detailBody.data.telegram.payload.text).toContain("账号详情");
+      expect(detailBody.data.telegram.payload.text).toContain("Token 状态：可用");
+      expect(detailBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
+        { text: "测试 Token", callback_data: "accounts:test:1" },
+        { text: "更新 Token", callback_data: "accounts:update_token:1" },
+        { text: "移动分组", callback_data: "accounts:move_group:1" },
+        { text: "删除账号", callback_data: "accounts:delete_confirm:1" }
+      ]));
+      expect(JSON.stringify(detailBody)).not.toContain("valid-linode-token");
+      expect(JSON.stringify(detailBody)).not.toContain("encrypted_token");
+
+      const tested = await worker.fetch(telegramRequest(callbackUpdate("accounts:test:1")), env as never);
+      const testedBody = await tested.json() as { data: { telegram: { payload: { text: string } } } };
+      expect(testedBody.data.telegram.payload.text).toContain("Token 测试完成");
+      expect(testedBody.data.telegram.payload.text).toContain("Token 状态：可用");
+
+      const moveMenu = await worker.fetch(telegramRequest(callbackUpdate("accounts:move_group:1")), env as never);
+      const moveMenuBody = await moveMenu.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+      expect(moveMenuBody.data.telegram.payload.text).toContain("移动账号分组");
+      expect(moveMenuBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "西班牙", callback_data: "accounts:move_group_to:1:2" });
+
+      const moved = await worker.fetch(telegramRequest(callbackUpdate("accounts:move_group_to:1:2")), env as never);
+      const movedBody = await moved.json() as { data: { telegram: { payload: { text: string } } } };
+      expect(movedBody.data.telegram.payload.text).toContain("账号分组已更新");
+      expect(movedBody.data.telegram.payload.text).toContain("分组：#2");
+      expect(db.accounts[0].group_id).toBe(2);
+
+      const confirm = await worker.fetch(telegramRequest(callbackUpdate("accounts:delete_confirm:1")), env as never);
+      const confirmBody = await confirm.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+      expect(confirmBody.data.telegram.payload.text).toContain("确认删除账号");
+      expect(confirmBody.data.telegram.payload.text).toContain("不会删除 Linode 服务器");
+      expect(confirmBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "确认删除账号", callback_data: "accounts:delete:1" });
+
+      const deleted = await worker.fetch(telegramRequest(callbackUpdate("accounts:delete:1")), env as never);
+      const deletedBody = await deleted.json() as { data: { telegram: { payload: { text: string } } } };
+      expect(deletedBody.data.telegram.payload.text).toContain("账号已删除");
+      expect(db.accounts[0].status).toBe("deleted");
+      expect(db.auditLogs.map((log) => log.action)).toEqual(expect.arrayContaining(["account.test", "group.account.move", "account.delete"]));
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("updates account token through Telegram without echoing the new token", async () => {
+    const db = new FakeD1Database();
+    db.accounts.push({ id: 1, alias: "default", group_id: 1, encrypted_token: await encryptLinodeToken("old-valid-linode-token", "encryption-key"), token_fingerprint: "fp_oldoldold12", token_status: "invalid", status: "active", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", deleted_at: null });
+    const env = { ...baseEnv, DB: db as unknown as D1Database };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ username: "admin" }), { status: 200 }));
+    try {
+      const start = await worker.fetch(telegramRequest(callbackUpdate("accounts:update_token:1")), env as never);
+      const startBody = await start.json() as { data: { telegram: { payload: { text: string } } } };
+      expect(startBody.data.telegram.payload.text).toContain("更新账号 Token");
+      expect(startBody.data.telegram.payload.text).toContain("请发送新的 Linode API Token");
+
+      const updated = await worker.fetch(telegramRequest(messageUpdate("new-valid-linode-token", 41)), env as never);
+      const updatedBody = await updated.json() as { data: { telegram: Array<{ method: string; payload: { text?: string; message_id?: number } }> } };
+      const rawTelegram = JSON.stringify(updatedBody);
+      expect(updatedBody.data.telegram).toEqual(expect.arrayContaining([
+        expect.objectContaining({ method: "deleteMessage", payload: expect.objectContaining({ message_id: 41 }) }),
+        expect.objectContaining({ method: "sendMessage", payload: expect.objectContaining({ text: expect.stringContaining("Token 已更新") }) })
+      ]));
+      expect(rawTelegram).not.toContain("new-valid-linode-token");
+      expect(rawTelegram).not.toContain("encrypted_token");
+      expect(db.accounts[0].token_status).toBe("valid");
+      expect(db.accounts[0].token_fingerprint).toMatch(/^fp_[a-f0-9]{12}$/);
+      expect(db.accounts[0].encrypted_token).not.toContain("new-valid-linode-token");
+      expect(db.auditLogs.map((log) => log.action)).toContain("account.token.update");
+    } finally {
+      fetchMock.mockRestore();
+    }
   });
 
   it("runs Telegram add account flow without echoing token and attempts to delete token message", async () => {
@@ -313,8 +465,13 @@ describe("Phase 5 Linode account and token management", () => {
       expect(startBody.data.telegram.payload.text).toContain("请输入账号别名");
 
       const aliasResponse = await worker.fetch(telegramRequest(messageUpdate("default", 31)), env as never);
-      const aliasBody = await aliasResponse.json() as { data: { telegram: { payload: { text: string } } } };
-      expect(aliasBody.data.telegram.payload.text).toContain("请发送 Linode API Token");
+      const aliasBody = await aliasResponse.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+      expect(aliasBody.data.telegram.payload.text).toContain("选择分组");
+      expect(aliasBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "未分组", callback_data: "accounts:add:group:1" });
+
+      const groupResponse = await worker.fetch(telegramRequest(callbackUpdate("accounts:add:group:1")), env as never);
+      const groupBody = await groupResponse.json() as { data: { telegram: { payload: { text: string } } } };
+      expect(groupBody.data.telegram.payload.text).toContain("请发送 Linode API Token");
 
       const tokenResponse = await worker.fetch(telegramRequest(messageUpdate("valid-linode-token", 32)), env as never);
       const tokenBody = await tokenResponse.json() as { data: { telegram: Array<{ method: string; payload: { text?: string; message_id?: number } }> } };

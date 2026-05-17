@@ -122,8 +122,8 @@ export class SecurityService {
       const newEvents: SecurityEventRecord[] = [];
       const previousLastSeenLoginId = account.last_seen_login_id ?? null;
       const lastSeenLoginId = findNewestLoginId(logins) ?? previousLastSeenLoginId;
-      for (const login of logins) {
-        if (previousLastSeenLoginId && login.id === previousLastSeenLoginId) continue;
+      const newLogins = filterLoginsAfterCursor(logins, previousLastSeenLoginId);
+      for (const login of newLogins) {
         const saved = await this.events.createLoginEventIfNew({
           account_id: account.id,
           linode_login_id: login.id,
@@ -179,15 +179,24 @@ function findNewestLoginId(logins: LinodeLoginEvent[]): string | null {
   return newest?.id ?? null;
 }
 
+function filterLoginsAfterCursor(logins: LinodeLoginEvent[], lastSeenLoginId: string | null): LinodeLoginEvent[] {
+  if (!lastSeenLoginId) return logins;
+  const cursorIndex = logins.findIndex((login) => login.id === lastSeenLoginId);
+  if (cursorIndex >= 0) return logins.slice(0, cursorIndex);
+  const cursorNumber = Number(lastSeenLoginId);
+  if (Number.isFinite(cursorNumber)) return logins.filter((login) => Number.isFinite(Number(login.id)) && Number(login.id) > cursorNumber);
+  return [];
+}
+
 function loginStatusToSecurityType(login: LinodeLoginEvent): "LOGIN_SUCCESS" | "LOGIN_FAILED" {
   const status = (login.status ?? "").toLowerCase();
   return status.includes("fail") ? "LOGIN_FAILED" : "LOGIN_SUCCESS";
 }
 
 function mapSecurityItemMessage(code: string): string {
-  if (code === ErrorCode.TOKEN_INVALID) return "Linode Token is invalid";
-  if (code === ErrorCode.TOKEN_PERMISSION_ERROR) return "Linode Token permission is insufficient";
-  return "Linode API error";
+  if (code === ErrorCode.TOKEN_INVALID) return "Linode Token 无效，请重新添加或更换 Token。";
+  if (code === ErrorCode.TOKEN_PERMISSION_ERROR) return "Linode Token 权限不足，请检查 read_only 等权限范围。";
+  return "Linode API 请求失败，请稍后重试。";
 }
 
 function toPublicSecurityEvent(event: SecurityEventRecord): SecurityEventRecord {

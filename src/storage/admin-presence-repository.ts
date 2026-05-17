@@ -21,7 +21,7 @@ export type AdminPresencePolicyRecord = {
 export type AdminPresencePolicyInput = {
   name: string;
   enabled: boolean;
-  scope: "all";
+  scope: string;
   rules_json: string;
 };
 

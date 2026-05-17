@@ -17,6 +17,7 @@ const baseEnv = {
 
 const requiredTables = [
   "settings",
+  "groups",
   "linode_accounts",
   "login_events",
   "security_events",

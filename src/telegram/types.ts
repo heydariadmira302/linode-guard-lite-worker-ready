@@ -7,14 +7,27 @@ export interface TelegramInlineKeyboardMarkup {
   inline_keyboard: TelegramInlineKeyboardButton[][];
 }
 
+export interface TelegramReplyKeyboardButton {
+  text: string;
+}
+
+export interface TelegramReplyKeyboardMarkup {
+  keyboard: TelegramReplyKeyboardButton[][];
+  resize_keyboard?: boolean;
+  is_persistent?: boolean;
+}
+
 export interface TelegramMessagePayload {
   chat_id: string;
   text: string;
-  reply_markup?: TelegramInlineKeyboardMarkup;
+  reply_markup?: TelegramInlineKeyboardMarkup | TelegramReplyKeyboardMarkup;
 }
 
-export interface TelegramEditMessagePayload extends TelegramMessagePayload {
+export interface TelegramEditMessagePayload {
+  chat_id: string;
   message_id: number;
+  text: string;
+  reply_markup?: TelegramInlineKeyboardMarkup;
 }
 
 export interface TelegramDeleteMessagePayload {

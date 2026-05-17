@@ -237,7 +237,7 @@ function callbackUpdate(data: string) {
   };
 }
 
-async function addAccount(db: FakeD1Database, input: { id: number; alias: string; token: string; status?: string }) {
+async function addAccount(db: FakeD1Database, input: { id: number; alias: string; token: string; status?: string; lastSeenLoginId?: string | null; lastLoginCheckAt?: string | null }) {
   db.accounts.push({
     id: input.id,
     alias: input.alias,
@@ -245,8 +245,8 @@ async function addAccount(db: FakeD1Database, input: { id: number; alias: string
     token_fingerprint: `fp_${String(input.id).padStart(12, "0")}`,
     token_status: "valid",
     status: input.status ?? "active",
-    last_seen_login_id: null,
-    last_login_check_at: null,
+    last_seen_login_id: input.lastSeenLoginId ?? null,
+    last_login_check_at: input.lastLoginCheckAt ?? null,
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
     deleted_at: null
@@ -258,6 +258,29 @@ function linodeLogins(...rows: Array<{ id: number | string; username: string; ip
 }
 
 describe("Phase 12 account security event monitor", () => {
+  it("skips login history before the account security baseline and only creates events for newer logins", async () => {
+    const db = new FakeD1Database();
+    await addAccount(db, { id: 1, alias: "default", token: "token-default", lastSeenLoginId: "900", lastLoginCheckAt: "2026-01-01T00:00:00.000Z" });
+    const env = { ...baseEnv, DB: db as unknown as D1Database };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify(linodeLogins(
+      { id: 901, username: "alice", ip: "203.0.113.10", datetime: "2026-01-02T00:00:00", status: "successful" },
+      { id: 900, username: "baseline", ip: "203.0.113.9", datetime: "2026-01-01T00:00:00", status: "successful" },
+      { id: 899, username: "history", ip: "203.0.113.8", datetime: "2025-12-31T00:00:00", status: "successful" }
+    )), { status: 200 }));
+    try {
+      const response = await worker.fetch(apiRequest("/api/v1/security/check", { method: "POST" }), env as never);
+      const body = await response.json() as { data: { new_login_events: number; new_security_events: number } };
+
+      expect(response.status).toBe(200);
+      expect(body.data).toMatchObject({ new_login_events: 1, new_security_events: 1 });
+      expect(db.loginEvents.map((event) => event.linode_login_id)).toEqual(["901"]);
+      expect(db.securityEvents.map((event) => event.linode_login_id)).toEqual(["901"]);
+      expect(db.accounts[0].last_seen_login_id).toBe("901");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
   it("manual security check fetches /account/logins for active accounts, deduplicates login_events, creates LOGIN_SUCCESS/LOGIN_FAILED events, updates cursors, audits, and never returns tokens", async () => {
     const db = new FakeD1Database();
     await addAccount(db, { id: 1, alias: "default", token: "token-default" });
@@ -302,6 +325,7 @@ describe("Phase 12 account security event monitor", () => {
       expect(raw).not.toContain("token-default");
       expect(raw).not.toContain("token-backup");
       expect(raw).not.toContain("encrypted_token");
+      expect(raw).not.toContain("raw_json");
     } finally {
       fetchMock.mockRestore();
     }
@@ -376,28 +400,36 @@ describe("Phase 12 account security event monitor", () => {
       const menuResponse = await worker.fetch(telegramRequest(callbackUpdate("menu:security")), env as never);
       const menuBody = await menuResponse.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
       const menuKeyboard = menuBody.data.telegram.payload.reply_markup.inline_keyboard.flat();
-      expect(menuBody.data.telegram.payload.text).toContain("账号安全");
+      expect(menuBody.data.telegram.payload.text).toContain("🛡 安全事件");
       expect(menuBody.data.telegram.payload.text).toContain("未确认事件：1");
       expect(menuKeyboard).toEqual(expect.arrayContaining([
-        { text: "查看未确认事件", callback_data: "security:events:open" },
-        { text: "手动检查登录", callback_data: "security:check" },
-        { text: "查看最近事件", callback_data: "security:events" }
+        { text: "查看未确认", callback_data: "security:events:open" },
+        { text: "查看最近事件", callback_data: "security:events" },
+        { text: "手动检查", callback_data: "security:check" }
       ]));
 
       const openEventsResponse = await worker.fetch(telegramRequest(callbackUpdate("security:events:open")), env as never);
       const openEventsBody = await openEventsResponse.json() as { data: { telegram: { payload: { text: string } } } };
       expect(openEventsBody.data.telegram.payload.text).toContain("未确认安全事件");
-      expect(openEventsBody.data.telegram.payload.text).toContain("LOGIN_SUCCESS");
+      expect(openEventsBody.data.telegram.payload.text).toContain("成功登录");
+      expect(openEventsBody.data.telegram.payload.text).not.toContain("LOGIN_SUCCESS");
 
       const eventsResponse = await worker.fetch(telegramRequest(callbackUpdate("security:events")), env as never);
       const eventsBody = await eventsResponse.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
       expect(eventsBody.data.telegram.payload.text).toContain("最近安全事件");
-      expect(eventsBody.data.telegram.payload.text).toContain("LOGIN_SUCCESS");
-      expect(eventsBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
-        { text: "#1 是我", callback_data: "security:confirm:1" },
-        { text: "#1 不是我", callback_data: "security:suspicious:1" }
+      expect(eventsBody.data.telegram.payload.text).toContain("成功登录");
+      expect(eventsBody.data.telegram.payload.text).not.toContain("LOGIN_SUCCESS");
+      const eventKeyboard = eventsBody.data.telegram.payload.reply_markup.inline_keyboard.flat();
+      expect(eventKeyboard).toEqual(expect.arrayContaining([
+        { text: "是我", callback_data: "security:confirm:1" },
+        { text: "不是我", callback_data: "security:suspicious:1" },
+        { text: "❤️ 打卡", callback_data: "admin_presence:checkin" }
       ]));
+      expect(eventKeyboard.map((button) => button.text)).not.toContain("#1 是我");
+      expect(eventKeyboard.map((button) => button.text)).not.toContain("#1 不是我");
       expect(JSON.stringify(eventsBody)).not.toContain("plain-token");
+      expect(JSON.stringify(eventsBody)).not.toContain("encrypted_token");
+      expect(JSON.stringify(eventsBody)).not.toContain("metadata_json");
 
       const checkResponse = await worker.fetch(telegramRequest(callbackUpdate("security:check")), env as never);
       const checkBody = await checkResponse.json() as { data: { telegram: { payload: { text: string } } } };
@@ -408,6 +440,7 @@ describe("Phase 12 account security event monitor", () => {
       expect(checkBody.data.telegram.payload.text).toContain("新增安全事件：1");
       expect(raw).not.toContain("token-default");
       expect(raw).not.toContain("encrypted_token");
+      expect(raw).not.toContain("raw_json");
     } finally {
       fetchMock.mockRestore();
     }
@@ -424,9 +457,16 @@ describe("Phase 12 account security event monitor", () => {
     expect(apiResponse.status).toBe(200);
     expect(apiBody.data.security_event.status).toBe("confirmed");
 
+    const confirmTelegramResponse = await worker.fetch(telegramRequest(callbackUpdate("security:confirm:1")), env as never);
+    const confirmTelegramBody = await confirmTelegramResponse.json() as { data: { telegram: { payload: { text: string } } } };
+    expect(confirmTelegramBody.data.telegram.payload.text).toContain("状态：已确认：是我");
+
     const telegramResponse = await worker.fetch(telegramRequest(callbackUpdate("security:suspicious:2")), env as never);
     const telegramBody = await telegramResponse.json() as { data: { telegram: { payload: { text: string } } } };
-    expect(telegramBody.data.telegram.payload.text).toContain("状态：suspicious");
+    expect(telegramBody.data.telegram.payload.text).toContain("状态：已标记：不是我");
+    expect(telegramBody.data.telegram.payload.text).toContain("风险建议");
+    expect(telegramBody.data.telegram.payload.text).toContain("撤销或重置相关 Token");
+    expect(telegramBody.data.telegram.payload.text).not.toContain("suspicious");
     expect(db.securityEvents.map((event) => event.status)).toEqual(["confirmed", "suspicious"]);
     expect(db.auditLogs).toEqual(expect.arrayContaining([
       expect.objectContaining({ action: "security.event.confirmed", target_id: "1", source: "api" }),

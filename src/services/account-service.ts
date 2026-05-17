@@ -7,6 +7,7 @@ import { AppError } from "../errors/app-error";
 import { ErrorCode } from "../errors/error-codes";
 import { AccountsRepository, type LinodeAccountRecord } from "../storage/accounts-repository";
 import { AuditRepository } from "../storage/audit-repository";
+import { GroupsRepository } from "../storage/groups-repository";
 import { AuditService } from "./audit-service";
 
 export interface AccountServiceContext {
@@ -24,6 +25,10 @@ export interface PublicAccount {
   created_at: string;
   updated_at: string;
   deleted_at?: string | null;
+  security_baseline_at?: string | null;
+  server_count?: number;
+  group_id?: number | null;
+  group_name?: string | null;
 }
 
 export class AccountService {
@@ -36,21 +41,31 @@ export class AccountService {
     this.audit = audit ?? (env.DB ? new AuditService(new AuditRepository(env.DB)) : undefined);
   }
 
-  async createAccount(input: { alias: string; token: string }, context: AccountServiceContext): Promise<PublicAccount> {
+  async createAccount(input: { alias: string; token: string; group_id?: number | null }, context: AccountServiceContext): Promise<PublicAccount> {
     const alias = this.validateAlias(input.alias, context.requestId);
     const token = input.token?.trim();
     if (!token) throw new AppError(ErrorCode.VALIDATION_ERROR, "Token is required", context.requestId, 400);
     if (await this.accounts.getByAlias(alias)) {
       throw new AppError(ErrorCode.VALIDATION_ERROR, "Account alias already exists", context.requestId, 400);
     }
-
     try {
-      await new LinodeClient(token).testToken(context.requestId);
+      const tokenTest = await new LinodeClient(token).testToken(context.requestId);
       const encryptedToken = await encryptLinodeToken(token, await getLinodeTokenEncryptionKey(this.env));
       const fingerprint = await createTokenFingerprint(token);
-      const account = await this.accounts.create({ alias, encrypted_token: encryptedToken, token_fingerprint: fingerprint, token_status: "valid" });
-      await this.recordAudit(context, "account.create", "account", String(account.id), "high", "success", null, { alias, token_fingerprint: fingerprint });
-      return toPublicAccount(account);
+      const baselineAt = new Date().toISOString();
+      const groupId = await this.resolveGroupId(input.group_id, context.requestId);
+      const account = await this.accounts.create({
+        alias,
+        encrypted_token: encryptedToken,
+        token_fingerprint: fingerprint,
+        token_status: "valid",
+        group_id: groupId,
+        last_seen_login_id: tokenTest.latest_login_id ?? null,
+        last_login_check_at: baselineAt,
+        security_baseline_at: baselineAt
+      });
+      await this.recordAudit(context, "account.create", "account", String(account.id), "high", "success", null, { alias, token_fingerprint: fingerprint, server_count: tokenTest.instance_count, security_baseline_at: baselineAt, group_id: groupId });
+      return { ...await toPublicAccount(account, this.env), server_count: tokenTest.instance_count, group_id: groupId };
     } catch (error) {
       if (error instanceof AppError) {
         await this.recordAudit(context, "account.create", "account", null, "high", "failed", error.code, { alias });
@@ -62,7 +77,46 @@ export class AccountService {
   }
 
   async listAccounts(): Promise<PublicAccount[]> {
-    return (await this.accounts.listActive()).map(toPublicAccount);
+    const accounts = await this.accounts.listActive();
+    return await Promise.all(accounts.map((account) => toPublicAccount(account, this.env)));
+  }
+
+  async getAccount(accountId: number, requestId: string): Promise<PublicAccount> {
+    return await toPublicAccount(await this.getActiveAccount(accountId, requestId), this.env);
+  }
+
+  async listAccountsByGroup(groupId: number, requestId: string): Promise<PublicAccount[]> {
+    if (!Number.isInteger(groupId) || groupId <= 0) throw new AppError(ErrorCode.VALIDATION_ERROR, "Invalid group id", requestId, 400);
+    const accounts = (await this.accounts.listActive()).filter((account) => Number(account.group_id ?? 1) === groupId);
+    return await Promise.all(accounts.map((account) => toPublicAccount(account, this.env)));
+  }
+
+  async updateAccountToken(accountId: number, token: string, context: AccountServiceContext): Promise<PublicAccount & { server_count?: number }> {
+    const account = await this.getActiveAccount(accountId, context.requestId);
+    const normalizedToken = token?.trim();
+    if (!normalizedToken) throw new AppError(ErrorCode.VALIDATION_ERROR, "Token is required", context.requestId, 400);
+    try {
+      const tokenTest = await new LinodeClient(normalizedToken).testToken(context.requestId);
+      const encryptedToken = await encryptLinodeToken(normalizedToken, await getLinodeTokenEncryptionKey(this.env));
+      const fingerprint = await createTokenFingerprint(normalizedToken);
+      const baselineAt = new Date().toISOString();
+      const updated = await this.accounts.updateToken({
+        id: account.id,
+        encrypted_token: encryptedToken,
+        token_fingerprint: fingerprint,
+        token_status: "valid",
+        last_seen_login_id: tokenTest.latest_login_id ?? null,
+        last_login_check_at: baselineAt,
+        security_baseline_at: baselineAt
+      });
+      await this.recordAudit(context, "account.token.update", "account", String(account.id), "high", "success", null, { alias: account.alias, token_fingerprint: fingerprint, server_count: tokenTest.instance_count, security_baseline_at: baselineAt });
+      return { ...await toPublicAccount(updated, this.env), server_count: tokenTest.instance_count };
+    } catch (error) {
+      const code = error instanceof AppError ? error.code : ErrorCode.D1_ERROR;
+      await this.recordAudit(context, "account.token.update", "account", String(account.id), "high", "failed", code, { alias: account.alias });
+      if (error instanceof AppError) throw error;
+      throw new AppError(ErrorCode.D1_ERROR, "Failed to update account token", context.requestId, 500);
+    }
   }
 
   async testAccount(accountId: number, context: AccountServiceContext): Promise<PublicAccount> {
@@ -72,7 +126,7 @@ export class AccountService {
       await new LinodeClient(token).testToken(context.requestId);
       await this.accounts.updateTokenStatus(account.id, "valid");
       await this.recordAudit(context, "account.test", "account", String(account.id), "medium", "success", null, { alias: account.alias, token_fingerprint: account.token_fingerprint });
-      return { ...toPublicAccount(account), token_status: "valid" };
+      return { ...await toPublicAccount(account, this.env), token_status: "valid" };
     } catch (error) {
       const code = error instanceof AppError ? error.code : ErrorCode.LINODE_API_ERROR;
       const status = code === ErrorCode.TOKEN_PERMISSION_ERROR ? "permission_error" : code === ErrorCode.TOKEN_INVALID ? "invalid" : "unknown";
@@ -87,7 +141,7 @@ export class AccountService {
     const account = await this.getActiveAccount(accountId, context.requestId);
     await this.accounts.softDelete(account.id);
     await this.recordAudit(context, "account.delete", "account", String(account.id), "high", "success", null, { alias: account.alias, token_fingerprint: account.token_fingerprint });
-    return { deleted: true, account: { ...toPublicAccount(account), status: "deleted", deleted_at: new Date().toISOString() } };
+    return { deleted: true, account: { ...await toPublicAccount(account, this.env), status: "deleted", deleted_at: new Date().toISOString() } };
   }
 
   private async getActiveAccount(accountId: number, requestId: string): Promise<LinodeAccountRecord> {
@@ -103,10 +157,30 @@ export class AccountService {
 
   private validateAlias(alias: string, requestId: string): string {
     const normalized = alias?.trim();
-    if (!normalized || !/^[a-zA-Z0-9_-]{1,32}$/.test(normalized)) {
-      throw new AppError(ErrorCode.VALIDATION_ERROR, "Alias must be 1-32 chars and only contain letters, numbers, underscore, or hyphen", requestId, 400);
+    if (!normalized || !/^[\p{Script=Han}a-zA-Z0-9 _-]{1,32}$/u.test(normalized)) {
+      throw new AppError(ErrorCode.VALIDATION_ERROR, "Alias must be 1-32 chars and only contain Chinese, letters, numbers, spaces, underscore, or hyphen", requestId, 400);
     }
     return normalized;
+  }
+
+  private async resolveGroupId(groupId: number | null | undefined, requestId: string): Promise<number> {
+    if (!this.env.DB) return groupId ?? 1;
+    const groups = new GroupsRepository(this.env.DB);
+    if (groupId === undefined || groupId === null) {
+      try {
+        const group = await groups.ensureDefaultGroup();
+        return group.id;
+      } catch {
+        return 1;
+      }
+    }
+    if (!Number.isInteger(groupId) || groupId <= 0) throw new AppError(ErrorCode.VALIDATION_ERROR, "Invalid group id", requestId, 400);
+    try {
+      await groups.getById(groupId);
+      return groupId;
+    } catch {
+      throw new AppError(ErrorCode.VALIDATION_ERROR, "Group not found", requestId, 400);
+    }
   }
 
   private async recordAudit(context: AccountServiceContext, action: string, targetType: string, targetId: string | null, riskLevel: string, result: string, errorCode: string | null, metadata: unknown): Promise<void> {
@@ -125,7 +199,17 @@ export class AccountService {
   }
 }
 
-function toPublicAccount(account: LinodeAccountRecord): PublicAccount {
+async function toPublicAccount(account: LinodeAccountRecord, env: Env): Promise<PublicAccount> {
+  let groupName: string | null = null;
+  const groupId = account.group_id ?? 1;
+  if (env.DB) {
+    try {
+      const group = await new GroupsRepository(env.DB).getById(groupId);
+      groupName = group.name;
+    } catch {
+      groupName = groupId === 1 ? "未分组" : null;
+    }
+  }
   return {
     id: account.id,
     alias: account.alias,
@@ -134,6 +218,9 @@ function toPublicAccount(account: LinodeAccountRecord): PublicAccount {
     status: account.status,
     created_at: account.created_at,
     updated_at: account.updated_at,
-    deleted_at: account.deleted_at ?? null
+    deleted_at: account.deleted_at ?? null,
+    security_baseline_at: account.security_baseline_at ?? null,
+    group_id: groupId,
+    group_name: groupName
   };
 }

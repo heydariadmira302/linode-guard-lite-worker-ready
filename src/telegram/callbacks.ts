@@ -14,19 +14,26 @@ import { DiagnosticsService } from "../services/setup-service";
 import { SecurityService } from "../services/security-service";
 import { AuditRepository } from "../storage/audit-repository";
 import type { ParsedTelegramUpdate, TelegramClientResult } from "./types";
-import { renderAdminPresenceCheckinText, renderAdminPresenceMenuKeyboard, renderAdminPresenceMenuText, renderAdminPresencePoliciesKeyboard, renderAdminPresencePoliciesText } from "./admin-presence-renderer";
+import { renderAdminPresenceCheckinText, renderAdminPresenceDeletePolicyWarning, renderAdminPresenceMenuKeyboard, renderAdminPresenceMenuText, renderAdminPresencePoliciesKeyboard, renderAdminPresencePoliciesText, renderAdminPresencePolicyAccountKeyboard, renderAdminPresencePolicyAccountText, renderAdminPresencePolicyActionKeyboard, renderAdminPresencePolicyActionText, renderAdminPresencePolicyCreateKeyboard, renderAdminPresencePolicyCreateText, renderAdminPresencePolicyDeleteConfirmKeyboard, renderAdminPresencePolicyDeleteConfirmText, renderAdminPresencePolicyDeletedText, renderAdminPresencePolicyDetailKeyboard, renderAdminPresencePolicyDetailText, renderAdminPresencePolicyFinalTimeKeyboard, renderAdminPresencePolicyFinalTimeText, renderAdminPresencePolicyGroupKeyboard, renderAdminPresencePolicyGroupText, renderAdminPresencePolicyNamePrompt, renderAdminPresencePolicyScopeKeyboard, renderAdminPresencePolicyScopeText, renderAdminPresencePolicyTimeKeyboard, renderAdminPresencePolicyTimeText } from "./admin-presence-renderer";
 import { renderAuditLogsKeyboard, renderAuditLogsText } from "./audit-renderer";
-import { renderBatchAccountsKeyboard, renderBatchAccountsText, renderBatchMenuKeyboard, renderBatchMenuText, renderBatchResultKeyboard, renderBatchResultText } from "./batch-renderer";
-import { renderScheduleListKeyboard, renderScheduleListText, renderSchedulesMenuKeyboard, renderSchedulesMenuText } from "./schedule-renderer";
-import { renderSecurityCheckResultKeyboard, renderSecurityCheckResultText, renderSecurityEventsKeyboard, renderSecurityEventsText, renderSecurityMenuKeyboard, renderSecurityMenuText } from "./security-renderer";
-import { renderAccountListKeyboard, renderAccountListText, renderAccountsMenuKeyboard, renderAccountsMenuText, renderDiagnosticsMenuKeyboard, renderDiagnosticsMenuText, renderMainMenuKeyboard, renderMainMenuText, renderSettingsMenuKeyboard, renderSettingsMenuText } from "./menus";
+import { renderBatchAccountsKeyboard, renderBatchAccountsText, renderBatchConfirmKeyboard, renderBatchConfirmText, renderBatchMenuKeyboard, renderBatchMenuText, renderBatchResultKeyboard, renderBatchResultText } from "./batch-renderer";
+import { renderScheduleActionResultKeyboard, renderScheduleActionResultText, renderScheduleBulkToggleConfirmKeyboard, renderScheduleBulkToggleConfirmText, renderScheduleBulkToggleResultText, renderScheduleCreateAccountKeyboard, renderScheduleCreateAccountText, renderScheduleCreateActionKeyboard, renderScheduleCreateActionText, renderScheduleCreateGroupKeyboard, renderScheduleCreateGroupText, renderScheduleCreatePresetKeyboard, renderScheduleCreatePresetText, renderScheduleCreateScopeKeyboard, renderScheduleCreateScopeText, renderScheduleCustomTimePrompt, renderScheduleDeleteConfirmKeyboard, renderScheduleDeleteConfirmText, renderScheduleListKeyboard, renderScheduleListText, renderSchedulesMenuKeyboard, renderSchedulesMenuText } from "./schedule-renderer";
+import { renderSecurityCheckResultKeyboard, renderSecurityCheckResultText, renderSecurityEventStatusUpdateText, renderSecurityEventsKeyboard, renderSecurityEventsText, renderSecurityMenuKeyboard, renderSecurityMenuText } from "./security-renderer";
+import { renderCheckinInlineKeyboard } from "./keyboards";
+import { renderAccountActionResultText, renderAccountDeleteConfirmKeyboard, renderAccountDeleteConfirmText, renderAccountDetailKeyboard, renderAccountDetailText, renderAccountListKeyboard, renderAccountListText, renderAccountsMenuKeyboard, renderAccountsMenuText, renderDiagnosticsMenuKeyboard, renderDiagnosticsMenuText, renderMainMenuKeyboard, renderMainMenuText, renderSettingsMenuKeyboard, renderSettingsMenuText } from "./menus";
+import { GroupService } from "../services/group-service";
+import { renderGroupAccountsKeyboard, renderGroupAccountsText, renderGroupDeleteConfirmKeyboard, renderGroupDeleteConfirmText, renderGroupDetailKeyboard, renderGroupDetailText, renderGroupInstancesKeyboard, renderGroupInstancesText, renderGroupSelectKeyboard, renderGroupSelectText, renderGroupsListKeyboard, renderGroupsMenuKeyboard, renderGroupsMenuText } from "./group-renderer";
 import { startAddAccountFlow } from "./account-flow";
 import {
+  renderAccountInstanceBlock,
   renderAccountInstancesText,
   renderAllInstancesText,
   renderInstanceAccountsKeyboard,
   renderInstanceAccountsText,
+  renderInstanceDetailKeyboard,
   renderInstanceDetailText,
+  renderInstanceGroupsKeyboard,
+  renderInstanceGroupsText,
   renderInstancesListKeyboard,
   renderInstancesMenuKeyboard,
   renderInstancesMenuText
@@ -35,7 +42,7 @@ import {
 export async function routeTelegramCallback(
   update: Extract<ParsedTelegramUpdate, { kind: "callback_query" }>,
   client: TelegramClient,
-  sessions?: Pick<BotSessionService, "setCurrentSession">,
+  sessions?: Pick<BotSessionService, "getCurrentSession" | "setCurrentSession">,
   env?: Env,
   requestId = "req_telegram"
 ): Promise<TelegramClientResult> {
@@ -57,17 +64,200 @@ export async function routeTelegramCallback(
     });
   }
 
+  if (update.data === "menu:groups" && env?.DB) {
+    try {
+      const data = await new GroupService(env).listGroups();
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderGroupsMenuText(data.groups), reply_markup: renderGroupsMenuKeyboard(data.groups) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  if (update.data === "groups:list" && env?.DB) {
+    try {
+      const data = await new GroupService(env).listGroups();
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderGroupsMenuText(data.groups), reply_markup: renderGroupsListKeyboard(data.groups) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  if (update.data === "groups:create" && sessions) {
+    await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_group" });
+    return client.editMessage({
+      chat_id: update.chatId,
+      message_id: update.messageId,
+      text: "📁 新建分组\n\n请输入分组名称，例如：西班牙、日本备用、洛杉矶主力。\n\n规则：1-32 字，支持中文、英文、数字、空格、下划线、短横线。",
+      reply_markup: renderCheckinInlineKeyboard()
+    });
+  }
+
+  const groupDetailMatch = update.data.match(/^groups:detail:(\d+)$/);
+  if (groupDetailMatch && env?.DB) {
+    try {
+      const data = await new GroupService(env).getGroup(Number(groupDetailMatch[1]));
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderGroupDetailText(data.group), reply_markup: renderGroupDetailKeyboard(data.group) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const groupRenameMatch = update.data.match(/^groups:rename:(\d+)$/);
+  if (groupRenameMatch && sessions) {
+    await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "renaming_group", data: { group_id: Number(groupRenameMatch[1]) } });
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: "📁 重命名分组\n\n请输入新的分组名称。", reply_markup: renderCheckinInlineKeyboard() });
+  }
+
+  const groupDeleteConfirmMatch = update.data.match(/^groups:delete_confirm:(\d+)$/);
+  if (groupDeleteConfirmMatch && env?.DB) {
+    try {
+      const data = await new GroupService(env).getGroup(Number(groupDeleteConfirmMatch[1]));
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderGroupDeleteConfirmText(data.group), reply_markup: renderGroupDeleteConfirmKeyboard(data.group) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const groupDeleteMatch = update.data.match(/^groups:delete:(\d+)$/);
+  if (groupDeleteMatch && env?.DB) {
+    try {
+      const data = await new GroupService(env).deleteGroup(Number(groupDeleteMatch[1]), { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: [`✅ 分组已删除`, "", `分组：${data.group.name}`].join("\n"), reply_markup: renderCheckinInlineKeyboard() });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const groupAccountsMatch = update.data.match(/^groups:accounts:(\d+)$/);
+  if (groupAccountsMatch && env?.DB) {
+    try {
+      const group = (await new GroupService(env).getGroup(Number(groupAccountsMatch[1]))).group;
+      const accounts = await new AccountService(env).listAccountsByGroup(group.id, requestId);
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderGroupAccountsText(group, accounts), reply_markup: renderGroupAccountsKeyboard(group) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const groupInstancesMatch = update.data.match(/^groups:instances:(\d+)$/);
+  if (groupInstancesMatch && env?.DB) {
+    try {
+      const group = (await new GroupService(env).getGroup(Number(groupInstancesMatch[1]))).group;
+      const data = await new InstanceService(env).listGroupInstances(group.id, requestId);
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderGroupInstancesText(group, data.accounts), reply_markup: renderGroupInstancesKeyboard(group, data.accounts) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
   if (update.data === "accounts:list" && env?.DB) {
     try {
       const accounts = await new AccountService(env).listAccounts();
-      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAccountListText(accounts), reply_markup: renderAccountListKeyboard() });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAccountListText(accounts), reply_markup: renderAccountListKeyboard(accounts) });
     } catch (error) {
       return renderTelegramCallbackError(update, client, error, requestId);
     }
   }
 
   if (update.data === "accounts:add" && sessions) {
-    return await startAddAccountFlow(update, client, sessions);
+    return await startAddAccountFlow(update, client, sessions, env);
+  }
+
+  const accountAddGroupMatch = update.data.match(/^accounts:add:group:(\d+)$/);
+  if (accountAddGroupMatch && sessions && env?.DB) {
+    const current = await sessions.getCurrentSession(update.fromId);
+    const data = current?.data_json ? JSON.parse(current.data_json) as { alias?: unknown } : {};
+    if (typeof data.alias !== "string") {
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: "请先输入账号昵称，再选择分组。", reply_markup: renderCheckinInlineKeyboard() });
+    }
+    const groups = await new GroupService(env).listGroups();
+    const groupId = Number(accountAddGroupMatch[1]);
+    const group = groups.groups.find((item) => item.id === groupId);
+    if (!group) return renderTelegramCallbackError(update, client, new AppError(ErrorCode.VALIDATION_ERROR, "Group not found", requestId, 404), requestId);
+    await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "adding_account_token", data: { alias: data.alias, group_id: groupId } });
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: `分组已选择：${group.name}\n账号：${data.alias}\n\n请发送 Linode API Token。`, reply_markup: renderCheckinInlineKeyboard() });
+  }
+
+  if (update.data === "accounts:add:group_create" && sessions && env?.DB) {
+    const current = await sessions.getCurrentSession(update.fromId);
+    const data = current?.data_json ? JSON.parse(current.data_json) as { alias?: unknown } : {};
+    await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_group_from_account", data });
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: "📁 新建分组\n\n请输入分组名称。创建后会继续添加账号。", reply_markup: renderCheckinInlineKeyboard() });
+  }
+
+  const accountDetailMatch = update.data.match(/^accounts:detail:(\d+)$/);
+  if (accountDetailMatch && env?.DB) {
+    try {
+      const account = await new AccountService(env).getAccount(Number(accountDetailMatch[1]), requestId);
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAccountDetailText(account), reply_markup: renderAccountDetailKeyboard(account) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const accountUpdateTokenMatch = update.data.match(/^accounts:update_token:(\d+)$/);
+  if (accountUpdateTokenMatch && sessions && env?.DB) {
+    try {
+      const account = await new AccountService(env).getAccount(Number(accountUpdateTokenMatch[1]), requestId);
+      await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "updating_account_token", data: { account_id: account.id } });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: [`👤 更新账号 Token`, "", `账号：#${account.id} ${account.alias}`, "", "请发送新的 Linode API Token。", "Bot 会尝试删除你的 Token 消息，不会在回复中回显 Token。", "更新成功后会重新建立安全基线，历史登录不通知。"].join("\n"), reply_markup: renderCheckinInlineKeyboard() });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const accountTestMatch = update.data.match(/^accounts:test:(\d+)$/);
+  if (accountTestMatch && env?.DB) {
+    try {
+      const account = await new AccountService(env).testAccount(Number(accountTestMatch[1]), { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAccountActionResultText("✅ Token 测试完成", account), reply_markup: renderAccountDetailKeyboard(account) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const accountDeleteConfirmMatch = update.data.match(/^accounts:delete_confirm:(\d+)$/);
+  if (accountDeleteConfirmMatch && env?.DB) {
+    try {
+      const account = await new AccountService(env).getAccount(Number(accountDeleteConfirmMatch[1]), requestId);
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAccountDeleteConfirmText(account), reply_markup: renderAccountDeleteConfirmKeyboard(account) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const accountDeleteMatch = update.data.match(/^accounts:delete:(\d+)$/);
+  if (accountDeleteMatch && env?.DB) {
+    try {
+      const data = await new AccountService(env).deleteAccount(Number(accountDeleteMatch[1]), { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAccountActionResultText("🗑 账号已删除", data.account), reply_markup: renderCheckinInlineKeyboard() });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const accountMoveGroupMatch = update.data.match(/^accounts:move_group:(\d+)$/);
+  if (accountMoveGroupMatch && env?.DB) {
+    try {
+      const account = await new AccountService(env).getAccount(Number(accountMoveGroupMatch[1]), requestId);
+      const groups = (await new GroupService(env).listGroups()).groups;
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: [`👤 移动账号分组`, "", `账号：#${account.id} ${account.alias}`, "", "请选择目标分组："].join("\n"), reply_markup: { inline_keyboard: [...groups.map((group) => [{ text: group.name, callback_data: `accounts:move_group_to:${account.id}:${group.id}` }]), [{ text: "返回账号详情", callback_data: `accounts:detail:${account.id}` }], [{ text: "❤️ 打卡", callback_data: "admin_presence:checkin" }]] } });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const accountMoveGroupToMatch = update.data.match(/^accounts:move_group_to:(\d+):(\d+)$/);
+  if (accountMoveGroupToMatch && env?.DB) {
+    try {
+      const accountId = Number(accountMoveGroupToMatch[1]);
+      const groupId = Number(accountMoveGroupToMatch[2]);
+      await new GroupService(env).moveAccountToGroup(accountId, groupId, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      const account = await new AccountService(env).getAccount(accountId, requestId);
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAccountActionResultText("✅ 账号分组已更新", account), reply_markup: renderAccountDetailKeyboard(account) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
   }
 
   if (update.data === "menu:instances") {
@@ -125,11 +315,150 @@ export async function routeTelegramCallback(
   if (update.data === "schedules:list" && env?.DB) {
     try {
       const data = await new ScheduleService(env).listSchedules({ limit: 10, offset: 0 });
-      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleListText(data.schedules), reply_markup: renderScheduleListKeyboard() });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleListText(data.schedules), reply_markup: renderScheduleListKeyboard(data.schedules) });
     } catch (error) {
       return renderTelegramCallbackError(update, client, error, requestId);
     }
   }
+
+  if (update.data === "schedules:create") {
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleCreateActionText(), reply_markup: renderScheduleCreateActionKeyboard() });
+  }
+
+  const scheduleCreateActionMatch = update.data.match(/^schedules:create:action:(boot|shutdown)$/);
+  if (scheduleCreateActionMatch) {
+    const action = scheduleCreateActionMatch[1] as "boot" | "shutdown";
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleCreateScopeText(action), reply_markup: renderScheduleCreateScopeKeyboard(action) });
+  }
+
+  const scheduleCreateScopeMatch = update.data.match(/^schedules:create:scope:(boot|shutdown):(all|account|group)$/);
+  if (scheduleCreateScopeMatch && env?.DB) {
+    try {
+      const action = scheduleCreateScopeMatch[1] as "boot" | "shutdown";
+      const scope = scheduleCreateScopeMatch[2] as "all" | "account" | "group";
+      if (scope === "all") {
+        return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleCreatePresetText(action, "all"), reply_markup: renderScheduleCreatePresetKeyboard(action, "all") });
+      }
+      if (scope === "group") {
+        const groups = (await new GroupService(env).listGroups()).groups;
+        return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleCreateGroupText(action, groups), reply_markup: renderScheduleCreateGroupKeyboard(action, groups) });
+      }
+      const accounts = await new AccountService(env).listAccounts();
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleCreateAccountText(action, accounts), reply_markup: renderScheduleCreateAccountKeyboard(action, accounts) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const scheduleCreateAccountMatch = update.data.match(/^schedules:create:account:(boot|shutdown):(\d+)$/);
+  if (scheduleCreateAccountMatch) {
+    const action = scheduleCreateAccountMatch[1] as "boot" | "shutdown";
+    const accountId = Number(scheduleCreateAccountMatch[2]);
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleCreatePresetText(action, "account", accountId), reply_markup: renderScheduleCreatePresetKeyboard(action, "account", accountId) });
+  }
+
+  const scheduleCreateGroupMatch = update.data.match(/^schedules:create:group:(boot|shutdown):(\d+)$/);
+  if (scheduleCreateGroupMatch) {
+    const action = scheduleCreateGroupMatch[1] as "boot" | "shutdown";
+    const groupId = Number(scheduleCreateGroupMatch[2]);
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleCreatePresetText(action, "group", undefined, groupId), reply_markup: renderScheduleCreatePresetKeyboard(action, "group", undefined, groupId) });
+  }
+
+  const scheduleCreateCustomMatch = update.data.match(/^schedules:create:custom:(boot|shutdown):(all|account:\d+|group:\d+)$/);
+  if (scheduleCreateCustomMatch && sessions) {
+    const action = scheduleCreateCustomMatch[1] as "boot" | "shutdown";
+    const scopePart = scheduleCreateCustomMatch[2];
+    const accountId = scopePart.startsWith("account:") ? Number(scopePart.split(":")[1]) : undefined;
+    const groupId = scopePart.startsWith("group:") ? Number(scopePart.split(":")[1]) : undefined;
+    const scope = accountId ? "account" : groupId ? "group" : "all";
+    await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_schedule_custom_time", data: { action, scope, account_id: accountId ?? null, group_id: groupId ?? null } });
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleCustomTimePrompt(action, scope, accountId, groupId), reply_markup: renderCheckinInlineKeyboard() });
+  }
+
+  const scheduleCreatePresetMatch = update.data.match(/^schedules:create:preset:(boot|shutdown):(all|account:\d+|group:\d+):(daily_0800|daily_2200)$/);
+  if (scheduleCreatePresetMatch && env?.DB) {
+    try {
+      const action = scheduleCreatePresetMatch[1] as "boot" | "shutdown";
+      const scopePart = scheduleCreatePresetMatch[2];
+      const preset = scheduleCreatePresetMatch[3];
+      const hour = preset === "daily_0800" ? "8" : "22";
+      const timeLabel = preset === "daily_0800" ? "每天 08:00" : "每天 22:00";
+      const accountId = scopePart.startsWith("account:") ? Number(scopePart.split(":")[1]) : null;
+      const groupId = scopePart.startsWith("group:") ? Number(scopePart.split(":")[1]) : null;
+      const scope = accountId ? "account" : groupId ? "group" : "all";
+      const data = await new ScheduleService(env).createSchedule({
+        name: `${timeLabel} ${accountId ? `账号 #${accountId} ` : groupId ? `分组 #${groupId} ` : ""}${action === "boot" ? "开机" : "关机"}`,
+        action,
+        scope,
+        account_id: accountId,
+        group_id: groupId,
+        cron_expr: `0 ${hour} * * *`,
+        timezone: env.APP_TIMEZONE ?? "Asia/Shanghai",
+        enabled: true
+      }, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleActionResultText("created", data.schedule), reply_markup: renderScheduleActionResultKeyboard() });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  if (update.data === "schedules:disable_all_confirm" && env?.DB) {
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleBulkToggleConfirmText(), reply_markup: renderScheduleBulkToggleConfirmKeyboard() });
+  }
+
+  if ((update.data === "schedules:disable_all" || update.data === "schedules:enable_all") && env?.DB) {
+    try {
+      const service = new ScheduleService(env);
+      const data = update.data === "schedules:disable_all"
+        ? await service.disableAllSchedules({ requestId, actor: `telegram:${update.fromId}`, source: "telegram" })
+        : await service.enableAllSchedules({ requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleBulkToggleResultText(update.data === "schedules:disable_all" ? "disabled_all" : "enabled_all", data.affected), reply_markup: renderScheduleActionResultKeyboard() });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const scheduleToggleMatch = update.data.match(/^schedules:(enable|disable):(\d+)$/);
+  if (scheduleToggleMatch && env?.DB) {
+    try {
+      const service = new ScheduleService(env);
+      const id = Number(scheduleToggleMatch[2]);
+      const data = scheduleToggleMatch[1] === "enable"
+        ? await service.enableSchedule(id, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" })
+        : await service.disableSchedule(id, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      return client.editMessage({
+        chat_id: update.chatId,
+        message_id: update.messageId,
+        text: renderScheduleActionResultText(scheduleToggleMatch[1] === "enable" ? "enabled" : "disabled", data.schedule),
+        reply_markup: renderScheduleActionResultKeyboard()
+      });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const scheduleDeleteConfirmMatch = update.data.match(/^schedules:delete_confirm:(\d+)$/);
+  if (scheduleDeleteConfirmMatch && env?.DB) {
+    try {
+      const schedules = await new ScheduleService(env).listSchedules({ limit: 100, offset: 0 });
+      const schedule = schedules.schedules.find((item) => item.id === Number(scheduleDeleteConfirmMatch[1]));
+      if (!schedule) return renderTelegramCallbackError(update, client, new AppError(ErrorCode.VALIDATION_ERROR, "Schedule not found", requestId, 404), requestId);
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleDeleteConfirmText(schedule), reply_markup: renderScheduleDeleteConfirmKeyboard(schedule) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const scheduleDeleteMatch = update.data.match(/^schedules:delete:(\d+)$/);
+  if (scheduleDeleteMatch && env?.DB) {
+    try {
+      const data = await new ScheduleService(env).deleteSchedule(Number(scheduleDeleteMatch[1]), { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleActionResultText("deleted", data.schedule), reply_markup: renderScheduleActionResultKeyboard() });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
 
   if (update.data === "menu:security" && env?.DB) {
     try {
@@ -152,7 +481,7 @@ export async function routeTelegramCallback(
   if (update.data === "admin_presence:checkin" && env?.DB) {
     try {
       const data = await new AdminPresenceService(env).checkin({ requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
-      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAdminPresenceCheckinText(data), reply_markup: renderAdminPresenceMenuKeyboard() });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAdminPresenceCheckinText(data) });
     } catch (error) {
       return renderTelegramCallbackError(update, client, error, requestId);
     }
@@ -161,11 +490,152 @@ export async function routeTelegramCallback(
   if (update.data === "admin_presence:policies" && env?.DB) {
     try {
       const data = await new AdminPresenceService(env).listPolicies({ limit: 10, offset: 0 });
-      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAdminPresencePoliciesText(data.policies), reply_markup: renderAdminPresencePoliciesKeyboard() });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAdminPresencePoliciesText(data.policies), reply_markup: renderAdminPresencePoliciesKeyboard(data.policies) });
     } catch (error) {
       return renderTelegramCallbackError(update, client, error, requestId);
     }
   }
+
+  const adminPresencePolicyDetailMatch = update.data.match(/^admin_presence:policy:detail:(\d+)$/);
+  if (adminPresencePolicyDetailMatch && env?.DB) {
+    try {
+      const data = await new AdminPresenceService(env).getPolicy(Number(adminPresencePolicyDetailMatch[1]), requestId);
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAdminPresencePolicyDetailText(data.policy), reply_markup: renderAdminPresencePolicyDetailKeyboard(data.policy) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  if (update.data === "admin_presence:policy:create" && sessions) {
+    await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_admin_presence_policy_action" });
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAdminPresencePolicyCreateText(), reply_markup: renderAdminPresencePolicyCreateKeyboard() });
+  }
+
+  const adminPresencePolicyCreateActionMatch = update.data.match(/^admin_presence:policy:create_action:(notify|shutdown_all_instances|delete_all_instances)$/);
+  if (adminPresencePolicyCreateActionMatch && sessions) {
+    const action = adminPresencePolicyCreateActionMatch[1];
+    await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_admin_presence_policy_scope", data: { action } });
+    return client.editMessage({
+      chat_id: update.chatId,
+      message_id: update.messageId,
+      text: action === "delete_all_instances" ? [renderAdminPresenceDeletePolicyWarning(), "", renderAdminPresencePolicyScopeText(action)].join("\n") : renderAdminPresencePolicyScopeText(action),
+      reply_markup: renderAdminPresencePolicyScopeKeyboard(action)
+    });
+  }
+
+  const adminPresencePolicyCreateScopeMatch = update.data.match(/^admin_presence:policy:create_scope:(notify|shutdown_all_instances|delete_all_instances):(all|account|group)$/);
+  if (adminPresencePolicyCreateScopeMatch && sessions && env?.DB) {
+    const action = adminPresencePolicyCreateScopeMatch[1];
+    const scope = adminPresencePolicyCreateScopeMatch[2];
+    if (scope === "all") {
+      await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_admin_presence_policy_remind", data: { action, scope: "all" } });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAdminPresencePolicyTimeText(action, "all"), reply_markup: renderAdminPresencePolicyTimeKeyboard(action, "all") });
+    }
+    if (scope === "account") {
+      const accounts = await new AccountService(env).listAccounts();
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAdminPresencePolicyAccountText(action, accounts), reply_markup: renderAdminPresencePolicyAccountKeyboard(action, accounts) });
+    }
+    const groups = (await new GroupService(env).listGroups()).groups;
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAdminPresencePolicyGroupText(action, groups), reply_markup: renderAdminPresencePolicyGroupKeyboard(action, groups) });
+  }
+
+  const adminPresencePolicyCreateAccountMatch = update.data.match(/^admin_presence:policy:create_account:(notify|shutdown_all_instances|delete_all_instances):(\d+)$/);
+  if (adminPresencePolicyCreateAccountMatch && sessions) {
+    const action = adminPresencePolicyCreateAccountMatch[1];
+    const scope = `account:${adminPresencePolicyCreateAccountMatch[2]}`;
+    await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_admin_presence_policy_remind", data: { action, scope } });
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAdminPresencePolicyTimeText(action, scope), reply_markup: renderAdminPresencePolicyTimeKeyboard(action, scope) });
+  }
+
+  const adminPresencePolicyCreateGroupMatch = update.data.match(/^admin_presence:policy:create_group:(notify|shutdown_all_instances|delete_all_instances):(\d+)$/);
+  if (adminPresencePolicyCreateGroupMatch && sessions) {
+    const action = adminPresencePolicyCreateGroupMatch[1];
+    const scope = `group:${adminPresencePolicyCreateGroupMatch[2]}`;
+    await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_admin_presence_policy_remind", data: { action, scope } });
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAdminPresencePolicyTimeText(action, scope), reply_markup: renderAdminPresencePolicyTimeKeyboard(action, scope) });
+  }
+
+  const adminPresencePolicyCreateRemindMatch = update.data.match(/^admin_presence:policy:create_remind:(notify|shutdown_all_instances|delete_all_instances):(all|account:\d+|group:\d+):(\d+)$/);
+  if (adminPresencePolicyCreateRemindMatch && sessions) {
+    const action = adminPresencePolicyCreateRemindMatch[1];
+    const scope = adminPresencePolicyCreateRemindMatch[2];
+    const remindAfter = Number(adminPresencePolicyCreateRemindMatch[3]);
+    if (action === "notify") {
+      await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_admin_presence_policy_name", data: { action, scope, remind_after_minutes: remindAfter, final_after_minutes: remindAfter + 1 } });
+      return client.editMessage({
+        chat_id: update.chatId,
+        message_id: update.messageId,
+        text: renderAdminPresencePolicyNamePrompt(action, remindAfter, remindAfter, scope),
+        reply_markup: renderCheckinInlineKeyboard()
+      });
+    }
+    await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_admin_presence_policy_final", data: { action, scope, remind_after_minutes: remindAfter } });
+    return client.editMessage({
+      chat_id: update.chatId,
+      message_id: update.messageId,
+      text: renderAdminPresencePolicyFinalTimeText(action, remindAfter, scope),
+      reply_markup: renderAdminPresencePolicyFinalTimeKeyboard(action, remindAfter, scope)
+    });
+  }
+
+  const adminPresencePolicyCreateFinalMatch = update.data.match(/^admin_presence:policy:create_final:(notify|shutdown_all_instances|delete_all_instances):(all|account:\d+|group:\d+):(\d+):(\d+)$/);
+  if (adminPresencePolicyCreateFinalMatch && sessions) {
+    const action = adminPresencePolicyCreateFinalMatch[1];
+    const scope = adminPresencePolicyCreateFinalMatch[2];
+    const remindAfter = Number(adminPresencePolicyCreateFinalMatch[3]);
+    const finalAfter = Number(adminPresencePolicyCreateFinalMatch[4]);
+    if (finalAfter <= remindAfter) {
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: "最终动作时间必须晚于提醒时间，请重新选择。", reply_markup: renderAdminPresencePolicyFinalTimeKeyboard(action, remindAfter, scope) });
+    }
+    await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_admin_presence_policy_name", data: { action, scope, remind_after_minutes: remindAfter, final_after_minutes: finalAfter } });
+    return client.editMessage({
+      chat_id: update.chatId,
+      message_id: update.messageId,
+      text: renderAdminPresencePolicyNamePrompt(action, remindAfter, finalAfter, scope),
+      reply_markup: renderCheckinInlineKeyboard()
+    });
+  }
+
+  const adminPresencePolicyDeleteConfirmMatch = update.data.match(/^admin_presence:policy:delete_confirm:(\d+)$/);
+  if (adminPresencePolicyDeleteConfirmMatch && env?.DB) {
+    try {
+      const policy = (await new AdminPresenceService(env).listPolicies({ limit: 100, offset: 0 })).policies.find((item) => item.id === Number(adminPresencePolicyDeleteConfirmMatch[1]));
+      if (!policy) return renderTelegramCallbackError(update, client, new AppError(ErrorCode.POLICY_NOT_FOUND, "Admin presence policy not found", requestId, 404), requestId);
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAdminPresencePolicyDeleteConfirmText(policy), reply_markup: renderAdminPresencePolicyDeleteConfirmKeyboard(policy) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const adminPresencePolicyDeleteMatch = update.data.match(/^admin_presence:policy:delete:(\d+)$/);
+  if (adminPresencePolicyDeleteMatch && env?.DB) {
+    try {
+      const data = await new AdminPresenceService(env).deletePolicy(Number(adminPresencePolicyDeleteMatch[1]), { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAdminPresencePolicyDeletedText(data.policy), reply_markup: renderCheckinInlineKeyboard() });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const adminPresencePolicyToggleMatch = update.data.match(/^admin_presence:policy:(enable|disable):(\d+)$/);
+  if (adminPresencePolicyToggleMatch && env?.DB) {
+    try {
+      const service = new AdminPresenceService(env);
+      const id = Number(adminPresencePolicyToggleMatch[2]);
+      const data = adminPresencePolicyToggleMatch[1] === "enable"
+        ? await service.enablePolicy(id, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" })
+        : await service.disablePolicy(id, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      return client.editMessage({
+        chat_id: update.chatId,
+        message_id: update.messageId,
+        text: renderAdminPresencePolicyActionText(adminPresencePolicyToggleMatch[1] === "enable" ? "enabled" : "disabled", data.policy),
+        reply_markup: renderAdminPresencePolicyActionKeyboard(data.policy)
+      });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
 
   if ((update.data === "security:events" || update.data === "security:events:open") && env?.DB) {
     try {
@@ -199,8 +669,8 @@ export async function routeTelegramCallback(
       return client.editMessage({
         chat_id: update.chatId,
         message_id: update.messageId,
-        text: [`安全事件已更新`, "", `事件：#${data.security_event.id}`, `状态：${data.security_event.status}`].join("\n"),
-        reply_markup: { inline_keyboard: [[{ text: "返回未确认事件", callback_data: "security:events:open" }], [{ text: "返回账号安全", callback_data: "menu:security" }]] }
+        text: renderSecurityEventStatusUpdateText(data.security_event),
+        reply_markup: { inline_keyboard: [[{ text: "返回未确认", callback_data: "security:events:open" }], [{ text: "返回安全事件", callback_data: "menu:security" }], [{ text: "❤️ 打卡", callback_data: "admin_presence:checkin" }]] }
       });
     } catch (error) {
       return renderTelegramCallbackError(update, client, error, requestId);
@@ -223,7 +693,37 @@ export async function routeTelegramCallback(
     }
   }
 
-  const batchAccountRunMatch = update.data.match(/^batch:account:(boot|shutdown|delete):(\d+)$/);
+  const batchGroupConfirmMatch = update.data.match(/^batch:group:(boot|shutdown|delete):(\d+)$/);
+  if (batchGroupConfirmMatch && env?.DB) {
+    try {
+      const action = batchGroupConfirmMatch[1] as BatchAction;
+      const groupId = Number(batchGroupConfirmMatch[2]);
+      const group = (await new GroupService(env).getGroup(groupId)).group;
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderBatchConfirmText({ action, scope: "group", groupId, groupName: group.name }), reply_markup: renderBatchConfirmKeyboard({ action, scope: "group", groupId }) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const batchGroupRunMatch = update.data.match(/^batch:group:run:(boot|shutdown|delete):(\d+)$/);
+  if (batchGroupRunMatch && env?.DB) {
+    try {
+      const action = batchGroupRunMatch[1] as BatchAction;
+      const data = await new BatchService(env).runGroupBatch(Number(batchGroupRunMatch[2]), action, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderBatchResultText(data), reply_markup: renderBatchResultKeyboard() });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const batchAccountConfirmMatch = update.data.match(/^batch:account:(boot|shutdown|delete):(\d+)$/);
+  if (batchAccountConfirmMatch && env) {
+    const action = batchAccountConfirmMatch[1] as BatchAction;
+    const accountId = Number(batchAccountConfirmMatch[2]);
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderBatchConfirmText({ action, scope: "account", accountId }), reply_markup: renderBatchConfirmKeyboard({ action, scope: "account", accountId }) });
+  }
+
+  const batchAccountRunMatch = update.data.match(/^batch:account:run:(boot|shutdown|delete):(\d+)$/);
   if (batchAccountRunMatch && env) {
     try {
       const action = batchAccountRunMatch[1] as BatchAction;
@@ -234,7 +734,13 @@ export async function routeTelegramCallback(
     }
   }
 
-  const batchAllRunMatch = update.data.match(/^batch:all:(boot|shutdown|delete)$/);
+  const batchAllConfirmMatch = update.data.match(/^batch:all:(boot|shutdown|delete)$/);
+  if (batchAllConfirmMatch && env) {
+    const action = batchAllConfirmMatch[1] as BatchAction;
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderBatchConfirmText({ action, scope: "all" }), reply_markup: renderBatchConfirmKeyboard({ action, scope: "all" }) });
+  }
+
+  const batchAllRunMatch = update.data.match(/^batch:all:run:(boot|shutdown|delete)$/);
   if (batchAllRunMatch && env) {
     try {
       const action = batchAllRunMatch[1] as BatchAction;
@@ -252,7 +758,26 @@ export async function routeTelegramCallback(
         chat_id: update.chatId,
         message_id: update.messageId,
         text: renderAllInstancesText(data.accounts),
-        reply_markup: renderInstancesListKeyboard(data.accounts)
+        reply_markup: renderInstancesListKeyboard(data.accounts, "all")
+      });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const statusListMatch = update.data.match(/^instances:list:status:(running|offline)$/);
+  if (statusListMatch && env) {
+    try {
+      const data = await new InstanceService(env).listAllActiveAccountInstances(requestId);
+      const filtered = data.accounts.map((result) => ({
+        ...result,
+        instances: result.instances.filter((instance) => instance.status === statusListMatch[1])
+      }));
+      return client.editMessage({
+        chat_id: update.chatId,
+        message_id: update.messageId,
+        text: renderAllInstancesText(filtered),
+        reply_markup: renderInstancesListKeyboard(filtered, "all")
       });
     } catch (error) {
       return renderTelegramCallbackError(update, client, error, requestId);
@@ -273,6 +798,38 @@ export async function routeTelegramCallback(
     }
   }
 
+  if (update.data === "instances:groups" && env?.DB) {
+    try {
+      const groups = (await new GroupService(env).listGroups()).groups;
+      return client.editMessage({
+        chat_id: update.chatId,
+        message_id: update.messageId,
+        text: renderInstanceGroupsText(groups),
+        reply_markup: renderInstanceGroupsKeyboard(groups)
+      });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const groupListMatch = update.data.match(/^instances:list:group:(\d+)$/);
+  if (groupListMatch && env?.DB) {
+    try {
+      const groupId = Number(groupListMatch[1]);
+      const groupService = new GroupService(env);
+      const group = (await groupService.getGroup(groupId)).group;
+      const data = await new InstanceService(env).listGroupInstances(groupId, requestId);
+      return client.editMessage({
+        chat_id: update.chatId,
+        message_id: update.messageId,
+        text: ["按分组查看服务器", "", `分组：${group.name}`, "", ...data.accounts.map((result) => renderAccountInstanceBlock(result.account.alias, result.account.group_name, result.instances))].join("\n"),
+        reply_markup: renderInstancesListKeyboard(data.accounts, "group", undefined, group.id)
+      });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
   const accountListMatch = update.data.match(/^instances:list:account:(\d+)$/);
   if (accountListMatch && env) {
     try {
@@ -281,7 +838,7 @@ export async function routeTelegramCallback(
         chat_id: update.chatId,
         message_id: update.messageId,
         text: renderAccountInstancesText(data),
-        reply_markup: renderInstancesListKeyboard([data])
+        reply_markup: renderInstancesListKeyboard([data], "account", data.account.id)
       });
     } catch (error) {
       return renderTelegramCallbackError(update, client, error, requestId);
@@ -333,6 +890,21 @@ export async function routeTelegramCallback(
     }
   }
 
+  const confirmDeleteMatch = update.data.match(/^instances:confirm_delete:(\d+):(\d+)$/);
+  if (confirmDeleteMatch && env) {
+    return client.editMessage({
+      chat_id: update.chatId,
+      message_id: update.messageId,
+      text: ["⚠️ 确认删除服务器？", "", `账号：#${confirmDeleteMatch[1]}`, `服务器 ID：${confirmDeleteMatch[2]}`, "", "删除后通常无法恢复。请确认这是你要执行的操作。"].join("\n"),
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "确认删除", callback_data: `instances:delete:${confirmDeleteMatch[1]}:${confirmDeleteMatch[2]}` }],
+          [{ text: "取消", callback_data: `instances:detail:${confirmDeleteMatch[1]}:${confirmDeleteMatch[2]}` }]
+        ]
+      }
+    });
+  }
+
   const deleteMatch = update.data.match(/^instances:delete:(\d+):(\d+)$/);
   if (deleteMatch && env) {
     try {
@@ -356,17 +928,7 @@ export async function routeTelegramCallback(
         chat_id: update.chatId,
         message_id: update.messageId,
         text: renderInstanceDetailText(data),
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: "开机", callback_data: `instances:boot:${data.account.id}:${data.instance.id}` },
-              { text: "关机", callback_data: `instances:shutdown:${data.account.id}:${data.instance.id}` },
-              { text: "重启", callback_data: `instances:reboot:${data.account.id}:${data.instance.id}` }
-            ],
-            [{ text: "删除", callback_data: `instances:delete:${data.account.id}:${data.instance.id}` }],
-            [{ text: "返回服务器列表", callback_data: `instances:list:account:${data.account.id}` }]
-          ]
-        }
+        reply_markup: renderInstanceDetailKeyboard(data)
       });
     } catch (error) {
       return renderTelegramCallbackError(update, client, error, requestId);
@@ -376,8 +938,8 @@ export async function routeTelegramCallback(
   return client.editMessage({
     chat_id: update.chatId,
     message_id: update.messageId,
-    text: `暂不支持的菜单入口：${update.data}\n后续阶段会通过 inline keyboard 逐步接入。`,
-    reply_markup: renderMainMenuKeyboard()
+    text: `暂不支持的菜单入口：${update.data}\n后续阶段会通过聊天框下方的固定按钮逐步接入。`,
+    reply_markup: renderCheckinInlineKeyboard()
   });
 }
 
@@ -394,6 +956,6 @@ function renderTelegramCallbackError(
     chat_id: update.chatId,
     message_id: update.messageId,
     text: ["操作失败", "", mapTelegramErrorMessage(appError.code)].join("\n"),
-    reply_markup: { inline_keyboard: [[{ text: "返回主菜单", callback_data: "menu:main" }]] }
+    reply_markup: renderCheckinInlineKeyboard()
   });
 }

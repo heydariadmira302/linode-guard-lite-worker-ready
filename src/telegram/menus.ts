@@ -1,50 +1,40 @@
 import type { PublicAccount } from "../services/account-service";
+import type { PublicGroup } from "../services/group-service";
+import { renderCheckinInlineKeyboard } from "./keyboards";
 import type { TelegramInlineKeyboardMarkup } from "./types";
 
 export function renderMainMenuText(): string {
   return [
     "🛡 Linode Guard Lite",
+    "🏠 主菜单",
     "",
     "账号数：0",
     "服务器数：-",
     "",
-    "最近确认：从未确认",
-    "账号安全监控：未配置",
-    "定时任务：0 个启用",
-    "保活策略组：0 个启用"
+    "Linode Guard Lite 运维管家已就绪。",
+    "请选择功能：",
+    "",
+    "🖥 服务器",
+    "👤 账号",
+    "📁 分组",
+    "🛡 安全事件",
+    "⏰ 定时任务",
+    "❤️ 保活打卡",
+    "⚙️ 设置"
   ].join("\n");
 }
 
 export function renderMainMenuKeyboard(): TelegramInlineKeyboardMarkup {
-  return {
-    inline_keyboard: [
-      [
-        { text: "服务器", callback_data: "menu:instances" },
-        { text: "账号安全", callback_data: "menu:security" }
-      ],
-      [
-        { text: "保活确认", callback_data: "menu:admin_presence" },
-        { text: "定时任务", callback_data: "menu:schedules" }
-      ],
-      [
-        { text: "账号管理", callback_data: "menu:accounts" },
-        { text: "审计日志", callback_data: "menu:audit_logs" }
-      ],
-      [
-        { text: "系统自检", callback_data: "menu:diagnostics" },
-        { text: "设置", callback_data: "menu:settings" }
-      ],
-      [{ text: "危险操作", callback_data: "menu:batch" }]
-    ]
-  };
+  return renderCheckinInlineKeyboard();
 }
 
 export function renderAccountsMenuText(): string {
   return [
-    "账号管理",
+    "👤 账号管理",
     "",
-    "当前阶段支持添加、查看、测试、删除 Linode 账号 Token。",
-    "核心能力同样可通过 /api/v1/accounts HTTP API 使用。"
+    "可以添加、查看、测试、删除 Linode 账号 Token。",
+    "添加账号时会检测 Token，并建立安全基线：历史登录不会通知。",
+    "默认分组：未分组"
   ].join("\n");
 }
 
@@ -53,7 +43,7 @@ export function renderAccountsMenuKeyboard(): TelegramInlineKeyboardMarkup {
     inline_keyboard: [
       [{ text: "查看账号列表", callback_data: "accounts:list" }],
       [{ text: "添加账号", callback_data: "accounts:add" }],
-      [{ text: "返回主菜单", callback_data: "menu:main" }]
+      [{ text: "❤️ 打卡", callback_data: "admin_presence:checkin" }]
     ]
   };
 }
@@ -73,14 +63,81 @@ export function renderAccountListText(accounts: PublicAccount[]): string {
   return lines.join("\n").trimEnd();
 }
 
-export function renderAccountListKeyboard(): TelegramInlineKeyboardMarkup {
+export function renderAccountListKeyboard(accounts: PublicAccount[] = []): TelegramInlineKeyboardMarkup {
   return {
     inline_keyboard: [
+      ...accounts.map((account) => [{ text: `详情 #${account.id} ${account.alias}`, callback_data: `accounts:detail:${account.id}` }]),
       [{ text: "继续添加账号", callback_data: "accounts:add" }],
       [{ text: "返回账号管理", callback_data: "menu:accounts" }],
-      [{ text: "返回主菜单", callback_data: "menu:main" }]
+      [{ text: "❤️ 打卡", callback_data: "admin_presence:checkin" }]
     ]
   };
+}
+
+export function renderAccountDetailText(account: PublicAccount): string {
+  return [
+    "👤 账号详情",
+    "",
+    `账号：#${account.id} ${account.alias}`,
+    `状态：${formatAccountStatus(account.status)}`,
+    `Token 状态：${formatTokenStatus(account.token_status)}`,
+    `Token 指纹：${account.token_fingerprint}`,
+    `分组：${account.group_id ? `#${account.group_id}` : "未分组"}`,
+    `安全基线：${account.security_baseline_at ?? "-"}`,
+    `创建时间：${account.created_at}`,
+    `更新时间：${account.updated_at}`
+  ].join("\n");
+}
+
+export function renderAccountDetailKeyboard(account: PublicAccount): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "测试 Token", callback_data: `accounts:test:${account.id}` }],
+      [{ text: "更新 Token", callback_data: `accounts:update_token:${account.id}` }],
+      [{ text: "移动分组", callback_data: `accounts:move_group:${account.id}` }],
+      [{ text: "删除账号", callback_data: `accounts:delete_confirm:${account.id}` }],
+      [{ text: "返回账号列表", callback_data: "accounts:list" }],
+      [{ text: "❤️ 打卡", callback_data: "admin_presence:checkin" }]
+    ]
+  };
+}
+
+export function renderAccountDeleteConfirmText(account: PublicAccount): string {
+  return [
+    "⚠️ 确认删除账号？",
+    "",
+    `账号：#${account.id} ${account.alias}`,
+    "",
+    "删除后这个账号不会再参与服务器管理、批量操作、定时任务和安全检查。",
+    "不会删除 Linode 服务器，但会停止本 Bot 对该账号的管理。"
+  ].join("\n");
+}
+
+export function renderAccountDeleteConfirmKeyboard(account: PublicAccount): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "确认删除账号", callback_data: `accounts:delete:${account.id}` }],
+      [{ text: "取消", callback_data: `accounts:detail:${account.id}` }],
+      [{ text: "❤️ 打卡", callback_data: "admin_presence:checkin" }]
+    ]
+  };
+}
+
+export function renderAccountActionResultText(title: string, account: PublicAccount): string {
+  return [title, "", `账号：#${account.id} ${account.alias}`, `状态：${formatAccountStatus(account.status)}`, `Token 状态：${formatTokenStatus(account.token_status)}`, `分组：${account.group_id ? `#${account.group_id}` : "未分组"}`].join("\n");
+}
+
+function formatAccountStatus(status: string): string {
+  if (status === "active") return "启用";
+  if (status === "deleted") return "已删除";
+  return status;
+}
+
+function formatTokenStatus(status: string): string {
+  if (status === "valid") return "可用";
+  if (status === "invalid") return "无效";
+  if (status === "permission_error") return "权限不足";
+  return status;
 }
 
 export function renderAccountAddedKeyboard(): TelegramInlineKeyboardMarkup {
@@ -88,7 +145,7 @@ export function renderAccountAddedKeyboard(): TelegramInlineKeyboardMarkup {
     inline_keyboard: [
       [{ text: "查看账号列表", callback_data: "accounts:list" }],
       [{ text: "继续添加账号", callback_data: "accounts:add" }],
-      [{ text: "返回主菜单", callback_data: "menu:main" }]
+      [{ text: "❤️ 打卡", callback_data: "admin_presence:checkin" }]
     ]
   };
 }
@@ -120,7 +177,7 @@ export function renderDiagnosticsMenuText(status: string, missingJobs: string[],
 }
 
 export function renderDiagnosticsMenuKeyboard(): TelegramInlineKeyboardMarkup {
-  return { inline_keyboard: [[{ text: "刷新系统自检", callback_data: "menu:diagnostics" }], [{ text: "返回主菜单", callback_data: "menu:main" }]] };
+  return { inline_keyboard: [[{ text: "刷新系统自检", callback_data: "menu:diagnostics" }], [{ text: "❤️ 打卡", callback_data: "admin_presence:checkin" }]] };
 }
 
 export function renderSettingsMenuText(): string {
@@ -135,7 +192,28 @@ export function renderSettingsMenuText(): string {
 }
 
 export function renderSettingsMenuKeyboard(): TelegramInlineKeyboardMarkup {
-  return { inline_keyboard: [[{ text: "系统自检", callback_data: "menu:diagnostics" }], [{ text: "返回主菜单", callback_data: "menu:main" }]] };
+  return { inline_keyboard: [[{ text: "系统自检", callback_data: "menu:diagnostics" }], [{ text: "❤️ 打卡", callback_data: "admin_presence:checkin" }]] };
+}
+
+export function renderGroupsMenuText(groups: PublicGroup[]): string {
+  return [
+    "📁 分组",
+    "",
+    groups.length ? groups.map((group) => `${group.is_default ? "⭐️" : "•"} ${group.name}（${group.account_count}）`).join("\n") : "暂无分组。",
+    "",
+    "默认分组：未分组",
+    "一个账号只能属于一个分组。"
+  ].join("\n");
+}
+
+export function renderGroupsMenuKeyboard(): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "查看分组列表", callback_data: "groups:list" }],
+      [{ text: "新建分组", callback_data: "groups:create" }],
+      [{ text: "❤️ 打卡", callback_data: "admin_presence:checkin" }]
+    ]
+  };
 }
 
 export function renderSetupPlaceholderText(): string {

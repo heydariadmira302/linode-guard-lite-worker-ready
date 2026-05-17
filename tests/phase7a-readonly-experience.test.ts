@@ -113,12 +113,18 @@ describe("Phase 7A read-only instance experience and docs", () => {
 
       expect(response.status).toBe(200);
       expect(body.data.telegram.payload.text).toContain("服务器详情");
+      expect(body.data.telegram.payload.text).toContain("分组：未分组");
       expect(body.data.telegram.payload.text).toContain("更新时间：2026-01-02T00:00:00");
       expect(body.data.telegram.payload.text).toContain("标签：prod, web");
       expect(body.data.telegram.payload.text).toContain("CPU：1 vCPU");
       expect(body.data.telegram.payload.text).toContain("内存：2048 MB");
       expect(body.data.telegram.payload.text).toContain("磁盘：51200 MB");
       expect(body.data.telegram.payload.text).toContain("流量：2000 GB");
+      expect(body.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
+        { text: "返回账号服务器", callback_data: "instances:list:account:1" },
+        { text: "返回分组服务器", callback_data: "instances:list:group:1" },
+        { text: "返回服务器管理", callback_data: "menu:instances" }
+      ]));
       expect(raw).not.toContain("batch");
       expect(raw).not.toContain("批量");
     } finally {
@@ -140,7 +146,7 @@ describe("Phase 7A read-only instance experience and docs", () => {
       expect(body.ok).toBe(true);
       expect(body.data.telegram.payload.text).toContain("Linode Token 无效，请检查后重新添加。");
       expect(body.data.telegram.payload.text).toContain("操作失败");
-      expect(keyboard).toEqual(expect.arrayContaining([{ text: "返回主菜单", callback_data: "menu:main" }]));
+      expect(keyboard).toEqual(expect.arrayContaining([{ text: "❤️ 打卡", callback_data: "admin_presence:checkin" }]));
     } finally {
       fetchMock.mockRestore();
     }
@@ -164,9 +170,10 @@ describe("Phase 7A read-only instance experience and docs", () => {
     expect(telegramDoc).toContain("只读");
     expect(telegramDoc).toContain("批量操作");
     expect(telegramDoc).toContain("batch:account:delete:<account_id>");
-    expect(telegramDoc).toContain("账号安全事件监控");
+    expect(telegramDoc).toContain("安全事件");
     expect(telegramDoc).toContain("security:check");
-    expect(telegramDoc).not.toContain("定时任务\n");
+    expect(telegramDoc).toContain("定时任务");
+    expect(telegramDoc).toContain("schedules:list");
     expect(telegramDoc).not.toContain("多管理员入口");
   });
 });

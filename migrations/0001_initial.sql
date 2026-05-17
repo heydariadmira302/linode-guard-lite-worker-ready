@@ -5,21 +5,35 @@ CREATE TABLE IF NOT EXISTS settings (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS groups (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  is_default INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  deleted_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_groups_default ON groups(is_default);
+
 CREATE TABLE IF NOT EXISTS linode_accounts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   alias TEXT NOT NULL UNIQUE,
+  group_id INTEGER NOT NULL DEFAULT 1,
   encrypted_token TEXT NOT NULL,
   token_fingerprint TEXT NOT NULL,
   token_status TEXT NOT NULL DEFAULT 'unknown',
   status TEXT NOT NULL DEFAULT 'active',
   last_seen_login_id TEXT,
   last_login_check_at TEXT,
+  security_baseline_at TEXT,
   metadata_json TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  deleted_at TEXT
+  deleted_at TEXT,
+  FOREIGN KEY(group_id) REFERENCES groups(id)
 );
 CREATE INDEX IF NOT EXISTS idx_linode_accounts_status ON linode_accounts(status);
+CREATE INDEX IF NOT EXISTS idx_linode_accounts_group_id ON linode_accounts(group_id);
 
 CREATE TABLE IF NOT EXISTS login_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -129,6 +143,7 @@ CREATE TABLE IF NOT EXISTS power_schedules (
   action TEXT NOT NULL,
   scope TEXT NOT NULL,
   account_id INTEGER,
+  group_id INTEGER,
   cron_expr TEXT NOT NULL,
   timezone TEXT NOT NULL DEFAULT 'Asia/Shanghai',
   last_run_at TEXT,
@@ -137,7 +152,8 @@ CREATE TABLE IF NOT EXISTS power_schedules (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   deleted_at TEXT,
   metadata_json TEXT,
-  FOREIGN KEY(account_id) REFERENCES linode_accounts(id)
+  FOREIGN KEY(account_id) REFERENCES linode_accounts(id),
+  FOREIGN KEY(group_id) REFERENCES groups(id)
 );
 CREATE INDEX IF NOT EXISTS idx_power_schedules_enabled ON power_schedules(enabled);
 CREATE INDEX IF NOT EXISTS idx_power_schedules_next_run_at ON power_schedules(next_run_at);

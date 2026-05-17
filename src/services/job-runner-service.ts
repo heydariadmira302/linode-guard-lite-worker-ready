@@ -95,9 +95,7 @@ export class JobRunnerService {
           await this.sendPresenceReminder(policy, rule, minutesSince, now);
           await this.auditPolicy(policy, rule, "success", null);
         } else {
-          const batch = rule.action === "shutdown_all_instances"
-            ? await new BatchService(this.env).runAllAccountsBatch("shutdown", { requestId: `cron_${Date.now()}`, actor: "cron:job_runner", source: "cron" })
-            : await new BatchService(this.env).runAllAccountsBatch("delete", { requestId: `cron_${Date.now()}`, actor: "cron:job_runner", source: "cron" });
+          const batch = await this.runPresenceBatch(policy, rule);
           const auditResult = batch.result;
           const errorCode = batch.result === "success" ? null : ErrorCode.JOB_FAILED;
           await this.auditPolicy(policy, rule, auditResult, errorCode);
@@ -107,6 +105,15 @@ export class JobRunnerService {
       }
     }
     return { checked_policies: policies.length, triggered };
+  }
+
+  private async runPresenceBatch(policy: AdminPresencePolicyRecord, rule: PresenceRule) {
+    const action = rule.action === "shutdown_all_instances" ? "shutdown" : "delete";
+    const context = { requestId: `cron_${Date.now()}`, actor: "cron:job_runner", source: "cron" };
+    const service = new BatchService(this.env);
+    if (policy.scope.startsWith("account:")) return await service.runAccountBatch(Number(policy.scope.split(":")[1]), action, context);
+    if (policy.scope.startsWith("group:")) return await service.runGroupBatch(Number(policy.scope.split(":")[1]), action, context);
+    return await service.runAllAccountsBatch(action, context);
   }
 
   private async auditPolicy(policy: AdminPresencePolicyRecord, rule: PresenceRule, result: string, errorCode: string | null): Promise<void> {

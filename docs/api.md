@@ -38,6 +38,40 @@ Authorization: Bearer <API_AUTH_TOKEN>
 }
 ```
 
+## Accounts API
+
+### GET /api/v1/accounts
+
+查询 active Linode 账号列表。响应不会返回 token 明文或 encrypted_token。
+
+### GET /api/v1/accounts/:account_id
+
+查询单个账号详情，包含账号 ID、昵称、Token 指纹、Token 状态、状态、分组 ID、安全基线时间、创建/更新时间；不会返回 token 明文或 encrypted_token。
+
+### POST /api/v1/accounts
+
+添加 Linode 账号。添加时会检测 Token，建立安全基线，并加密保存 Token。
+
+### PUT /api/v1/accounts/:account_id/token
+
+更新指定账号的 Linode API Token。系统会先测试新 Token，成功后加密保存、更新 Token 指纹和 Token 状态，并重新建立安全基线。响应不会返回 token 明文或 `encrypted_token`。
+
+请求示例：
+
+```json
+{
+  "token": "<NEW_LINODE_API_TOKEN>"
+}
+```
+
+### POST /api/v1/accounts/:account_id/test
+
+重新测试账号 Token 可用性，并更新 Token 状态。
+
+### DELETE /api/v1/accounts/:account_id
+
+软删除账号。不会删除 Linode 服务器，但该账号不再参与本系统的服务器管理、批量操作、定时任务和安全检查。
+
 ## Instances 只读 API
 
 Phase 6 / Phase 7A 当前只提供 Linode Instance 只读查看能力。
@@ -85,7 +119,7 @@ curl -s \
 
 ### GET /api/v1/accounts/:account_id/instances
 
-查看指定 active Linode 账号下的实例列表。
+查看指定 active Linode 账号下的实例列表。响应里的账号信息会包含分组名称（如可解析），不会返回 token 明文或 encrypted_token。
 
 ```bash
 curl -s \
@@ -95,7 +129,7 @@ curl -s \
 
 ### GET /api/v1/accounts/:account_id/instances/:instance_id
 
-查看指定实例详情。
+查看指定实例详情。响应会包含账号别名与分组名称（如可解析），不会返回 token 明文或 encrypted_token。
 
 ```bash
 curl -s \
@@ -168,6 +202,14 @@ POST /api/v1/accounts/:account_id/instances/batch/shutdown
 POST /api/v1/accounts/:account_id/instances/batch/delete
 ```
 
+### 分组批量操作
+
+```http
+POST /api/v1/groups/:group_id/instances/batch/boot
+POST /api/v1/groups/:group_id/instances/batch/shutdown
+POST /api/v1/groups/:group_id/instances/batch/delete
+```
+
 ### 全账号批量操作
 
 ```http
@@ -176,7 +218,7 @@ POST /api/v1/instances/batch/shutdown
 POST /api/v1/instances/batch/delete
 ```
 
-请求体当前不支持复杂筛选；批量操作会默认操作范围内全部实例。当前不支持指定单台服务器、标签或实例组筛选。
+请求体当前不支持复杂筛选；批量操作会默认操作范围内全部实例。当前支持单账号、分组、全部账号三类范围；暂不支持指定单台服务器、标签或实例组筛选。
 
 响应示例：
 
@@ -277,7 +319,7 @@ curl -s \
 
 ### POST /api/v1/security/check
 
-手动触发一次账号安全事件检查。会遍历 active Linode 账号，解密 Token 后调用 Linode `GET /account/logins`，保存新的 `login_events`，生成 `security_events`，并更新账号游标。
+手动触发一次账号安全事件检查。会遍历 active Linode 账号，解密 Token 后调用 Linode `GET /account/logins`，只保存账号 `last_seen_login_id` 之后的新 `login_events`，生成对应 `security_events`，并更新账号游标。添加账号前已经存在的历史登录不会生成安全事件通知。
 
 ```bash
 curl -X POST \
@@ -319,7 +361,7 @@ curl -X POST \
 
 审计日志：手动检查写入 `audit_logs`，`action=security.check`，`target_type=security`，`risk_level=medium`，`result=success / partial_failed / failed`。
 
-安全约束：响应不会返回 token 明文或 encrypted_token，也不会返回 `metadata_json` 原文。MVP 不实现 IP Geo、国家 / 地区策略、夜间登录策略、复杂安全策略配置或登录确认超时 Job。
+安全约束：响应不会返回 token 明文或 encrypted_token，也不会返回 `raw_json` / `metadata_json` 原文。MVP 不实现 IP Geo、国家 / 地区策略、夜间登录策略、复杂安全策略配置或登录确认超时 Job。Telegram 前端展示这些事件时会把 `LOGIN_SUCCESS` / `LOGIN_FAILED` / `TOKEN_INVALID` / `TOKEN_PERMISSION_ERROR` 等内部枚举转换成中文文案。
 
 ## Power Schedules API
 
@@ -331,7 +373,7 @@ curl -X POST \
 
 ### POST /api/v1/schedules
 
-创建定时任务。仅支持 `action=boot|shutdown`，`scope=all|account`。不支持定时删除服务器。
+创建定时任务。仅支持 `action=boot|shutdown`，`scope=all|account|group`。不支持定时删除服务器。
 
 ```json
 {
@@ -344,11 +386,28 @@ curl -X POST \
 }
 ```
 
+分组范围示例：
+
+```json
+{
+  "name": "spain shutdown",
+  "action": "shutdown",
+  "scope": "group",
+  "group_id": 2,
+  "cron_expr": "0 22 * * *",
+  "timezone": "Asia/Shanghai"
+}
+```
+
 ### POST /api/v1/schedules/:schedule_id/enable
 ### POST /api/v1/schedules/:schedule_id/disable
+### POST /api/v1/schedules/disable-all
+### POST /api/v1/schedules/enable-all
 ### DELETE /api/v1/schedules/:schedule_id
 
-变更写入 `audit_logs`：`schedule.create` / `schedule.enable` / `schedule.disable` / `schedule.delete`，`target_type=power_schedule`，`risk_level=medium`。响应不会返回 token 明文或 encrypted_token。
+`disable-all` 会暂停全部未删除定时任务；`enable-all` 会启用全部未删除定时任务。两者返回本次受影响任务数和任务列表。
+
+变更写入 `audit_logs`：`schedule.create` / `schedule.enable` / `schedule.disable` / `schedule.disable_all` / `schedule.enable_all` / `schedule.delete`，`target_type=power_schedule`，`risk_level=medium`。响应不会返回 token 明文或 encrypted_token。
 
 ## Job Runner
 
@@ -386,9 +445,13 @@ Cron 执行可能有数分钟延迟，不适合秒级任务调度。
 
 查询保活策略组列表。支持 `limit`、`offset`。
 
+### GET /api/v1/admin-presence/policies/:policy_id
+
+查询单个保活策略详情。响应包含公开策略字段、解析后的 `rules`、`action`、`scope_type`、`account_id` / `group_id`、提醒时间和最终动作时间；不会返回 `rules_json` 原文、token 明文或 `encrypted_token`。
+
 ### POST /api/v1/admin-presence/policies
 
-创建保活策略组。MVP 只支持 `scope = all`。
+创建保活策略组。支持 `scope=all`（全部账号）、`scope=account` + `account_id`（单账号）、`scope=group` + `group_id`（分组）。支持配置提醒时间和最终动作时间，单位为分钟；最终动作时间必须晚于提醒时间。
 
 请求体示例：
 
@@ -397,9 +460,41 @@ Cron 执行可能有数分钟延迟，不适合秒级任务调度。
   "name": "notify after 7 days",
   "scope": "all",
   "action": "notify",
-  "enabled": true
+  "enabled": true,
+  "remind_after_minutes": 720,
+  "final_after_minutes": 1440
 }
 ```
+
+单账号范围示例：
+
+```json
+{
+  "name": "single account shutdown",
+  "scope": "account",
+  "account_id": 1,
+  "action": "shutdown_all_instances",
+  "enabled": true,
+  "remind_after_minutes": 720,
+  "final_after_minutes": 1440
+}
+```
+
+分组范围示例：
+
+```json
+{
+  "name": "group delete stale",
+  "scope": "group",
+  "group_id": 2,
+  "action": "delete_all_instances",
+  "enabled": true,
+  "remind_after_minutes": 720,
+  "final_after_minutes": 1440
+}
+```
+
+关机 / 删除类策略会生成两段规则：先在 `remind_after_minutes` 触发提醒，再在 `final_after_minutes` 执行最终动作。`notify` 策略只触发提醒。
 
 支持的 action：
 
@@ -407,7 +502,7 @@ Cron 执行可能有数分钟延迟，不适合秒级任务调度。
 - `shutdown_all_instances`
 - `delete_all_instances`
 
-不支持复杂范围；不支持指定单台服务器、指定账号、标签或实例组。
+当前支持全部账号、单账号、分组三类范围；不支持指定单台服务器、标签或实例组。
 
 ### POST /api/v1/admin-presence/policies/:policy_id/enable
 
@@ -430,7 +525,7 @@ Cron 执行可能有数分钟延迟，不适合秒级任务调度。
 
 `target_type=admin_presence_policy`。risk_level：`notify` 为 `medium`，`shutdown_all_instances` 为 `high`，`delete_all_instances` 为 `critical`。
 
-安全约束：响应不会返回 token 明文或 encrypted_token。保活策略由 Job Runner 触发时会真正执行批量关机或批量删除；每个周期内每个策略规则只应触发一次。
+安全约束：响应不会返回 token 明文或 encrypted_token。保活策略由 Job Runner 触发时会按策略范围执行批量关机或批量删除；每个周期内每个策略规则只应触发一次。
 
 ## Audit Logs API
 

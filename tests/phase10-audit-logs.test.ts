@@ -157,7 +157,7 @@ describe("Phase 10 audit logs API and Telegram menu", () => {
     expect(text).toContain("risk_level：critical");
     expect(text).toContain("result：failed");
     expect(text).toContain("error_code：TOKEN_INVALID");
-    expect(keyboard).toEqual(expect.arrayContaining([{ text: "返回主菜单", callback_data: "menu:main" }]));
+    expect(keyboard).toEqual(expect.arrayContaining([{ text: "❤️ 打卡", callback_data: "admin_presence:checkin" }]));
     expect(raw).not.toContain("plain-token");
     expect(raw).not.toContain("encrypted_token");
   });

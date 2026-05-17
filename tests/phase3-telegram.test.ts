@@ -90,11 +90,11 @@ describe("Phase 3 Telegram webhook and menu", () => {
     const fakeDb = new FakeD1Database();
     const testEnv = { ...env, DB: fakeDb as unknown as D1Database, SUPER_ADMIN_TELEGRAM_ID: undefined as unknown as string };
     const response = await worker.fetch(telegramRequest(messageUpdate("/start", 987654321)), testEnv as never);
-    const body = await response.json() as { ok: boolean; data: { telegram: { method: string } } };
+    const body = await response.json() as { ok: boolean; data: { telegram: Array<{ method: string }> } };
 
     expect(response.status).toBe(200);
     expect(body.ok).toBe(true);
-    expect(body.data.telegram.method).toBe("sendMessage");
+    expect(body.data.telegram[0].method).toBe("sendMessage");
     expect(fakeDb.settings.get("super_admin")).toContain("987654321");
     expect(fakeDb.settings.get("super_admin")).toContain("chat_id");
     expect(fakeDb.botSessions.length).toBe(0);
@@ -125,20 +125,27 @@ describe("Phase 3 Telegram webhook and menu", () => {
     })).toMatchObject({ kind: "callback_query", data: "menu:unknown", messageId: 11 });
   });
 
-  it("handles /start with main menu text and inline keyboard", async () => {
+  it("handles /start with reply keyboard main entries and inline checkin", async () => {
     const response = await worker.fetch(telegramRequest(messageUpdate("/start")), env as never);
-    const body = await response.json() as { ok: boolean; data: { telegram: { method: string; payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } }; sent: unknown[] } };
+    const body = await response.json() as { ok: boolean; data: { telegram: Array<{ method: string; payload: { text: string; reply_markup: { keyboard?: Array<Array<{ text: string }>>; inline_keyboard?: Array<Array<{ text: string; callback_data: string }>> } } }>; sent: unknown[] } };
 
     expect(response.status).toBe(200);
     expect(body.ok).toBe(true);
-    expect(body.data.telegram.method).toBe("sendMessage");
-    expect(body.data.telegram.payload.text).toContain("🛡 Linode Guard Lite");
-    expect(body.data.telegram.payload.text).toContain("账号数：0");
-    expect(body.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
-      { text: "账号管理", callback_data: "menu:accounts" },
-      { text: "系统自检", callback_data: "menu:diagnostics" }
+    expect(body.data.telegram).toHaveLength(2);
+    expect(body.data.telegram[0].method).toBe("sendMessage");
+    expect(body.data.telegram[0].payload.reply_markup.keyboard?.flat()).toEqual(expect.arrayContaining([
+      { text: "🏠 主菜单" },
+      { text: "❤️ 打卡" },
+      { text: "🖥 服务器" },
+      { text: "👤 账号" }
     ]));
-    expect(body.data.sent).toEqual([expect.objectContaining({ ok: true, dry_run: true, method: "sendMessage" })]);
+    expect(body.data.telegram[1].payload.text).toContain("🛡 Linode Guard Lite");
+    expect(body.data.telegram[1].payload.text).toContain("账号数：0");
+    expect(body.data.telegram[1].payload.reply_markup.inline_keyboard?.flat()).toEqual([{ text: "❤️ 打卡", callback_data: "admin_presence:checkin" }]);
+    expect(body.data.sent).toEqual([
+      expect.objectContaining({ ok: true, dry_run: true, method: "sendMessage" }),
+      expect.objectContaining({ ok: true, dry_run: true, method: "sendMessage" })
+    ]);
   });
 
   it("sends Telegram webhook actions through Telegram API outside test dry-run tokens", async () => {
@@ -150,9 +157,10 @@ describe("Phase 3 Telegram webhook and menu", () => {
     try {
       const response = await worker.fetch(telegramRequest(messageUpdate("/start")), { ...env, TELEGRAM_BOT_TOKEN: "123456:realish-token" } as never);
       expect(response.status).toBe(200);
-      expect(calls).toHaveLength(1);
+      expect(calls).toHaveLength(2);
       expect(calls[0].url).toBe("https://api.telegram.org/bot123456:realish-token/sendMessage");
-      expect(calls[0].body).toContain("Linode Guard Lite");
+      expect(calls[0].body).toContain("主入口按钮");
+      expect(calls[1].body).toContain("Linode Guard Lite");
     } finally {
       fetchMock.mockRestore();
     }

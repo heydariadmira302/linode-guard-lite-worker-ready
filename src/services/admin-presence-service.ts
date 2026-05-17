@@ -3,6 +3,8 @@ import { AppError } from "../errors/app-error";
 import { ErrorCode } from "../errors/error-codes";
 import { AdminPresenceRepository, type AdminPresencePolicyRecord, type AdminPresenceRecord } from "../storage/admin-presence-repository";
 import { AuditRepository } from "../storage/audit-repository";
+import { AccountsRepository } from "../storage/accounts-repository";
+import { GroupsRepository } from "../storage/groups-repository";
 import { TelegramMessagesRepository } from "../storage/telegram-messages-repository";
 import { sendTelegramAction } from "../telegram/action-sender";
 import type { TelegramClientAction } from "../telegram/types";
@@ -16,9 +18,22 @@ export type AdminPresenceContext = {
   source: string;
 };
 
+export type AdminPresenceRule = {
+  rule_id: string;
+  after_minutes: number;
+  action: AdminPresenceAction;
+};
+
+export type AdminPresenceScopeType = "all" | "account" | "group";
+
 export type PublicAdminPresencePolicy = Omit<AdminPresencePolicyRecord, "rules_json"> & {
   action: AdminPresenceAction;
-  rules: { action: AdminPresenceAction };
+  scope_type: AdminPresenceScopeType;
+  account_id: number | null;
+  group_id: number | null;
+  remind_after_minutes: number | null;
+  final_after_minutes: number | null;
+  rules: AdminPresenceRule[];
 };
 
 export type AdminPresenceStatusResult = {
@@ -90,18 +105,30 @@ export class AdminPresenceService {
     }
   }
 
-  async createPolicy(input: { name?: unknown; scope?: unknown; action?: unknown; enabled?: unknown }, context: AdminPresenceContext): Promise<{ policy: PublicAdminPresencePolicy }> {
+  async createPolicy(input: { name?: unknown; scope?: unknown; account_id?: unknown; group_id?: unknown; action?: unknown; enabled?: unknown; remind_after_minutes?: unknown; final_after_minutes?: unknown }, context: AdminPresenceContext): Promise<{ policy: PublicAdminPresencePolicy }> {
     const name = typeof input.name === "string" && input.name.trim() ? input.name.trim() : "管理员保活确认策略";
     const action = validateAction(input.action, context.requestId);
-    validateScope(input.scope, context.requestId);
+    const scope = await this.resolveScope(input, context.requestId);
+    const remindAfter = normalizePolicyMinutes(input.remind_after_minutes, 12 * 60, "提醒时间", context.requestId);
+    const finalAfter = normalizePolicyMinutes(input.final_after_minutes, 24 * 60, "最终动作时间", context.requestId);
+    if (finalAfter <= remindAfter) throw new AppError(ErrorCode.VALIDATION_ERROR, "Final action time must be later than reminder time", context.requestId, 400);
+    const rules = buildRules(action, remindAfter, finalAfter);
     const risk = riskForAction(action);
     try {
-      const policy = toPublicPolicy(await this.repository.createPolicy({ name, enabled: input.enabled !== false, scope: "all", rules_json: JSON.stringify({ action }) }));
+      const policy = toPublicPolicy(await this.repository.createPolicy({ name, enabled: input.enabled !== false, scope, rules_json: JSON.stringify({ rules }) }));
       await this.auditPolicyChange("admin_presence.policy.create", policy, risk, context, "success");
       return { policy };
     } catch (error) {
       await this.audit?.record({ request_id: context.requestId, actor: context.actor, source: context.source, action: "admin_presence.policy.create", target_type: "admin_presence_policy", target_id: null, risk_level: risk, result: "failed", error_code: error instanceof AppError ? error.code : ErrorCode.D1_ERROR, metadata_json: null });
       throw error;
+    }
+  }
+
+  async getPolicy(id: number, requestId = "req_policy_get"): Promise<{ policy: PublicAdminPresencePolicy }> {
+    try {
+      return { policy: toPublicPolicy(await this.repository.getPolicy(id)) };
+    } catch {
+      throw new AppError(ErrorCode.POLICY_NOT_FOUND, "Admin presence policy not found", requestId, 404);
     }
   }
 
@@ -139,6 +166,29 @@ export class AdminPresenceService {
     await this.audit?.record({ request_id: context.requestId, actor: context.actor, source: context.source, action, target_type: "admin_presence_policy", target_id: String(policy.id), risk_level, result, error_code: null, metadata_json: JSON.stringify({ scope: policy.scope, action: policy.action }) });
   }
 
+  private async resolveScope(input: { scope?: unknown; account_id?: unknown; group_id?: unknown }, requestId: string): Promise<string> {
+    const rawScope = input.scope ?? "all";
+    if (rawScope === "all" || rawScope === undefined || rawScope === null) return "all";
+    if (rawScope === "account" || (typeof rawScope === "string" && rawScope.startsWith("account:"))) {
+      const accountId = rawScope === "account" ? Number(input.account_id) : Number(String(rawScope).split(":")[1]);
+      if (!Number.isInteger(accountId) || accountId <= 0) throw new AppError(ErrorCode.VALIDATION_ERROR, "Invalid account id", requestId, 400);
+      if (!this.env.DB) throw new AppError(ErrorCode.CONFIG_MISSING, "Missing D1 binding DB", requestId, 500);
+      const account = await new AccountsRepository(this.env.DB).getById(accountId);
+      if (!account || account.status !== "active") throw new AppError(ErrorCode.ACCOUNT_NOT_FOUND, "Account not found", requestId, 404);
+      return `account:${accountId}`;
+    }
+    if (rawScope === "group" || (typeof rawScope === "string" && rawScope.startsWith("group:"))) {
+      const groupId = rawScope === "group" ? Number(input.group_id) : Number(String(rawScope).split(":")[1]);
+      if (!Number.isInteger(groupId) || groupId <= 0) throw new AppError(ErrorCode.VALIDATION_ERROR, "Invalid group id", requestId, 400);
+      if (!this.env.DB) throw new AppError(ErrorCode.CONFIG_MISSING, "Missing D1 binding DB", requestId, 500);
+      await new GroupsRepository(this.env.DB).getById(groupId).catch(() => {
+        throw new AppError(ErrorCode.VALIDATION_ERROR, "Group not found", requestId, 404);
+      });
+      return `group:${groupId}`;
+    }
+    throw new AppError(ErrorCode.VALIDATION_ERROR, "Unsupported admin presence scope", requestId, 400);
+  }
+
   private async deletePresenceReminderMessages(): Promise<number> {
     if (!this.env.DB) return 0;
     const repository = new TelegramMessagesRepository(this.env.DB);
@@ -157,10 +207,6 @@ export class AdminPresenceService {
   }
 }
 
-function validateScope(scope: unknown, requestId: string): void {
-  if (scope !== undefined && scope !== "all") throw new AppError(ErrorCode.VALIDATION_ERROR, "Admin presence MVP only supports scope = all", requestId, 400);
-}
-
 function validateAction(action: unknown, requestId: string): AdminPresenceAction {
   if (action === "notify" || action === "shutdown_all_instances" || action === "delete_all_instances") return action;
   throw new AppError(ErrorCode.VALIDATION_ERROR, "Unsupported admin presence action", requestId, 400);
@@ -174,17 +220,67 @@ function riskForAction(action: AdminPresenceAction): "medium" | "high" | "critic
 
 function toPublicPolicy(policy: AdminPresencePolicyRecord): PublicAdminPresencePolicy {
   const rules = parseRules(policy.rules_json);
-  return { id: policy.id, name: policy.name, enabled: policy.enabled, scope: policy.scope, created_at: policy.created_at, updated_at: policy.updated_at, deleted_at: policy.deleted_at, action: rules.action, rules };
+  const finalRule = [...rules].reverse().find((rule) => rule.action !== "notify") ?? rules[0];
+  const action = finalRule?.action ?? "notify";
+  const remindRule = rules.find((rule) => rule.action === "notify");
+  const finalAfter = finalRule?.after_minutes ?? null;
+  return {
+    id: policy.id,
+    name: policy.name,
+    enabled: policy.enabled,
+    scope: policy.scope,
+    created_at: policy.created_at,
+    updated_at: policy.updated_at,
+    deleted_at: policy.deleted_at,
+    action,
+    ...parseScope(policy.scope),
+    remind_after_minutes: remindRule?.after_minutes ?? null,
+    final_after_minutes: finalAfter,
+    rules
+  };
 }
 
-function parseRules(rulesJson: string): { action: AdminPresenceAction } {
+function parseScope(scope: string): { scope_type: AdminPresenceScopeType; account_id: number | null; group_id: number | null } {
+  if (scope.startsWith("account:")) return { scope_type: "account", account_id: Number(scope.split(":")[1]), group_id: null };
+  if (scope.startsWith("group:")) return { scope_type: "group", account_id: null, group_id: Number(scope.split(":")[1]) };
+  return { scope_type: "all", account_id: null, group_id: null };
+}
+
+function parseRules(rulesJson: string): AdminPresenceRule[] {
   try {
-    const parsed = JSON.parse(rulesJson) as { action?: AdminPresenceAction };
-    if (parsed.action === "notify" || parsed.action === "shutdown_all_instances" || parsed.action === "delete_all_instances") return { action: parsed.action };
+    const parsed = JSON.parse(rulesJson) as { rules?: AdminPresenceRule[]; action?: AdminPresenceAction; after_minutes?: number };
+    if (Array.isArray(parsed.rules)) {
+      const rules = parsed.rules
+        .filter((rule) => isAction(rule.action) && Number.isFinite(rule.after_minutes) && rule.after_minutes >= 0)
+        .map((rule) => ({ rule_id: String(rule.rule_id || rule.action), after_minutes: Math.trunc(rule.after_minutes), action: rule.action }));
+      if (rules.length > 0) return rules;
+    }
+    if (isAction(parsed.action)) return [{ rule_id: parsed.action, after_minutes: Math.max(0, Math.trunc(Number(parsed.after_minutes ?? 0))), action: parsed.action }];
   } catch (_error) {
     // fall through to safe default
   }
-  return { action: "notify" };
+  return [{ rule_id: "notify", after_minutes: 0, action: "notify" }];
+}
+
+function buildRules(action: AdminPresenceAction, remindAfter: number, finalAfter: number): AdminPresenceRule[] {
+  if (action === "notify") return [{ rule_id: "notify", after_minutes: remindAfter, action: "notify" }];
+  return [
+    { rule_id: "notify", after_minutes: remindAfter, action: "notify" },
+    { rule_id: action, after_minutes: finalAfter, action }
+  ];
+}
+
+function normalizePolicyMinutes(value: unknown, fallback: number, label: string, requestId: string): number {
+  if (value === undefined || value === null || value === "") return fallback;
+  const minutes = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(minutes) || minutes < 1 || minutes > 365 * 24 * 60) {
+    throw new AppError(ErrorCode.VALIDATION_ERROR, `${label} must be between 1 minute and 365 days`, requestId, 400);
+  }
+  return Math.trunc(minutes);
+}
+
+function isAction(action: unknown): action is AdminPresenceAction {
+  return action === "notify" || action === "shutdown_all_instances" || action === "delete_all_instances";
 }
 
 function createCycleId(): string {

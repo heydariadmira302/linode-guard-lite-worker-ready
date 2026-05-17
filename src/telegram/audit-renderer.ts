@@ -22,7 +22,7 @@ export function renderAuditLogsKeyboard(): TelegramInlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [{ text: "刷新最近审计日志", callback_data: "menu:audit_logs" }],
-      [{ text: "返回主菜单", callback_data: "menu:main" }]
+      [{ text: "❤️ 打卡", callback_data: "admin_presence:checkin" }]
     ]
   };
 }

@@ -195,7 +195,7 @@ describe("Phase 9 single instance delete", () => {
     }
   });
 
-  it("shows Telegram delete button on instance detail and can delete one instance without confirmation or batch operations", async () => {
+  it("shows Telegram delete confirmation before deleting one instance", async () => {
     const db = new FakeD1Database();
     await addAccount(db, { id: 1, alias: "default", token: "token-default" });
     const env = { ...baseEnv, DB: db as unknown as D1Database };
@@ -210,13 +210,19 @@ describe("Phase 9 single instance delete", () => {
       const detailBody = await detailResponse.json() as { data: { telegram: { payload: { reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
       const detailKeyboard = detailBody.data.telegram.payload.reply_markup.inline_keyboard.flat();
       const rawDetail = JSON.stringify(detailBody);
-      expect(detailKeyboard).toEqual(expect.arrayContaining([{ text: "开机", callback_data: "instances:boot:1:101" }]));
       expect(detailKeyboard).toEqual(expect.arrayContaining([{ text: "关机", callback_data: "instances:shutdown:1:101" }]));
       expect(detailKeyboard).toEqual(expect.arrayContaining([{ text: "重启", callback_data: "instances:reboot:1:101" }]));
-      expect(detailKeyboard).toEqual(expect.arrayContaining([{ text: "删除", callback_data: "instances:delete:1:101" }]));
-      expect(rawDetail).not.toContain("确认");
+      expect(detailKeyboard).toEqual(expect.arrayContaining([{ text: "删除", callback_data: "instances:confirm_delete:1:101" }]));
       expect(rawDetail).not.toContain("batch");
       expect(rawDetail).not.toContain("批量");
+
+      const confirmResponse = await worker.fetch(telegramRequest(callbackUpdate("instances:confirm_delete:1:101")), env as never);
+      const confirmBody = await confirmResponse.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+      expect(confirmBody.data.telegram.payload.text).toContain("确认删除服务器");
+      expect(confirmBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
+        { text: "确认删除", callback_data: "instances:delete:1:101" },
+        { text: "取消", callback_data: "instances:detail:1:101" }
+      ]));
 
       const deleteResponse = await worker.fetch(telegramRequest(callbackUpdate("instances:delete:1:101")), env as never);
       const deleteBody = await deleteResponse.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
@@ -224,7 +230,6 @@ describe("Phase 9 single instance delete", () => {
       expect(deleteResponse.status).toBe(200);
       expect(deleteBody.data.telegram.payload.text).toContain("删除请求已发送");
       expect(deleteBody.data.telegram.payload.text).toContain("#101");
-      expect(rawDelete).not.toContain("确认");
       expect(rawDelete).not.toContain("token-default");
       expect(rawDelete).not.toContain("encrypted_token");
       expect(rawDelete).not.toContain("batch");

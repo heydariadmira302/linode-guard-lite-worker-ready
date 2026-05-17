@@ -30,6 +30,18 @@ export async function handleDisableSchedule(_request: Request, env: Env, request
   return createJsonResponse({ ok: true, data }, { requestId });
 }
 
+export async function handleEnableAllSchedules(_request: Request, env: Env, requestId: string): Promise<Response> {
+  ensureDb(env, requestId);
+  const data = await new ScheduleService(env).enableAllSchedules({ requestId, actor: "api:default", source: "api" });
+  return createJsonResponse({ ok: true, data }, { requestId });
+}
+
+export async function handleDisableAllSchedules(_request: Request, env: Env, requestId: string): Promise<Response> {
+  ensureDb(env, requestId);
+  const data = await new ScheduleService(env).disableAllSchedules({ requestId, actor: "api:default", source: "api" });
+  return createJsonResponse({ ok: true, data }, { requestId });
+}
+
 export async function handleDeleteSchedule(_request: Request, env: Env, requestId: string, scheduleId: number): Promise<Response> {
   ensureDb(env, requestId);
   const data = await new ScheduleService(env).deleteSchedule(scheduleId, { requestId, actor: "api:default", source: "api" });
