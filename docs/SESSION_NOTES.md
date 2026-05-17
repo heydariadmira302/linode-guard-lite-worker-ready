@@ -254,3 +254,13 @@ npm test
 - 启用 / 停用后的反馈页也提供“查看详情”入口，减少列表页按钮拥挤，方便后续继续做编辑入口。
 - 更新 `docs/api.md`、`docs/telegram.md`、`tests/phase13-admin-presence.test.ts`，覆盖详情 API、详情按钮、详情页文案和不泄露 `rules_json`。
 - 验证通过：`npm run typecheck`；`npm test -- tests/phase13-admin-presence.test.ts tests/phase15-job-runner.test.ts`（2 个测试文件，9 个测试通过）。
+
+## 2026-05-17 本地 Telegram 实机联调
+
+- 复跑验证：`npm run typecheck`、`npm test`、`npm run build:upload` 均通过；当前测试为 22 个测试文件 / 100 个测试全绿。
+- 本地 Worker 使用 `.dev.vars` 启动在 `127.0.0.1:8787`，健康检查 `/api/v1/health` OK；Cloudflare quick tunnel 已连到当前 Telegram webhook。
+- 通过 Telegram webhook 模拟真实私聊消息验证 `/start` 可实际调用 Telegram API 发出消息，Bot 返回固定 Reply Keyboard 和主菜单；已真实发送到测试 Bot 会话。
+- 验证主入口文字：`📁 分组`、`⏰ 定时任务`、`🛡 安全事件`、`❤️ 保活打卡`、`🖥 服务器`、`👤 账号` 均返回对应中文菜单，不再落到 `/help`。
+- 验证常用 callback：`schedules:create`、`schedules:list`、`groups:list`、`admin_presence:policies`、`security:events:open` 均返回对应页面。
+- 联调中发现旧本地 D1 只执行过旧 schema，缺少 `groups` 表和 `linode_accounts.group_id`，已在本地补齐；生产/新部署应使用最新 `schema.sql` / `migrations/0001_initial.sql`，旧部署需要执行兼容迁移。
+- 联调中发现 `⏰ 定时任务` 等主菜单文字入口未映射，已修复 `src/telegram/commands.ts`，新增测试覆盖，并提交推送：`156dfe5 Handle Telegram text menu entries`。
