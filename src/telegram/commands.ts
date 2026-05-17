@@ -171,27 +171,30 @@ async function continueScheduleFlow(
   const session = await sessions.getCurrentSession(update.fromId);
   if (!session || session.state !== "creating_schedule_custom_time") return null;
   const parsed = parseSessionData(session.data_json);
-  const action = parsed.action === "boot" || parsed.action === "shutdown" ? parsed.action : null;
-  const scope = parsed.scope === "account" ? "account" : parsed.scope === "group" ? "group" : parsed.scope === "all" ? "all" : null;
-  const accountId = scope === "account" ? Number(parsed.account_id) : null;
+  const action = parsed.action === "boot" || parsed.action === "shutdown" || parsed.action === "reboot" ? parsed.action : null;
+  const scope = parsed.scope === "account" ? "account" : parsed.scope === "group" ? "group" : parsed.scope === "instance" ? "instance" : parsed.scope === "all" ? "all" : null;
+  const accountId = scope === "account" || scope === "instance" ? Number(parsed.account_id) : null;
   const groupId = scope === "group" ? Number(parsed.group_id) : null;
-  if (!action || !scope || (scope === "account" && (!Number.isInteger(accountId) || Number(accountId) <= 0)) || (scope === "group" && (!Number.isInteger(groupId) || Number(groupId) <= 0))) {
+  const instanceId = scope === "instance" ? Number(parsed.instance_id) : null;
+  if (!action || !scope || ((scope === "account" || scope === "instance") && (!Number.isInteger(accountId) || Number(accountId) <= 0)) || (scope === "group" && (!Number.isInteger(groupId) || Number(groupId) <= 0)) || (scope === "instance" && (!Number.isInteger(instanceId) || Number(instanceId) <= 0))) {
     await sessions.clearCurrentSession(update.fromId);
     return client.sendMessage({ chat_id: update.chatId, text: "定时任务会话已失效，请重新创建。", reply_markup: renderCheckinInlineKeyboard() });
   }
-  const resolvedAccountId = scope === "account" ? Number(accountId) : null;
+  const resolvedAccountId = scope === "account" || scope === "instance" ? Number(accountId) : null;
   const resolvedGroupId = scope === "group" ? Number(groupId) : null;
+  const resolvedInstanceId = scope === "instance" ? Number(instanceId) : null;
   const cronExpr = parseScheduleCronInput(update.text.trim());
   if (!cronExpr) {
     return client.sendMessage({ chat_id: update.chatId, text: "时间格式不正确。请发送 09:30、22:00，或 5 段 Cron，例如：30 9 * * *。发送 /cancel 可取消。", reply_markup: renderCheckinInlineKeyboard() });
   }
   try {
     const data = await new ScheduleService(env).createSchedule({
-      name: `自定义 ${scope === "account" ? `账号 #${resolvedAccountId} ` : scope === "group" ? `分组 #${resolvedGroupId} ` : ""}${action === "boot" ? "开机" : "关机"}`,
+      name: `自定义 ${scope === "instance" ? `实例 #${resolvedInstanceId} ` : scope === "account" ? `账号 #${resolvedAccountId} ` : scope === "group" ? `分组 #${resolvedGroupId} ` : ""}${action === "boot" ? "开机" : action === "shutdown" ? "关机" : "重启"}`,
       action,
       scope,
       account_id: resolvedAccountId,
       group_id: resolvedGroupId,
+      instance_id: resolvedInstanceId,
       cron_expr: cronExpr,
       timezone: env.APP_TIMEZONE ?? "Asia/Shanghai",
       enabled: true

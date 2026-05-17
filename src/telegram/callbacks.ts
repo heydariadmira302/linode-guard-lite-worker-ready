@@ -17,7 +17,7 @@ import type { ParsedTelegramUpdate, TelegramClientResult } from "./types";
 import { renderAdminPresenceCheckinText, renderAdminPresenceDeletePolicyWarning, renderAdminPresenceMenuKeyboard, renderAdminPresenceMenuText, renderAdminPresencePoliciesKeyboard, renderAdminPresencePoliciesText, renderAdminPresencePolicyAccountKeyboard, renderAdminPresencePolicyAccountText, renderAdminPresencePolicyActionKeyboard, renderAdminPresencePolicyActionText, renderAdminPresencePolicyCreateKeyboard, renderAdminPresencePolicyCreateText, renderAdminPresencePolicyDeleteConfirmKeyboard, renderAdminPresencePolicyDeleteConfirmText, renderAdminPresencePolicyDeletedText, renderAdminPresencePolicyDetailKeyboard, renderAdminPresencePolicyDetailText, renderAdminPresencePolicyEditAccountKeyboard, renderAdminPresencePolicyEditActionKeyboard, renderAdminPresencePolicyEditGroupKeyboard, renderAdminPresencePolicyEditKeyboard, renderAdminPresencePolicyEditScopeKeyboard, renderAdminPresencePolicyEditText, renderAdminPresencePolicyEditTimeKeyboard, renderAdminPresencePolicyFinalTimeKeyboard, renderAdminPresencePolicyFinalTimeText, renderAdminPresencePolicyGroupKeyboard, renderAdminPresencePolicyGroupText, renderAdminPresencePolicyNamePrompt, renderAdminPresencePolicyScopeKeyboard, renderAdminPresencePolicyScopeText, renderAdminPresencePolicyTimeKeyboard, renderAdminPresencePolicyTimeText, renderAdminPresencePolicyUpdatedText } from "./admin-presence-renderer";
 import { renderAuditLogsKeyboard, renderAuditLogsText } from "./audit-renderer";
 import { renderBatchAccountsKeyboard, renderBatchAccountsText, renderBatchConfirmKeyboard, renderBatchConfirmText, renderBatchMenuKeyboard, renderBatchMenuText, renderBatchResultKeyboard, renderBatchResultText } from "./batch-renderer";
-import { renderScheduleActionResultKeyboard, renderScheduleActionResultText, renderScheduleBulkToggleConfirmKeyboard, renderScheduleBulkToggleConfirmText, renderScheduleBulkToggleResultText, renderScheduleCreateAccountKeyboard, renderScheduleCreateAccountText, renderScheduleCreateActionKeyboard, renderScheduleCreateActionText, renderScheduleCreateGroupKeyboard, renderScheduleCreateGroupText, renderScheduleCreatePresetKeyboard, renderScheduleCreatePresetText, renderScheduleCreateScopeKeyboard, renderScheduleCreateScopeText, renderScheduleCustomTimePrompt, renderScheduleDeleteConfirmKeyboard, renderScheduleDeleteConfirmText, renderScheduleListKeyboard, renderScheduleListText, renderSchedulesMenuKeyboard, renderSchedulesMenuText } from "./schedule-renderer";
+import { renderScheduleActionResultKeyboard, renderScheduleActionResultText, renderScheduleBulkToggleConfirmKeyboard, renderScheduleBulkToggleConfirmText, renderScheduleBulkToggleResultText, renderScheduleCreateAccountKeyboard, renderScheduleCreateAccountText, renderScheduleCreateActionKeyboard, renderScheduleCreateActionText, renderScheduleCreateGroupKeyboard, renderScheduleCreateGroupText, renderScheduleCreateInstanceAccountKeyboard, renderScheduleCreateInstanceAccountText, renderScheduleCreateInstanceKeyboard, renderScheduleCreateInstanceText, renderScheduleCreatePresetKeyboard, renderScheduleCreatePresetText, renderScheduleCreateScopeKeyboard, renderScheduleCreateScopeText, renderScheduleCustomTimePrompt, renderScheduleDeleteConfirmKeyboard, renderScheduleDeleteConfirmText, renderScheduleListKeyboard, renderScheduleListText, renderSchedulesMenuKeyboard, renderSchedulesMenuText } from "./schedule-renderer";
 import { renderSecurityCheckResultKeyboard, renderSecurityCheckResultText, renderSecurityEventStatusUpdateText, renderSecurityEventsKeyboard, renderSecurityEventsText, renderSecurityMenuKeyboard, renderSecurityMenuText } from "./security-renderer";
 import { renderCheckinInlineKeyboard } from "./keyboards";
 import { renderAccountActionResultText, renderAccountDeleteConfirmKeyboard, renderAccountDeleteConfirmText, renderAccountDetailKeyboard, renderAccountDetailText, renderAccountListKeyboard, renderAccountListText, renderAccountsMenuKeyboard, renderAccountsMenuText, renderDiagnosticsMenuKeyboard, renderDiagnosticsMenuText, renderMainMenuKeyboard, renderMainMenuText, renderSettingsMenuKeyboard, renderSettingsMenuText } from "./menus";
@@ -325,17 +325,17 @@ export async function routeTelegramCallback(
     return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleCreateActionText(), reply_markup: renderScheduleCreateActionKeyboard() });
   }
 
-  const scheduleCreateActionMatch = update.data.match(/^schedules:create:action:(boot|shutdown)$/);
+  const scheduleCreateActionMatch = update.data.match(/^schedules:create:action:(boot|shutdown|reboot)$/);
   if (scheduleCreateActionMatch) {
-    const action = scheduleCreateActionMatch[1] as "boot" | "shutdown";
+    const action = scheduleCreateActionMatch[1] as "boot" | "shutdown" | "reboot";
     return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleCreateScopeText(action), reply_markup: renderScheduleCreateScopeKeyboard(action) });
   }
 
-  const scheduleCreateScopeMatch = update.data.match(/^schedules:create:scope:(boot|shutdown):(all|account|group)$/);
+  const scheduleCreateScopeMatch = update.data.match(/^schedules:create:scope:(boot|shutdown|reboot):(all|account|group|instance)$/);
   if (scheduleCreateScopeMatch && env?.DB) {
     try {
-      const action = scheduleCreateScopeMatch[1] as "boot" | "shutdown";
-      const scope = scheduleCreateScopeMatch[2] as "all" | "account" | "group";
+      const action = scheduleCreateScopeMatch[1] as "boot" | "shutdown" | "reboot";
+      const scope = scheduleCreateScopeMatch[2] as "all" | "account" | "group" | "instance";
       if (scope === "all") {
         return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleCreatePresetText(action, "all"), reply_markup: renderScheduleCreatePresetKeyboard(action, "all") });
       }
@@ -344,54 +344,80 @@ export async function routeTelegramCallback(
         return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleCreateGroupText(action, groups), reply_markup: renderScheduleCreateGroupKeyboard(action, groups) });
       }
       const accounts = await new AccountService(env).listAccounts();
+      if (scope === "instance") return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleCreateInstanceAccountText(action, accounts), reply_markup: renderScheduleCreateInstanceAccountKeyboard(action, accounts) });
       return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleCreateAccountText(action, accounts), reply_markup: renderScheduleCreateAccountKeyboard(action, accounts) });
     } catch (error) {
       return renderTelegramCallbackError(update, client, error, requestId);
     }
   }
 
-  const scheduleCreateAccountMatch = update.data.match(/^schedules:create:account:(boot|shutdown):(\d+)$/);
+  const scheduleCreateAccountMatch = update.data.match(/^schedules:create:account:(boot|shutdown|reboot):(\d+)$/);
   if (scheduleCreateAccountMatch) {
-    const action = scheduleCreateAccountMatch[1] as "boot" | "shutdown";
+    const action = scheduleCreateAccountMatch[1] as "boot" | "shutdown" | "reboot";
     const accountId = Number(scheduleCreateAccountMatch[2]);
     return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleCreatePresetText(action, "account", accountId), reply_markup: renderScheduleCreatePresetKeyboard(action, "account", accountId) });
   }
 
-  const scheduleCreateGroupMatch = update.data.match(/^schedules:create:group:(boot|shutdown):(\d+)$/);
+  const scheduleCreateGroupMatch = update.data.match(/^schedules:create:group:(boot|shutdown|reboot):(\d+)$/);
   if (scheduleCreateGroupMatch) {
-    const action = scheduleCreateGroupMatch[1] as "boot" | "shutdown";
+    const action = scheduleCreateGroupMatch[1] as "boot" | "shutdown" | "reboot";
     const groupId = Number(scheduleCreateGroupMatch[2]);
     return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleCreatePresetText(action, "group", undefined, groupId), reply_markup: renderScheduleCreatePresetKeyboard(action, "group", undefined, groupId) });
   }
 
-  const scheduleCreateCustomMatch = update.data.match(/^schedules:create:custom:(boot|shutdown):(all|account:\d+|group:\d+)$/);
-  if (scheduleCreateCustomMatch && sessions) {
-    const action = scheduleCreateCustomMatch[1] as "boot" | "shutdown";
-    const scopePart = scheduleCreateCustomMatch[2];
-    const accountId = scopePart.startsWith("account:") ? Number(scopePart.split(":")[1]) : undefined;
-    const groupId = scopePart.startsWith("group:") ? Number(scopePart.split(":")[1]) : undefined;
-    const scope = accountId ? "account" : groupId ? "group" : "all";
-    await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_schedule_custom_time", data: { action, scope, account_id: accountId ?? null, group_id: groupId ?? null } });
-    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleCustomTimePrompt(action, scope, accountId, groupId), reply_markup: renderCheckinInlineKeyboard() });
+  const scheduleCreateInstanceAccountMatch = update.data.match(/^schedules:create:instance_account:(boot|shutdown|reboot):(\d+)$/);
+  if (scheduleCreateInstanceAccountMatch && env?.DB) {
+    try {
+      const action = scheduleCreateInstanceAccountMatch[1] as "boot" | "shutdown" | "reboot";
+      const accountId = Number(scheduleCreateInstanceAccountMatch[2]);
+      const data = await new InstanceService(env).listAccountInstances(accountId, requestId);
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleCreateInstanceText(action, data.account, data.instances), reply_markup: renderScheduleCreateInstanceKeyboard(action, data) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
   }
 
-  const scheduleCreatePresetMatch = update.data.match(/^schedules:create:preset:(boot|shutdown):(all|account:\d+|group:\d+):(daily_0800|daily_2200)$/);
+  const scheduleCreateInstanceMatch = update.data.match(/^schedules:create:instance:(boot|shutdown|reboot):(\d+):(\d+)$/);
+  if (scheduleCreateInstanceMatch) {
+    const action = scheduleCreateInstanceMatch[1] as "boot" | "shutdown" | "reboot";
+    const accountId = Number(scheduleCreateInstanceMatch[2]);
+    const instanceId = Number(scheduleCreateInstanceMatch[3]);
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleCreatePresetText(action, "instance", accountId, undefined, instanceId), reply_markup: renderScheduleCreatePresetKeyboard(action, "instance", accountId, undefined, instanceId) });
+  }
+
+  const scheduleCreateCustomMatch = update.data.match(/^schedules:create:custom:(boot|shutdown|reboot):(all|account:\d+|group:\d+|instance:\d+:\d+)$/);
+  if (scheduleCreateCustomMatch && sessions) {
+    const action = scheduleCreateCustomMatch[1] as "boot" | "shutdown" | "reboot";
+    const scopePart = scheduleCreateCustomMatch[2];
+    const parts = scopePart.split(":");
+    const accountId = scopePart.startsWith("account:") || scopePart.startsWith("instance:") ? Number(parts[1]) : undefined;
+    const groupId = scopePart.startsWith("group:") ? Number(parts[1]) : undefined;
+    const instanceId = scopePart.startsWith("instance:") ? Number(parts[2]) : undefined;
+    const scope = instanceId ? "instance" : accountId ? "account" : groupId ? "group" : "all";
+    await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_schedule_custom_time", data: { action, scope, account_id: accountId ?? null, group_id: groupId ?? null, instance_id: instanceId ?? null } });
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleCustomTimePrompt(action, scope, accountId, groupId, instanceId), reply_markup: renderCheckinInlineKeyboard() });
+  }
+
+  const scheduleCreatePresetMatch = update.data.match(/^schedules:create:preset:(boot|shutdown|reboot):(all|account:\d+|group:\d+|instance:\d+:\d+):(daily_0800|daily_2200)$/);
   if (scheduleCreatePresetMatch && env?.DB) {
     try {
-      const action = scheduleCreatePresetMatch[1] as "boot" | "shutdown";
+      const action = scheduleCreatePresetMatch[1] as "boot" | "shutdown" | "reboot";
       const scopePart = scheduleCreatePresetMatch[2];
       const preset = scheduleCreatePresetMatch[3];
       const hour = preset === "daily_0800" ? "8" : "22";
       const timeLabel = preset === "daily_0800" ? "每天 08:00" : "每天 22:00";
-      const accountId = scopePart.startsWith("account:") ? Number(scopePart.split(":")[1]) : null;
-      const groupId = scopePart.startsWith("group:") ? Number(scopePart.split(":")[1]) : null;
-      const scope = accountId ? "account" : groupId ? "group" : "all";
+      const parts = scopePart.split(":");
+      const accountId = scopePart.startsWith("account:") || scopePart.startsWith("instance:") ? Number(parts[1]) : null;
+      const groupId = scopePart.startsWith("group:") ? Number(parts[1]) : null;
+      const instanceId = scopePart.startsWith("instance:") ? Number(parts[2]) : null;
+      const scope = instanceId ? "instance" : accountId ? "account" : groupId ? "group" : "all";
       const data = await new ScheduleService(env).createSchedule({
-        name: `${timeLabel} ${accountId ? `账号 #${accountId} ` : groupId ? `分组 #${groupId} ` : ""}${action === "boot" ? "开机" : "关机"}`,
+        name: `${timeLabel} ${instanceId ? `实例 #${instanceId} ` : accountId ? `账号 #${accountId} ` : groupId ? `分组 #${groupId} ` : ""}${action === "boot" ? "开机" : action === "shutdown" ? "关机" : "重启"}`,
         action,
         scope,
         account_id: accountId,
         group_id: groupId,
+        instance_id: instanceId,
         cron_expr: `0 ${hour} * * *`,
         timezone: env.APP_TIMEZONE ?? "Asia/Shanghai",
         enabled: true

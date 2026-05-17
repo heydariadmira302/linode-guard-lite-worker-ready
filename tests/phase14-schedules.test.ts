@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
+import { encryptLinodeToken } from "../src/crypto/token-crypto";
 
 const baseEnv = {
   API_AUTH_TOKEN: "secret-api-token",
@@ -13,7 +14,7 @@ const baseEnv = {
   LOGIN_EVENT_RETENTION_DAYS: "1"
 };
 
-type ScheduleRecord = { id: number; name: string; enabled: number; action: string; scope: string; account_id: number | null; group_id?: number | null; cron_expr: string; timezone: string; last_run_at: string | null; next_run_at: string | null; created_at: string; updated_at: string; deleted_at: string | null; metadata_json: string | null };
+type ScheduleRecord = { id: number; name: string; enabled: number; action: string; scope: string; account_id: number | null; group_id?: number | null; instance_id?: number | null; cron_expr: string; timezone: string; last_run_at: string | null; next_run_at: string | null; created_at: string; updated_at: string; deleted_at: string | null; metadata_json: string | null };
 type AccountRecord = { id: number; alias: string; encrypted_token: string; token_fingerprint: string; token_status: string; status: string; group_id: number | null; last_seen_login_id: string | null; last_login_check_at: string | null; security_baseline_at: string | null; created_at: string; updated_at: string; deleted_at: string | null };
 type GroupRecord = { id: number; name: string; is_default: number; created_at: string; updated_at: string; deleted_at: string | null };
 type AuditRecord = { action: string; target_type: string; target_id: string | null; risk_level: string; result: string; error_code: string | null; metadata_json: string | null; request_id: string; actor: string; source: string };
@@ -57,7 +58,7 @@ class FakeD1Database {
   run(sql: string, values: unknown[]) {
     const now = new Date().toISOString();
     if (sql.includes("INTO power_schedules")) {
-      const row: ScheduleRecord = { id: this.nextScheduleId++, name: String(values[0]), enabled: Number(values[1]), action: String(values[2]), scope: String(values[3]), account_id: values[4] === null ? null : Number(values[4]), group_id: values[5] === null ? null : Number(values[5]), cron_expr: String(values[6]), timezone: String(values[7]), next_run_at: values[8] as string | null, metadata_json: values[9] as string | null, last_run_at: null, created_at: now, updated_at: now, deleted_at: null };
+      const row: ScheduleRecord = { id: this.nextScheduleId++, name: String(values[0]), enabled: Number(values[1]), action: String(values[2]), scope: String(values[3]), account_id: values[4] === null ? null : Number(values[4]), group_id: values[5] === null ? null : Number(values[5]), instance_id: values[6] === null ? null : Number(values[6]), cron_expr: String(values[7]), timezone: String(values[8]), next_run_at: values[9] as string | null, metadata_json: values[10] as string | null, last_run_at: null, created_at: now, updated_at: now, deleted_at: null };
       this.schedules.push(row);
       return { last_row_id: row.id, changes: 1 };
     }
@@ -104,7 +105,7 @@ function addAccount(db: FakeD1Database, id: number, alias: string) {
 }
 
 describe("Phase 14 power schedules", () => {
-  it("creates/lists/enables/disables/deletes boot/shutdown schedules via authenticated API with scope validation and audit logs", async () => {
+  it("creates/lists/enables/disables/deletes boot/shutdown/reboot schedules via authenticated API with scope validation and audit logs", async () => {
     const db = new FakeD1Database();
     const env = { ...baseEnv, DB: db as unknown as D1Database };
 
@@ -113,6 +114,8 @@ describe("Phase 14 power schedules", () => {
     expect(invalidAction.status).toBe(400);
     const invalidScope = await worker.fetch(apiRequest("/api/v1/schedules", { method: "POST", body: JSON.stringify({ name: "bad", action: "shutdown", scope: "tag", cron_expr: "0 22 * * *" }) }), env as never);
     expect(invalidScope.status).toBe(400);
+    const invalidInstanceScope = await worker.fetch(apiRequest("/api/v1/schedules", { method: "POST", body: JSON.stringify({ name: "bad instance", action: "reboot", scope: "instance", account_id: 1, cron_expr: "0 22 * * *" }) }), env as never);
+    expect(invalidInstanceScope.status).toBe(400);
 
     const create = await worker.fetch(apiRequest("/api/v1/schedules", { method: "POST", body: JSON.stringify({ name: "night shutdown", action: "shutdown", scope: "account", account_id: 1, cron_expr: "0 22 * * *", timezone: "Asia/Shanghai" }) }), env as never);
     const createBody = await create.json() as { ok: boolean; data: { schedule: ScheduleRecord } };
@@ -120,10 +123,15 @@ describe("Phase 14 power schedules", () => {
     expect(createBody.data.schedule).toMatchObject({ id: 1, name: "night shutdown", action: "shutdown", scope: "account", account_id: 1, enabled: 1, cron_expr: "0 22 * * *" });
     expect(createBody.data.schedule.next_run_at).toEqual(expect.any(String));
 
+    const createRebootInstance = await worker.fetch(apiRequest("/api/v1/schedules", { method: "POST", body: JSON.stringify({ name: "single reboot", action: "reboot", scope: "instance", account_id: 1, instance_id: 101, cron_expr: "30 6 * * *", timezone: "Asia/Shanghai" }) }), env as never);
+    const createRebootInstanceBody = await createRebootInstance.json() as { data: { schedule: ScheduleRecord } };
+    expect(createRebootInstance.status).toBe(200);
+    expect(createRebootInstanceBody.data.schedule).toMatchObject({ id: 2, name: "single reboot", action: "reboot", scope: "instance", account_id: 1, instance_id: 101, enabled: 1, cron_expr: "30 6 * * *" });
+
     const list = await worker.fetch(apiRequest("/api/v1/schedules?limit=10&offset=0"), env as never);
     const listBody = await list.json() as { data: { schedules: ScheduleRecord[]; limit: number; offset: number } };
     expect(list.status).toBe(200);
-    expect(listBody.data.schedules).toHaveLength(1);
+    expect(listBody.data.schedules).toHaveLength(2);
 
     expect((await worker.fetch(apiRequest("/api/v1/schedules/1/disable", { method: "POST" }), env as never)).status).toBe(200);
     expect(db.schedules[0].enabled).toBe(0);
@@ -132,12 +140,12 @@ describe("Phase 14 power schedules", () => {
     const disableAll = await worker.fetch(apiRequest("/api/v1/schedules/disable-all", { method: "POST" }), env as never);
     const disableAllBody = await disableAll.json() as { data: { affected: number } };
     expect(disableAll.status).toBe(200);
-    expect(disableAllBody.data.affected).toBe(1);
+    expect(disableAllBody.data.affected).toBe(2);
     expect(db.schedules[0].enabled).toBe(0);
     const enableAll = await worker.fetch(apiRequest("/api/v1/schedules/enable-all", { method: "POST" }), env as never);
     const enableAllBody = await enableAll.json() as { data: { affected: number } };
     expect(enableAll.status).toBe(200);
-    expect(enableAllBody.data.affected).toBe(1);
+    expect(enableAllBody.data.affected).toBe(2);
     expect(db.schedules[0].enabled).toBe(1);
     expect((await worker.fetch(apiRequest("/api/v1/schedules/1", { method: "DELETE" }), env as never)).status).toBe(200);
     expect(db.schedules[0].deleted_at).toEqual(expect.any(String));
@@ -212,7 +220,8 @@ describe("Phase 14 power schedules", () => {
     expect(createMenuBody.data.telegram.payload.text).toContain("请选择动作");
     expect(createMenuBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
       { text: "开机", callback_data: "schedules:create:action:boot" },
-      { text: "关机", callback_data: "schedules:create:action:shutdown" }
+      { text: "关机", callback_data: "schedules:create:action:shutdown" },
+      { text: "重启", callback_data: "schedules:create:action:reboot" }
     ]));
     expect(JSON.stringify(createMenuBody)).not.toContain("boot / shutdown");
 
@@ -223,7 +232,8 @@ describe("Phase 14 power schedules", () => {
     expect(scopeMenuBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
       { text: "全部账号", callback_data: "schedules:create:scope:shutdown:all" },
       { text: "选择账号", callback_data: "schedules:create:scope:shutdown:account" },
-      { text: "选择分组", callback_data: "schedules:create:scope:shutdown:group" }
+      { text: "选择分组", callback_data: "schedules:create:scope:shutdown:group" },
+      { text: "选择单台服务器", callback_data: "schedules:create:scope:shutdown:instance" }
     ]));
 
     const presetMenu = await worker.fetch(telegramRequest(callbackUpdate("schedules:create:scope:shutdown:all")), env as never);
@@ -288,6 +298,52 @@ describe("Phase 14 power schedules", () => {
     expect(JSON.stringify(createdBody)).not.toContain("metadata_json");
   });
 
+  it("creates instance-scoped reboot quick preset schedules from Telegram", async () => {
+    const db = new FakeD1Database();
+    addAccount(db, 7, "西班牙1");
+    db.accounts[0].encrypted_token = await encryptLinodeToken("token-7", "encryption-key");
+    const env = { ...baseEnv, DB: db as unknown as D1Database };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input instanceof Request ? input.url : String(input);
+      if (url.endsWith("/linode/instances") || url.startsWith("https://api.linode.com/v4/linode/instances")) {
+        return new Response(JSON.stringify({ data: [{ id: 101, label: "web-1", status: "running", region: "es-mad", type: "g6-standard-1", ipv4: ["203.0.113.10"] }] }), { status: 200 });
+      }
+      return new Response(null, { status: 204 });
+    });
+    try {
+      const accountMenu = await worker.fetch(telegramRequest(callbackUpdate("schedules:create:scope:reboot:instance")), env as never);
+      const accountMenuBody = await accountMenu.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+      expect(accountMenuBody.data.telegram.payload.text).toContain("范围：单台服务器");
+      expect(accountMenuBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
+        { text: "#7 西班牙1", callback_data: "schedules:create:instance_account:reboot:7" }
+      ]));
+
+      const instanceMenu = await worker.fetch(telegramRequest(callbackUpdate("schedules:create:instance_account:reboot:7")), env as never);
+      const instanceMenuBody = await instanceMenu.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+      expect(instanceMenuBody.data.telegram.payload.text).toContain("请选择服务器");
+      expect(instanceMenuBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
+        { text: "#101 web-1", callback_data: "schedules:create:instance:reboot:7:101" }
+      ]));
+
+      const presetMenu = await worker.fetch(telegramRequest(callbackUpdate("schedules:create:instance:reboot:7:101")), env as never);
+      const presetMenuBody = await presetMenu.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+      expect(presetMenuBody.data.telegram.payload.text).toContain("动作：重启");
+      expect(presetMenuBody.data.telegram.payload.text).toContain("实例 #101");
+      expect(presetMenuBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
+        { text: "每天 08:00", callback_data: "schedules:create:preset:reboot:instance:7:101:daily_0800" }
+      ]));
+
+      const created = await worker.fetch(telegramRequest(callbackUpdate("schedules:create:preset:reboot:instance:7:101:daily_0800")), env as never);
+      const createdBody = await created.json() as { data: { telegram: { payload: { text: string } } } };
+      expect(createdBody.data.telegram.payload.text).toContain("定时任务已创建");
+      expect(createdBody.data.telegram.payload.text).toContain("动作：重启");
+      expect(createdBody.data.telegram.payload.text).toContain("实例 #101");
+      expect(db.schedules[0]).toMatchObject({ name: "每天 08:00 实例 #101 重启", action: "reboot", scope: "instance", account_id: 7, instance_id: 101, enabled: 1, cron_expr: "0 8 * * *" });
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
   it("creates group-scoped quick preset schedules from Telegram", async () => {
     const db = new FakeD1Database();
     db.groups.push({ id: 2, name: "西班牙", is_default: 0, created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", deleted_at: null });
@@ -324,19 +380,20 @@ describe("Phase 14 power schedules", () => {
     addAccount(db, 7, "西班牙1");
     const env = { ...baseEnv, DB: db as unknown as D1Database };
 
-    const customPrompt = await worker.fetch(telegramRequest(callbackUpdate("schedules:create:custom:shutdown:account:7")), env as never);
+    const customPrompt = await worker.fetch(telegramRequest(callbackUpdate("schedules:create:custom:reboot:instance:7:101")), env as never);
     const customPromptBody = await customPrompt.json() as { data: { telegram: { payload: { text: string } } } };
     expect(customPromptBody.data.telegram.payload.text).toContain("自定义定时任务时间");
     expect(customPromptBody.data.telegram.payload.text).toContain("09:30");
     expect(db.botSessions[0]).toMatchObject({ state: "creating_schedule_custom_time" });
-    expect(db.botSessions[0].data_json).toContain("shutdown");
+    expect(db.botSessions[0].data_json).toContain("reboot");
+    expect(db.botSessions[0].data_json).toContain("101");
 
     const createdTime = await worker.fetch(telegramRequest(messageUpdate("09:45")), env as never);
     const createdTimeBody = await createdTime.json() as { data: { telegram: { payload: { text: string } } } };
     expect(createdTimeBody.data.telegram.payload.text).toContain("定时任务已创建");
-    expect(createdTimeBody.data.telegram.payload.text).toContain("范围：单账号 #7");
+    expect(createdTimeBody.data.telegram.payload.text).toContain("范围：单台服务器 账号 #7 / 实例 #101");
     expect(createdTimeBody.data.telegram.payload.text).toContain("Cron：45 9 * * *");
-    expect(db.schedules[0]).toMatchObject({ action: "shutdown", scope: "account", account_id: 7, cron_expr: "45 9 * * *" });
+    expect(db.schedules[0]).toMatchObject({ action: "reboot", scope: "instance", account_id: 7, instance_id: 101, cron_expr: "45 9 * * *" });
     expect(db.botSessions).toHaveLength(0);
 
     await worker.fetch(telegramRequest(callbackUpdate("schedules:create:custom:boot:all")), env as never);

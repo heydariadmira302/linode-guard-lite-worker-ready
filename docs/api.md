@@ -596,4 +596,4 @@ curl -s \
 
 ## 当前范围限制
 
-当前已支持实例只读、单实例开机、关机、重启、删除、批量操作、审计日志查询、账号安全事件监控 MVP、管理员保活确认、定时开关机和 Cloudflare Cron Job Runner。仍不包含 Web UI、多管理员、OAuth、复杂作用范围、指定单台服务器筛选、标签、实例组、二次确认或 protected instance。
+当前已支持实例只读、单实例开机、关机、重启、删除、批量操作、审计日志查询、账号安全事件监控 MVP、管理员保活确认、定时开关机/重启、单台服务器定时任务和 Cloudflare Cron Job Runner。仍不包含 Web UI、多管理员、OAuth、标签、实例组或 protected instance。

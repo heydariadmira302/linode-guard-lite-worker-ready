@@ -9,7 +9,7 @@ import { AuditRepository } from "../storage/audit-repository";
 import { GroupsRepository } from "../storage/groups-repository";
 import { AuditService } from "./audit-service";
 
-export type BatchAction = "boot" | "shutdown" | "delete";
+export type BatchAction = "boot" | "shutdown" | "reboot" | "delete";
 export type BatchScope = "account" | "group" | "all";
 export type BatchResultStatus = "success" | "partial_failed" | "failed";
 
@@ -123,6 +123,7 @@ export class BatchService {
       const client = new LinodeClient(target.token);
       if (action === "boot") await client.bootInstance(target.instance.id, context.requestId);
       else if (action === "shutdown") await client.shutdownInstance(target.instance.id, context.requestId);
+      else if (action === "reboot") await client.rebootInstance(target.instance.id, context.requestId);
       else await client.deleteInstance(target.instance.id, context.requestId);
       await this.recordAudit(context, action, String(target.instance.id), riskLevelForAction(action), "success", null, {
         account_id: target.account.id,
@@ -150,7 +151,7 @@ export class BatchService {
   }
 
   private validateAction(action: string, requestId: string): asserts action is BatchAction {
-    if (!["boot", "shutdown", "delete"].includes(action)) {
+    if (!["boot", "shutdown", "reboot", "delete"].includes(action)) {
       throw new AppError(ErrorCode.VALIDATION_ERROR, "Invalid batch action", requestId, 400);
     }
   }

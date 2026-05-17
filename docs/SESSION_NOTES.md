@@ -279,3 +279,12 @@ npm test
 - 本地用独立 Wrangler D1 smoke 环境模拟旧 schema：先创建旧 `linode_accounts` / `power_schedules`，再依次执行 `0002_legacy_group_compat.sql` 和 `0003_power_schedules_group_scope.sql`，验证默认分组、旧账号 `group_id=1`、旧定时任务 `group_id=NULL` 均正确。
 - 复跑验证：`npm run typecheck`、`npm test`、`npm run build:upload` 均通过；当前 22 个测试文件 / 100 个测试全绿。
 - 正式 Cloudflare 部署验证暂时阻塞：当前运行环境没有 `CLOUDFLARE_API_TOKEN`，Wrangler 在非交互环境无法执行 `d1 list` / remote migration / deploy。拿到 Cloudflare API Token 或已登录 Wrangler 后，继续执行 remote D1 schema 检查、按实际缺失列选择迁移、部署 Worker、验证 `/api/v1/health`、diagnostics、Telegram webhook 与 Cron。
+
+## 2026-05-17 Phase 9A 定时任务重启 / 单台服务器范围
+
+- 扩展定时任务核心模型：`ScheduleAction` 从 `boot|shutdown` 扩展为 `boot|shutdown|reboot`，`ScheduleScope` 增加 `instance`；`power_schedules` / `schedule_runs` 增加 `instance_id`，并新增迁移 `migrations/0004_power_schedules_instance_scope.sql`。
+- `ScheduleService.createSchedule(...)` 支持 `scope=instance` + `account_id` + `instance_id`；Job Runner 执行单台范围时复用 `BatchService.runAccountBatch(..., { instanceIds: [instance_id] })`，避免影响同账号其他服务器。
+- `BatchService` 增加 `reboot` 动作支持，Cron 触发的定时重启会调用 Linode reboot API，并按原批量执行路径写审计日志。
+- Telegram 定时任务创建流程新增「重启」动作和「选择单台服务器」范围：选择动作 → 选择单台服务器 → 选择账号 → 拉取服务器列表 → 选择实例 → 预设时间或自定义时间/Cron。
+- 更新 `docs/api.md`、`docs/telegram.md` 和 `tests/phase14-schedules.test.ts`，覆盖 API 创建单台重启、Telegram 单台服务器重启预设、自定义时间/Cron、敏感信息不泄露。
+- 验证通过：`npm run typecheck`；`npm test`（22 个测试文件 / 101 个测试通过）。
