@@ -271,3 +271,11 @@ npm test
 - 新增 API：`PATCH /api/v1/admin-presence/policies/:policy_id`，响应继续只返回公开策略字段和解析后的规则，不返回 `rules_json`、token 明文或 `encrypted_token`；写入 `admin_presence.policy.update` 审计日志。
 - Telegram 策略详情页新增「编辑」入口；支持修改名称、最终动作、作用范围（全部账号 / 单账号 / 分组）、提醒时间、最终动作时间。选择 `删除全部服务器` 时仍展示高危警告。
 - 更新 `docs/api.md`、`docs/telegram.md`、`tests/phase13-admin-presence.test.ts`，覆盖 API 编辑、Telegram 编辑入口、名称编辑、动作/范围/时间编辑、审计日志和敏感信息不泄露。
+
+## 2026-05-17 旧 D1 迁移兜底 / 生产部署预检
+
+- 为旧 D1 数据库补兼容迁移脚本：`migrations/0002_legacy_group_compat.sql`，用于早期 schema 已有 `linode_accounts` / `power_schedules`、但没有 `groups` 表和 `linode_accounts.group_id` 的部署；脚本会创建默认分组「未分组」并补账号分组字段。
+- 将原 `migrations/0002_power_schedules_group_scope.sql` 改名为 `migrations/0003_power_schedules_group_scope.sql`，用于已有分组/账号分组字段但缺少 `power_schedules.group_id` 的中间版本升级。
+- 本地用独立 Wrangler D1 smoke 环境模拟旧 schema：先创建旧 `linode_accounts` / `power_schedules`，再依次执行 `0002_legacy_group_compat.sql` 和 `0003_power_schedules_group_scope.sql`，验证默认分组、旧账号 `group_id=1`、旧定时任务 `group_id=NULL` 均正确。
+- 复跑验证：`npm run typecheck`、`npm test`、`npm run build:upload` 均通过；当前 22 个测试文件 / 100 个测试全绿。
+- 正式 Cloudflare 部署验证暂时阻塞：当前运行环境没有 `CLOUDFLARE_API_TOKEN`，Wrangler 在非交互环境无法执行 `d1 list` / remote migration / deploy。拿到 Cloudflare API Token 或已登录 Wrangler 后，继续执行 remote D1 schema 检查、按实际缺失列选择迁移、部署 Worker、验证 `/api/v1/health`、diagnostics、Telegram webhook 与 Cron。
