@@ -8,13 +8,15 @@ import type { ParsedTelegramUpdate, TelegramClientAction, TelegramClientResult }
 import { continueAddAccountFlow } from "./account-flow";
 import { AccountService } from "../services/account-service";
 import { renderCheckinInlineKeyboard, renderMainReplyKeyboard } from "./keyboards";
-import { renderAccountActionResultText, renderAccountDetailKeyboard, renderAccountsMenuKeyboard, renderAccountsMenuText, renderHelpText, renderMainMenuKeyboard, renderMainMenuText } from "./menus";
+import { renderAccountActionResultText, renderAccountDetailKeyboard, renderAccountsMenuKeyboard, renderAccountsMenuText, renderDiagnosticsMenuKeyboard, renderDiagnosticsMenuText, renderHelpText, renderMainMenuKeyboard, renderMainMenuText, renderSettingsMenuKeyboard, renderSettingsMenuText } from "./menus";
 import { renderInstancesMenuKeyboard, renderInstancesMenuText } from "./instance-renderer";
 import { GroupService } from "../services/group-service";
 import { renderGroupSelectKeyboard, renderGroupSelectText, renderGroupsMenuKeyboard, renderGroupsMenuText } from "./group-renderer";
 import { renderSetupWizardText } from "./setup-renderer";
-import { renderAdminPresencePolicyCreatedText, renderAdminPresencePolicyNamePrompt, renderAdminPresencePolicyTimeKeyboard, renderAdminPresencePolicyTimeText } from "./admin-presence-renderer";
-import { renderScheduleActionResultKeyboard, renderScheduleActionResultText } from "./schedule-renderer";
+import { renderAdminPresenceMenuKeyboard, renderAdminPresenceMenuText, renderAdminPresencePolicyCreatedText, renderAdminPresencePolicyNamePrompt, renderAdminPresencePolicyTimeKeyboard, renderAdminPresencePolicyTimeText } from "./admin-presence-renderer";
+import { renderScheduleActionResultKeyboard, renderScheduleActionResultText, renderSchedulesMenuKeyboard, renderSchedulesMenuText } from "./schedule-renderer";
+import { renderSecurityMenuKeyboard, renderSecurityMenuText } from "./security-renderer";
+import { SecurityService } from "../services/security-service";
 
 export async function handleTelegramMessageCommand(
   update: Extract<ParsedTelegramUpdate, { kind: "message" }>,
@@ -46,6 +48,37 @@ export async function handleTelegramMessageCommand(
         return client.sendMessage({ chat_id: update.chatId, text: renderGroupsMenuText(data.groups), reply_markup: renderGroupsMenuKeyboard(data.groups) });
       }
       return client.sendMessage({ chat_id: update.chatId, text: "分组功能需要数据库支持。", reply_markup: renderCheckinInlineKeyboard() });
+    }
+    if (update.text === "🛡 安全事件" || update.text === "安全事件") {
+      await sessions.clearCurrentSession(update.fromId);
+      if (env.DB) {
+        const data = await new SecurityService(env).getOverview();
+        return client.sendMessage({ chat_id: update.chatId, text: renderSecurityMenuText(data.open_events, data.recent_events), reply_markup: renderSecurityMenuKeyboard() });
+      }
+      return client.sendMessage({ chat_id: update.chatId, text: "安全事件功能需要数据库支持。", reply_markup: renderCheckinInlineKeyboard() });
+    }
+    if (update.text === "⏰ 定时任务" || update.text === "定时任务") {
+      await sessions.clearCurrentSession(update.fromId);
+      return client.sendMessage({ chat_id: update.chatId, text: renderSchedulesMenuText(), reply_markup: renderSchedulesMenuKeyboard() });
+    }
+    if (update.text === "❤️ 保活打卡" || update.text === "保活打卡") {
+      await sessions.clearCurrentSession(update.fromId);
+      if (env.DB) {
+        const data = await new AdminPresenceService(env).getStatus();
+        return client.sendMessage({ chat_id: update.chatId, text: renderAdminPresenceMenuText(data), reply_markup: renderAdminPresenceMenuKeyboard() });
+      }
+      return client.sendMessage({ chat_id: update.chatId, text: "保活打卡功能需要数据库支持。", reply_markup: renderCheckinInlineKeyboard() });
+    }
+    if (update.text === "⚙️ 设置" || update.text === "设置") {
+      await sessions.clearCurrentSession(update.fromId);
+      return client.sendMessage({ chat_id: update.chatId, text: renderSettingsMenuText(), reply_markup: renderSettingsMenuKeyboard() });
+    }
+    if (update.text === "系统自检") {
+      await sessions.clearCurrentSession(update.fromId);
+      const diagnostics = new DiagnosticsService(env);
+      const deployment = await diagnostics.getDeploymentDiagnostics();
+      const jobs = await diagnostics.getJobsDiagnostics();
+      return client.sendMessage({ chat_id: update.chatId, text: renderDiagnosticsMenuText(deployment.status, jobs.missing, jobs.disabled), reply_markup: renderDiagnosticsMenuKeyboard() });
     }
     if (update.text === "❤️ 打卡" || update.text === "打卡") {
       await sessions.clearCurrentSession(update.fromId);

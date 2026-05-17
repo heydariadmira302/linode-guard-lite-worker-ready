@@ -267,4 +267,29 @@ describe("Phase 18 Telegram-first experience", () => {
       { text: "新建分组", callback_data: "groups:create" }
     ]));
   });
+
+  it("opens secondary main menu entries from Chinese text", async () => {
+    const db = new FakeD1Database();
+    const env = { ...baseEnv, DB: db as unknown as D1Database };
+
+    const schedules = await worker.fetch(telegramRequest(messageUpdate("⏰ 定时任务", 41)), env as never);
+    const schedulesBody = await schedules.json() as { data: { telegram: { payload: { text: string } } } };
+    expect(schedulesBody.data.telegram.payload.text).toContain("⏰ 定时任务");
+    expect(schedulesBody.data.telegram.payload.text).not.toContain("/help");
+
+    const security = await worker.fetch(telegramRequest(messageUpdate("🛡 安全事件", 42)), env as never);
+    const securityBody = await security.json() as { data: { telegram: { payload: { text: string } } } };
+    expect(securityBody.data.telegram.payload.text).toContain("🛡 安全事件");
+    expect(securityBody.data.telegram.payload.text).toContain("未确认事件：0");
+
+    const adminPresence = await worker.fetch(telegramRequest(messageUpdate("❤️ 保活打卡", 43)), env as never);
+    const adminPresenceBody = await adminPresence.json() as { data: { telegram: { payload: { text: string } } } };
+    expect(adminPresenceBody.data.telegram.payload.text).toContain("❤️ 保活打卡");
+    expect(adminPresenceBody.data.telegram.payload.text).toContain("启用策略组数量");
+
+    const settings = await worker.fetch(telegramRequest(messageUpdate("⚙️ 设置", 44)), env as never);
+    const settingsBody = await settings.json() as { data: { telegram: { payload: { text: string } } } };
+    expect(settingsBody.data.telegram.payload.text).toContain("设置");
+    expect(settingsBody.data.telegram.payload.text).toContain("Secrets");
+  });
 });
