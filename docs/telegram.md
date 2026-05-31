@@ -568,3 +568,8 @@ Windows 密码自定义：Telegram 支持在创建流程中选择“自己输入
 
 
 Linode 实例名称自定义：Windows 创建流程支持输入 Linode label，限制为 3-64 位，只能包含英文、数字、点、下划线、短横线，不支持中文；也可以跳过自动命名。
+
+
+### Win11 RDP 连接说明
+
+Win11 StackScript 会在 unattend/FirstLogonCommands 中强制开启 RDP、关闭 NLA、放行 TCP 3389，并将 TermService 设置为自动启动。若安装完成后 LISH 能看到桌面但 RDP 仍连接不到登录页，优先检查 Linode Firewall 是否放行 3389、实例公网 IPv4 是否正确，以及 Windows 内 `netstat -ano | findstr :3389` 是否处于 LISTENING。

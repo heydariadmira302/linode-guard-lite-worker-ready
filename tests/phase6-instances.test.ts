@@ -284,6 +284,9 @@ describe("Phase 6 Linode instance read-only management", () => {
         expect(payload.script).toContain("WINDOWS_IMAGE_NAME");
         expect(payload.script).not.toContain("[B<?xml");
         expect(payload.script).not.toContain("Windows 10 Pro");
+        expect(payload.script).toContain("<UserAuthentication>0</UserAuthentication>");
+        expect(payload.script).toContain("Allow RDP 3389");
+        expect(payload.script).toContain("WINDOWS_REBOOT_OK");
         return new Response(JSON.stringify({ id: 2022, label: payload.label }), { status: 200 });
       }
       if (url.endsWith("/regions")) return new Response(JSON.stringify({ data: [{ id: "jp-osa", label: "Osaka", site_type: "core" }], page: 1, pages: 1 }), { status: 200 });
@@ -354,8 +357,9 @@ describe("Phase 6 Linode instance read-only management", () => {
       const createdBody = await createdFlow.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<Record<string, unknown>>> } } } } };
       expect(createdBody.data.telegram.payload.text).toContain("不会再次显示，请立刻复制保存");
       expect(createdBody.data.telegram.payload.text).toContain("不会提供找回入口");
-      expect(createdBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🖥 打开服务器详情", callback_data: "instances:detail:1:92022:account_1" });
-      expect(createdBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).not.toContainEqual({ text: "🔄 查看服务器状态", callback_data: "instances:detail:1:92022:account_1" });
+      expect(createdBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🏠 返回主菜单", callback_data: "menu:main" });
+      expect(createdBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🖥 稍后查看服务器详情", callback_data: "instances:detail:1:92022:account_1" });
+      expect(createdBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).not.toContainEqual({ text: "🖥 打开服务器详情", callback_data: "instances:detail:1:92022:account_1" });
       const detailFlow = await worker.fetch(telegramRequest(callbackUpdate("instances:detail:1:92022:account_1")), env as never);
       const detailBody = await detailFlow.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<Record<string, unknown>>> } } } } };
       expect(detailBody.data.telegram.payload.text).toContain("RDP：192.0.2.9:3389");

@@ -535,3 +535,11 @@ npm test
 - Telegram Windows 创建流程增加 Linode 实例名称设置步骤：可自定义 label 或跳过自动命名。
 - 自定义 label 走 Linode API 原生实例名称限制：3-64 位，只允许英文、数字、点、下划线、短横线，不支持中文。
 - 本轮未新增 D1 本地备注表，避免迁移和展示复杂度；用户当前选择的是 Linode 实例名称路线。
+
+
+## 2026-05-31 Windows 11 RDP 与启动项自动化补强
+
+- 根据实机反馈：Win11 安装后 LISH 能看到桌面，但 RDP 连接不到登录页；安装过程中可能需要在 LISH 手动选择 Windows 11 / Windows 11 step。
+- StackScript Win11 unattend 补强 RDP：关闭 NLA（`UserAuthentication=0`）、`SecurityLayer=1`、FirstLogonCommands 强制开启 RDP、放行 Remote Desktop 防火墙组和 TCP 3389、设置 TermService 自动启动。
+- Stage 3 最后切换 Windows config 后，不再无条件执行 `reboot -f`；Linode API reboot 成功后等待重启完成，仅在 API reboot 重试失败时 fallback 强制 reboot，避免打乱最终启动项。
+- Telegram Windows 创建成功页调整按钮顺序：优先返回主菜单，详情按钮改为“稍后查看服务器详情”，减少创建后立即拉实时详情造成的卡顿感。
