@@ -16,7 +16,7 @@ export class WindowsIsoResolverService {
   private readonly settings: SettingsRepository;
   private readonly versions = new WindowsVersionService();
 
-  constructor(private readonly env: Env, settings?: SettingsRepository, private readonly fetcher: typeof fetch = fetch) {
+  constructor(private readonly env: Env, settings?: SettingsRepository, private readonly fetcher?: typeof fetch) {
     if (!env.DB && !settings) throw new AppError(ErrorCode.CONFIG_MISSING, "Missing D1 binding DB", "req_windows_iso", 500);
     this.settings = settings ?? new SettingsRepository(env.DB as D1Database);
   }
@@ -37,7 +37,8 @@ export class WindowsIsoResolverService {
   }
 
   private async fetchIsoUrl(imageName: string, lang: WindowsLanguageId, requestId: string): Promise<string> {
-    const response = await this.fetcher(MASSGRAVE_WINDOWS_11_URL, { headers: { "user-agent": "LinodeGuardLite/WindowsIsoResolver" } });
+    const fetchImpl = this.fetcher ?? ((input: RequestInfo | URL, init?: RequestInit) => globalThis.fetch(input, init));
+    const response = await fetchImpl(MASSGRAVE_WINDOWS_11_URL, { headers: { "user-agent": "LinodeGuardLite/WindowsIsoResolver" } });
     if (!response.ok) throw new AppError(ErrorCode.LINODE_API_ERROR, "暂时没找到可用的 Windows 11 官方 ISO，请稍后重试。", requestId, 502);
     const html = await response.text();
     const urls = Array.from(html.matchAll(/https:\/\/(?:software\.download\.prss\.microsoft\.com|download\.microsoft\.com)\/[^\s"'<>]+\.iso(?:\?[^\s"'<>]*)?/gi)).map((match) => decodeHtml(match[0]));
