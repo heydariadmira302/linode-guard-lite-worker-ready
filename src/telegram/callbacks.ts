@@ -2277,6 +2277,15 @@ function renderTelegramCooldownMessage(
   });
 }
 
+function formatCallbackErrorMessage(error: AppError): string {
+  const generic = mapTelegramErrorMessage(error.code);
+  if (error.code === ErrorCode.LINODE_API_ERROR && error.message && error.message !== "Operation failed") {
+    const detail = error.message.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
+    if (detail && !/token|authorization|bearer|password|secret/i.test(detail)) return `${generic}\n\nLinode 返回：${detail.slice(0, 260)}`;
+  }
+  return generic;
+}
+
 function isProtectedInstanceError(error: unknown): boolean {
   return error instanceof AppError && error.code === ErrorCode.VALIDATION_ERROR && error.message.includes("Protected instance");
 }
@@ -2293,7 +2302,7 @@ function renderTelegramCallbackError(
   return client.editMessage({
     chat_id: update.chatId,
     message_id: update.messageId,
-    text: renderTelegramOperationResult({ title: "操作失败", status: "failed", requestId, errorMessage: mapTelegramErrorMessage(appError.code), errorCode: appError.code, nextStep: "按提示处理后重试，或查看审计日志定位问题" }),
+    text: renderTelegramOperationResult({ title: "操作失败", status: "failed", requestId, errorMessage: formatCallbackErrorMessage(appError), errorCode: appError.code, nextStep: "按提示处理后重试，或查看审计日志定位问题" }),
     reply_markup: renderCheckinInlineKeyboard()
   });
 }

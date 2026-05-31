@@ -236,7 +236,8 @@ export class LinodeClient {
       throw new AppError(ErrorCode.RATE_LIMITED, "Linode API 限流，请稍后重试", requestId, 429);
     }
     if (!response.ok) {
-      throw new AppError(ErrorCode.LINODE_API_ERROR, "Linode API 请求失败", requestId, 502);
+      const detail = await extractLinodeErrorMessage(response);
+      throw new AppError(ErrorCode.LINODE_API_ERROR, detail ? `Linode API 请求失败：${detail}` : "Linode API 请求失败", requestId, 502);
     }
     return response;
   }
@@ -263,6 +264,27 @@ export class LinodeClient {
 
     return items;
   }
+}
+
+async function extractLinodeErrorMessage(response: Response): Promise<string | null> {
+  const body = await response.clone().json().catch(() => null) as { errors?: Array<{ reason?: unknown; field?: unknown }> } | null;
+  if (!body || !Array.isArray(body.errors) || body.errors.length === 0) return null;
+  const messages = body.errors
+    .map((item) => {
+      const reason = typeof item.reason === "string" ? item.reason : "";
+      const field = typeof item.field === "string" ? item.field : "";
+      const message = field ? `${field}: ${reason}` : reason;
+      return sanitizeLinodeError(message);
+    })
+    .filter((item): item is string => Boolean(item));
+  return messages.slice(0, 3).join("；") || null;
+}
+
+function sanitizeLinodeError(value: string): string | null {
+  const trimmed = value.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!trimmed) return null;
+  if (/token|authorization|bearer|password|secret/i.test(trimmed)) return "Linode 返回了敏感错误信息，已隐藏";
+  return trimmed.slice(0, 240);
 }
 
 function normalizeTotalPages(value: unknown): number {
