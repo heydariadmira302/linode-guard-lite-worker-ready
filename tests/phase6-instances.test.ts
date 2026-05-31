@@ -374,7 +374,8 @@ describe("Phase 6 Linode instance read-only management", () => {
     const isoUrl = "https://software.download.prss.microsoft.com/db/Win11_Enterprise_LTS_2024_zh-cn_x64.iso";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input);
-      if (url.includes("massgrave.dev")) return new Response(`<a href="${isoUrl}">iso</a>`, { status: 200 });
+      if (url.includes("microsoft.com/en-us/evalcenter/download-windows-11-enterprise")) return new Response(`<a aria-label="Download Windows 11 Enterprise ISO LTSC 64-bit (zh-CN)" href="https://go.microsoft.com/fwlink/?linkid=2288085&clcid=0x409&culture=en-us&country=us">64-bit edition</a>`, { status: 200 });
+      if (url.includes("go.microsoft.com/fwlink")) { const response = new Response("", { status: 200, headers: { "content-type": "application/octet-stream" } }) as Response; Object.defineProperty(response, "url", { value: isoUrl }); return response; }
       if (url.endsWith("/regions")) return new Response(JSON.stringify({ data: [{ id: "jp-osa", label: "Osaka", site_type: "core" }, { id: "us-iad", label: "IAD", site_type: "distributed" }], page: 1, pages: 1 }), { status: 200 });
       if (url.endsWith("/linode/types")) return new Response(JSON.stringify({ data: [{ id: "g6-standard-2", label: "Linode 4GB", memory: 4096, disk: 81920, vcpus: 2, transfer: 4000, price: { monthly: 24 } }, { id: "g6-nanode-1", label: "Nanode", memory: 1024, disk: 25600, price: { monthly: 5 } }], page: 1, pages: 1 }), { status: 200 });
       if (url.endsWith("/networking/firewalls")) return new Response(JSON.stringify({ data: [], page: 1, pages: 1 }), { status: 200 });
