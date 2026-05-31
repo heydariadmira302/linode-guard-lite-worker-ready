@@ -550,3 +550,5 @@ npm test
 - 根据 LISH 报错“计算机意外地重新启动或遇到错误，Windows 安装无法继续”，回滚自定义用户名进入 unattend 的实现：不再在 autounattend 创建 `LocalAccount Administrator`，避免重复创建内置 Administrator 触发 setup 失败。
 - `WindowsInstanceService` 不再向 StackScript data 传 `WINDOWS_USERNAME`；Telegram/API 仍默认显示/返回 `Administrator`，自定义用户名继续保持未开放。
 - RDP 补强命令从 `&&` 链改成 `& ... & exit /b 0`，避免某个防火墙组名在不同语言环境失败时中断 Windows setup。
+
+- 进一步收口 Win11 setup 失败面：Win11 unattend 根节点补 `wcm/xsi` namespace；RDP 补强从 `specialize RunSynchronous` 挪到 `oobeSystem FirstLogonCommands`，specialize 阶段只保留更基础配置，避免 RDP 命令失败导致 Windows 安装主流程中断。

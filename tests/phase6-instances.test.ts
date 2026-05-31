@@ -285,6 +285,7 @@ describe("Phase 6 Linode instance read-only management", () => {
         expect(payload.script).not.toContain("[B<?xml");
         expect(payload.script).not.toContain("Windows 10 Pro");
         expect(payload.script).toContain("<UserAuthentication>0</UserAuthentication>");
+        expect(payload.script).toContain("<FirstLogonCommands>");
         expect(payload.script).toContain("Allow RDP 3389");
         expect(payload.script).toContain("WINDOWS_REBOOT_OK");
         return new Response(JSON.stringify({ id: 2022, label: payload.label }), { status: 200 });
