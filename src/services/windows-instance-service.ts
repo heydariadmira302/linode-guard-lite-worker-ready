@@ -86,7 +86,6 @@ export class WindowsInstanceService {
     const payload = this.buildCreatePayload(input, stackscriptId, token, adminPassword, tempRootPassword, context.requestId);
     try {
       const instance = await new LinodeClient(token).createInstance(payload, context.requestId);
-      await this.settings.set(`windows_instance:${account.id}:${instance.id}`, { administrator_password: adminPassword, temp_root_password: tempRootPassword, version: WINDOWS_STACKSCRIPT_VERSION, stackscript_id: stackscriptId, created_at: new Date().toISOString() });
       await this.recordAudit(context, "windows_instance.create", "instance", String(instance.id || payload.label), "critical", "success", null, { account_id: account.id, region: payload.region, type: payload.type, stackscript_id: stackscriptId, version: WINDOWS_STACKSCRIPT_VERSION });
       return { account: publicAccount, instance, stackscript_id: stackscriptId, windows_version: WINDOWS_STACKSCRIPT_VERSION, administrator_password: adminPassword, temp_root_password: tempRootPassword };
     } catch (error) {

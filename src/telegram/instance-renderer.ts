@@ -288,6 +288,55 @@ export function renderCreateConfirmKeyboard(accountId: number): TelegramInlineKe
 }
 
 
+
+export function renderWindowsCreateTypeText(state: Record<string, unknown>): string {
+  return [
+    "🪟 创建 Windows 服务器",
+    "━━━━━━━━━━━━",
+    "步骤 2/3：选择服务器配置",
+    "",
+    "Windows：Windows Server 2022 Evaluation",
+    `地区：${state.region_label ?? state.region ?? "未选择"}`,
+    "最低建议：4GB 内存 / 80GB 磁盘以上",
+    "格式：CPU / 内存 / 流量 / 月费"
+  ].join("\n");
+}
+
+export function renderWindowsCreateFirewallText(state: Record<string, unknown>): string {
+  return [
+    "🪟 创建 Windows 服务器",
+    "━━━━━━━━━━━━",
+    "步骤 3/3：选择防火墙",
+    "",
+    "Windows：Windows Server 2022 Evaluation",
+    `地区：${state.region_label ?? state.region ?? "未选择"}`,
+    `配置：${state.type_label ?? state.type ?? "未选择"}`
+  ].join("\n");
+}
+
+export function renderWindowsCreateConfirmText(account: PublicAccount, state: Record<string, unknown>): string {
+  return [
+    "🪟 创建 Windows 服务器",
+    "━━━━━━━━━━━━",
+    `账号：#${account.id} ${account.alias}`,
+    `名称：${state.label ?? "自动生成"}`,
+    "Windows：Windows Server 2022 Evaluation",
+    "基础镜像：Ubuntu 22.04 + 私有 StackScript",
+    `地区：${state.region_label ?? state.region}`,
+    `配置：${state.type_label ?? state.type}`,
+    `防火墙：${state.firewall_label ?? "不使用防火墙"}`,
+    "",
+    "⚠️ 确认后会调用 Linode API 创建收费 Linode。",
+    "⚠️ StackScript 会把新建 Ubuntu 机器转换为 Windows，安装约 15-30 分钟，中途多次重启属正常。",
+    "⚠️ 安装脚本需要临时使用当前 Linode Token 调用 Linode API 配置磁盘/启动项。",
+    "🔐 Administrator 密码和临时 Ubuntu root 密码只显示一次，请创建后立即保存。"
+  ].join("\n");
+}
+
+export function renderWindowsCreateConfirmKeyboard(accountId: number): TelegramInlineKeyboardMarkup {
+  return { inline_keyboard: [[{ text: "✅ 确认创建 Windows", callback_data: `windows:create:confirm:${accountId}`, style: "success" }], [{ text: "⬅️ 上一步：防火墙", callback_data: `instances:create:back_firewall:${accountId}` }], [{ text: "❌ 取消", callback_data: "menu:instances" }]] };
+}
+
 export function renderWindowsCreatedText(result: { account: PublicAccount; instance: LinodeInstance; administrator_password: string; temp_root_password: string }): string {
   const ip = result.instance.ipv4?.[0] ?? "创建后稍后在 Linode 面板查看";
   return [
@@ -301,10 +350,10 @@ export function renderWindowsCreatedText(result: { account: PublicAccount; insta
     "RDP：3389（安装完成后连接）",
     "用户名：Administrator",
     "",
-    "🔐 Administrator 密码（只显示一次）：",
+    "🔐 Administrator 密码（只显示一次，请立即保存）：",
     result.administrator_password,
     "",
-    "🛠 临时 Ubuntu root 密码（调试用，Windows 安装完成后通常不再可用）：",
+    "🛠 临时 Ubuntu root 密码（只显示一次，调试用）：",
     result.temp_root_password,
     "",
     "Windows：Windows Server 2022 Evaluation",

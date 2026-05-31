@@ -40,6 +40,10 @@ import {
   renderAccountInstancesText,
   renderCreatedInstanceText,
   renderWindowsCreatedText,
+  renderWindowsCreateConfirmKeyboard,
+  renderWindowsCreateConfirmText,
+  renderWindowsCreateFirewallText,
+  renderWindowsCreateTypeText,
   renderCreateConfirmKeyboard,
   renderCreateConfirmText,
   renderCreateFirewallKeyboard,
@@ -1889,13 +1893,13 @@ StackScript ID：${status.stackscript_id}
     parsed.state.region = region;
     parsed.state.region_label = selected?.label ?? region;
     await saveCreateInstanceSession(sessions, update, accountId, parsed);
-    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderCreateTypeText(parsed.options.types, parsed.state), reply_markup: renderCreateTypeKeyboard(accountId, parsed.options.types, parsed.state) });
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: parsed.options.stackscript ? renderWindowsCreateTypeText(parsed.state) : renderCreateTypeText(parsed.options.types, parsed.state), reply_markup: renderCreateTypeKeyboard(accountId, parsed.options.types, parsed.state) });
   }
 
   const createTypePageMatch = update.data.match(/^instances:create:type_page:(\d+):(\d+)$/);
   if (createTypePageMatch && sessions) {
     const parsed = await getCreateInstanceSession(sessions, update.fromId);
-    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderCreateTypeText(parsed.options.types, parsed.state, Number(createTypePageMatch[2])), reply_markup: renderCreateTypeKeyboard(Number(createTypePageMatch[1]), parsed.options.types, parsed.state, Number(createTypePageMatch[2])) });
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: parsed.options.stackscript ? renderWindowsCreateTypeText(parsed.state) : renderCreateTypeText(parsed.options.types, parsed.state, Number(createTypePageMatch[2])), reply_markup: renderCreateTypeKeyboard(Number(createTypePageMatch[1]), parsed.options.types, parsed.state, Number(createTypePageMatch[2])) });
   }
 
   const createTypeMatch = update.data.match(/^instances:create:type:(\d+):(.+)$/);
@@ -1907,6 +1911,7 @@ StackScript ID：${status.stackscript_id}
     parsed.state.type = type;
     parsed.state.type_label = selected?.label ?? type;
     await saveCreateInstanceSession(sessions, update, accountId, parsed);
+    if (parsed.options.stackscript) return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsCreateFirewallText(parsed.state), reply_markup: renderCreateFirewallKeyboard(accountId, parsed.options.firewalls) });
     return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderCreateImageText(parsed.options.images, parsed.state), reply_markup: renderCreateImageKeyboard(accountId, parsed.options.images) });
   }
 
@@ -1942,13 +1947,13 @@ StackScript ID：${status.stackscript_id}
       parsed.state.firewall_label = "不使用防火墙";
     }
     await saveCreateInstanceSession(sessions, update, accountId, parsed);
-    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderCreateConfirmText(parsed.options.account, parsed.state), reply_markup: parsed.options.stackscript ? { inline_keyboard: [[{ text: "✅ 确认创建 Windows", callback_data: `windows:create:confirm:${accountId}`, style: "success" }], [{ text: "⬅️ 上一步：防火墙", callback_data: `instances:create:back_firewall:${accountId}` }], [{ text: "❌ 取消", callback_data: "menu:instances" }]] } : renderCreateConfirmKeyboard(accountId) });
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: parsed.options.stackscript ? renderWindowsCreateConfirmText(parsed.options.account, parsed.state) : renderCreateConfirmText(parsed.options.account, parsed.state), reply_markup: parsed.options.stackscript ? renderWindowsCreateConfirmKeyboard(accountId) : renderCreateConfirmKeyboard(accountId) });
   }
 
   const createBackTypeMatch = update.data.match(/^instances:create:back_type:(\d+)$/);
   if (createBackTypeMatch && sessions) {
     const parsed = await getCreateInstanceSession(sessions, update.fromId);
-    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderCreateTypeText(parsed.options.types, parsed.state), reply_markup: renderCreateTypeKeyboard(Number(createBackTypeMatch[1]), parsed.options.types, parsed.state) });
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: parsed.options.stackscript ? renderWindowsCreateTypeText(parsed.state) : renderCreateTypeText(parsed.options.types, parsed.state), reply_markup: renderCreateTypeKeyboard(Number(createBackTypeMatch[1]), parsed.options.types, parsed.state) });
   }
 
   const createBackImageMatch = update.data.match(/^instances:create:back_image:(\d+)$/);
@@ -1960,7 +1965,7 @@ StackScript ID：${status.stackscript_id}
   const createBackFirewallMatch = update.data.match(/^instances:create:back_firewall:(\d+)$/);
   if (createBackFirewallMatch && sessions) {
     const parsed = await getCreateInstanceSession(sessions, update.fromId);
-    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderCreateFirewallText(parsed.state), reply_markup: renderCreateFirewallKeyboard(Number(createBackFirewallMatch[1]), parsed.options.firewalls) });
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: parsed.options.stackscript ? renderWindowsCreateFirewallText(parsed.state) : renderCreateFirewallText(parsed.state), reply_markup: renderCreateFirewallKeyboard(Number(createBackFirewallMatch[1]), parsed.options.firewalls) });
   }
 
   const createConfirmMatch = update.data.match(/^instances:create:confirm:(\d+)$/);

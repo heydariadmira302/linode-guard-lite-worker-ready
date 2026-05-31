@@ -41,10 +41,14 @@ class FakeD1Database {
   accounts: AccountRecord[] = [];
   groups: GroupRecord[] = [{ id: 1, name: "未分组", is_default: 1, created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", deleted_at: null }];
   settings = new Map<string, string>();
+  botSessions: Record<string, unknown>[] = [];
 
   prepare(sql: string) { return new FakePreparedStatement(this, sql); }
 
   first<T>(sql: string, values: unknown[]): T | null {
+    if (sql.includes("FROM bot_sessions")) {
+      return (this.botSessions.find((session) => session.telegram_user_id === String(values[0])) as T | undefined) ?? null;
+    }
     if (sql.includes("FROM settings")) {
       const value = this.settings.get(String(values[0]));
       return value ? ({ value_json: value } as T) : null;
@@ -62,6 +66,11 @@ class FakeD1Database {
   }
 
   run(sql: string, values: unknown[]) {
+    if (sql.includes("INTO bot_sessions")) {
+      this.botSessions = this.botSessions.filter((session) => session.telegram_user_id !== String(values[0]));
+      this.botSessions.push({ id: this.botSessions.length + 1, telegram_user_id: String(values[0]), chat_id: String(values[1]), state: String(values[2]), data_json: values[3] as string | null, expires_at: String(values[4]) });
+    }
+    if (sql.includes("DELETE FROM bot_sessions")) this.botSessions = this.botSessions.filter((session) => session.telegram_user_id !== String(values[0]));
     if (sql.includes("INTO settings")) this.settings.set(String(values[0]), String(values[1]));
     return { success: true, changes: 1, meta: {} };
   }
@@ -275,9 +284,22 @@ describe("Phase 6 Linode instance read-only management", () => {
       expect(body.data.instance.id).toBe(92022);
       expect(body.data.administrator_password).not.toContain("123@@@");
       expect(body.data.temp_root_password).not.toContain("LeitboGi0ro");
+      expect([...db.settings.keys()].some((key) => key.startsWith("windows_instance:"))).toBe(false);
       const menuResponse = await worker.fetch(telegramRequest(callbackUpdate("menu:instances")), env as never);
       const menuBody = await menuResponse.json() as { data: { telegram: { payload: { reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
       expect(menuBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🪟 创建 Windows 服务器", callback_data: "windows:create" });
+
+      const startFlow = await worker.fetch(telegramRequest(callbackUpdate("windows:create:account:1")), env as never);
+      expect(startFlow.status).toBe(200);
+      await worker.fetch(telegramRequest(callbackUpdate("instances:create:region:1:jp-osa")), env as never);
+      const typeFlow = await worker.fetch(telegramRequest(callbackUpdate("instances:create:type:1:g6-dedicated-2")), env as never);
+      const typeBody = await typeFlow.json() as { data?: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } }; error?: unknown };
+      expect(typeBody.data!.telegram.payload.text).toContain("步骤 3/3：选择防火墙");
+      expect(typeBody.data!.telegram.payload.text).not.toContain("选择系统");
+      const confirmFlow = await worker.fetch(telegramRequest(callbackUpdate("instances:create:firewall:1:none")), env as never);
+      const confirmBody = await confirmFlow.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+      expect(confirmBody.data.telegram.payload.text).toContain("StackScript 会把新建 Ubuntu 机器转换为 Windows");
+      expect(confirmBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "✅ 确认创建 Windows", callback_data: "windows:create:confirm:1", style: "success" });
     } finally {
       fetchMock.mockRestore();
     }
