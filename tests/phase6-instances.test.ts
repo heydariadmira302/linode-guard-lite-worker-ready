@@ -299,7 +299,13 @@ describe("Phase 6 Linode instance read-only management", () => {
       const confirmFlow = await worker.fetch(telegramRequest(callbackUpdate("instances:create:firewall:1:none")), env as never);
       const confirmBody = await confirmFlow.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
       expect(confirmBody.data.telegram.payload.text).toContain("StackScript 会把新建 Ubuntu 机器转换为 Windows");
+      expect(confirmBody.data.telegram.payload.text).toContain("只会在创建成功消息里显示一次");
+      expect(confirmBody.data.telegram.payload.text).toContain("立即复制保存");
       expect(confirmBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "✅ 确认创建 Windows", callback_data: "windows:create:confirm:1", style: "success" });
+      const createdFlow = await worker.fetch(telegramRequest(callbackUpdate("windows:create:confirm:1")), env as never);
+      const createdBody = await createdFlow.json() as { data: { telegram: { payload: { text: string } } } };
+      expect(createdBody.data.telegram.payload.text).toContain("不会再次显示，请立刻复制保存");
+      expect(createdBody.data.telegram.payload.text).toContain("不会提供找回入口");
     } finally {
       fetchMock.mockRestore();
     }

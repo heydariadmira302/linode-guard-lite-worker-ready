@@ -329,7 +329,7 @@ export function renderWindowsCreateConfirmText(account: PublicAccount, state: Re
     "⚠️ 确认后会调用 Linode API 创建收费 Linode。",
     "⚠️ StackScript 会把新建 Ubuntu 机器转换为 Windows，安装约 15-30 分钟，中途多次重启属正常。",
     "⚠️ 安装脚本需要临时使用当前 Linode Token 调用 Linode API 配置磁盘/启动项。",
-    "🔐 Administrator 密码和临时 Ubuntu root 密码只显示一次，请创建后立即保存。"
+    "🔐 Administrator 密码和临时 Ubuntu root 密码只会在创建成功消息里显示一次，请创建后立即复制保存。"
   ].join("\n");
 }
 
@@ -350,11 +350,16 @@ export function renderWindowsCreatedText(result: { account: PublicAccount; insta
     "RDP：3389（安装完成后连接）",
     "用户名：Administrator",
     "",
+    "⚠️ 重要：下面两个密码不会再次显示，请立刻复制保存。",
+    "如果关闭/清理消息后忘记密码，需要通过 Linode 控制台重置或重装。",
+    "",
     "🔐 Administrator 密码（只显示一次，请立即保存）：",
     result.administrator_password,
     "",
     "🛠 临时 Ubuntu root 密码（只显示一次，调试用）：",
     result.temp_root_password,
+    "",
+    "⚠️ 再提醒一次：请现在保存密码，这条消息之后不会提供找回入口。",
     "",
     "Windows：Windows Server 2022 Evaluation",
     "预计安装耗时：15-30 分钟，中途重启属于正常现象。",
