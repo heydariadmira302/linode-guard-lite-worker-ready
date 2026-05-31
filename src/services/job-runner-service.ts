@@ -42,6 +42,10 @@ export class JobRunnerService {
     return await this.runTelegramAutoDelete(now, { ignoreDelay: true, exclude: options.exclude ?? [] });
   }
 
+  async notifyDeploymentUpdateIfNeeded(now = new Date()): Promise<{ notification_sent: boolean; reason?: string; version_id?: string }> {
+    return await this.runDeploymentUpdateNotification(now);
+  }
+
   private async runOne(jobName: string, now: Date): Promise<JobRunnerResult["items"][number]> {
     if (!this.env.DB) throw new AppError(ErrorCode.CONFIG_MISSING, "Missing D1 binding DB", "req_job", 500);
     const started = now.toISOString();

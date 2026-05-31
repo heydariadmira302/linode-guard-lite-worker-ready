@@ -4,8 +4,10 @@ import { JobRunnerService } from "./services/job-runner-service";
 import { createRequestId } from "./utils/ids";
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
     const requestId = request.headers.get("X-Request-Id") ?? createRequestId();
+    const deploymentNotification = new JobRunnerService(env).notifyDeploymentUpdateIfNeeded().catch(() => undefined);
+    if (ctx) ctx.waitUntil(deploymentNotification);
     return routeRequest(request, env, requestId);
   },
 
