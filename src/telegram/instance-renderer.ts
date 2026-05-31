@@ -148,6 +148,7 @@ export function renderInstanceDetailText(result: InstanceDetailResult): string {
     "",
     "网络：",
     ...ipv4Lines,
+    primaryConnectionLines(instance.ipv4?.[0]),
     "",
     "配置：",
     ...renderSpecsLines(instance.specs).map((line) => `• ${line}`),
@@ -164,13 +165,6 @@ export function renderInstanceDetailKeyboard(result: InstanceDetailResult, sourc
   const accountId = result.account.id;
   const instanceId = result.instance.id;
   const rows: TelegramInlineKeyboardButton[][] = statusActionRows(accountId, instanceId, result.instance.status, source);
-  const primaryIpv4 = result.instance.ipv4?.[0];
-  if (primaryIpv4) {
-    rows.push([{ text: primaryIpv4, copy_text: { text: primaryIpv4 } }]);
-    rows.push([{ text: `ssh root@${primaryIpv4}`, copy_text: { text: `ssh root@${primaryIpv4}` } }]);
-    rows.push([{ text: `${primaryIpv4}:3389`, copy_text: { text: `${primaryIpv4}:3389` } }, { text: "Administrator", copy_text: { text: "Administrator" } }]);
-  }
-  rows.push([{ text: String(instanceId), copy_text: { text: String(instanceId) } }]);
   rows.push([{ text: "🚨 危险操作", callback_data: `instances:danger:${accountId}:${instanceId}:${source}`, style: "danger" }]);
   rows.push([{ text: "⬅️ 返回列表", callback_data: backToInstanceListCallback(source, accountId, result.account.group_id ?? undefined) }]);
   return { inline_keyboard: rows };
@@ -418,6 +412,16 @@ function formatTypeButton(item: CreateInstanceChoice): string {
   const transfer = typeof item.transfer === "number" ? `${item.transfer}G` : "?";
   const price = typeof item.price?.monthly === "number" ? `$${item.price.monthly}/月` : "价格未知";
   return `${item.vcpus ?? "?"}H ${memory} / ${transfer} / ${price}`;
+}
+
+
+function primaryConnectionLines(primaryIpv4?: string): string {
+  if (!primaryIpv4) return "• 连接：等待分配公网 IPv4 后显示";
+  return [
+    `• SSH：ssh root@${primaryIpv4}`,
+    `• RDP：${primaryIpv4}:3389`,
+    "• Windows 用户名：Administrator"
+  ].join("\n");
 }
 
 function renderSpecsLines(specs: unknown): string[] {

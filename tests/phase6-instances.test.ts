@@ -263,6 +263,7 @@ describe("Phase 6 Linode instance read-only management", () => {
       if (url.endsWith("/regions")) return new Response(JSON.stringify({ data: [{ id: "jp-osa", label: "Osaka", site_type: "core" }], page: 1, pages: 1 }), { status: 200 });
       if (url.endsWith("/linode/types")) return new Response(JSON.stringify({ data: [{ id: "g6-dedicated-2", label: "Dedicated 4GB", memory: 4096, disk: 81920, vcpus: 2, transfer: 4000, price: { monthly: 36 } }], page: 1, pages: 1 }), { status: 200 });
       if (url.endsWith("/networking/firewalls")) return new Response(JSON.stringify({ data: [], page: 1, pages: 1 }), { status: 200 });
+      if (url.endsWith("/linode/instances/92022") && (!init?.method || init.method === "GET")) return new Response(JSON.stringify({ id: 92022, label: "lgl-win-test", status: "provisioning", region: "jp-osa", type: "g6-dedicated-2", image: "linode/ubuntu22.04", ipv4: ["192.0.2.9"] }), { status: 200 });
       if (url.endsWith("/linode/instances") && init?.method === "POST") {
         const payload = JSON.parse(String(init.body));
         expect(payload).toMatchObject({ region: "jp-osa", type: "g6-dedicated-2", image: "linode/ubuntu22.04", stackscript_id: 2022 });
@@ -303,9 +304,16 @@ describe("Phase 6 Linode instance read-only management", () => {
       expect(confirmBody.data.telegram.payload.text).toContain("立即复制保存");
       expect(confirmBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "✅ 确认创建 Windows", callback_data: "windows:create:confirm:1", style: "success" });
       const createdFlow = await worker.fetch(telegramRequest(callbackUpdate("windows:create:confirm:1")), env as never);
-      const createdBody = await createdFlow.json() as { data: { telegram: { payload: { text: string } } } };
+      const createdBody = await createdFlow.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<Record<string, unknown>>> } } } } };
       expect(createdBody.data.telegram.payload.text).toContain("不会再次显示，请立刻复制保存");
       expect(createdBody.data.telegram.payload.text).toContain("不会提供找回入口");
+      expect(createdBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🖥 打开服务器详情", callback_data: "instances:detail:1:92022:account_1" });
+      expect(createdBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).not.toContainEqual({ text: "🔄 查看服务器状态", callback_data: "instances:detail:1:92022:account_1" });
+      const detailFlow = await worker.fetch(telegramRequest(callbackUpdate("instances:detail:1:92022:account_1")), env as never);
+      const detailBody = await detailFlow.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<Record<string, unknown>>> } } } } };
+      expect(detailBody.data.telegram.payload.text).toContain("RDP：192.0.2.9:3389");
+      expect(detailBody.data.telegram.payload.text).toContain("Windows 用户名：Administrator");
+      expect(JSON.stringify(detailBody.data.telegram.payload.reply_markup)).not.toContain("copy_text");
     } finally {
       fetchMock.mockRestore();
     }

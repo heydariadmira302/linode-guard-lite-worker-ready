@@ -1853,7 +1853,7 @@ StackScript ID：${status.stackscript_id}
       const parsed = await getCreateInstanceSession(sessions, update.fromId);
       const data = await new WindowsInstanceService(env).createWindowsInstance(accountId, { region: String(parsed.state.region), type: String(parsed.state.type), firewall_id: parsed.state.firewall_id === undefined ? null : Number(parsed.state.firewall_id) }, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
       await sessions.clearCurrentSession(update.fromId);
-      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsCreatedText(data), reply_markup: { inline_keyboard: [[{ text: "🔄 查看服务器状态", callback_data: `instances:detail:${data.account.id}:${data.instance.id}:account_${data.account.id}` }], [{ text: "↩️ 返回账号服务器", callback_data: `instances:list:account:${data.account.id}` }]] } });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsCreatedText(data), reply_markup: { inline_keyboard: [[{ text: "🖥 打开服务器详情", callback_data: `instances:detail:${data.account.id}:${data.instance.id}:account_${data.account.id}` }], [{ text: "↩️ 返回账号服务器", callback_data: `instances:list:account:${data.account.id}` }]] } });
     } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
   }
 
