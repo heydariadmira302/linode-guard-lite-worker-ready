@@ -295,13 +295,11 @@ describe("Phase 6 Linode instance read-only management", () => {
       if (url.endsWith("/linode/instances/92022") && (!init?.method || init.method === "GET")) return new Response(JSON.stringify({ id: 92022, label: "lgl-win-test", status: "provisioning", region: "jp-osa", type: "g6-dedicated-2", image: "linode/ubuntu22.04", ipv4: ["192.0.2.9"] }), { status: 200 });
       if (url.endsWith("/linode/stackscripts/2022") && init?.method === "PUT") {
         const payload = JSON.parse(String(init.body));
-        expect(payload.script).toContain("WINDOWS_USERNAME");
         expect(payload.script).toContain("WINDOWS_LANG");
         return new Response(JSON.stringify({ id: 2022, label: payload.label }), { status: 200 });
       }
       if (url.endsWith("/linode/stackscripts/2022") && init?.method === "PUT") {
         const payload = JSON.parse(String(init.body));
-        expect(payload.script).toContain("WINDOWS_USERNAME");
         expect(payload.script).toContain("WINDOWS_IMAGE_NAME");
         return new Response(JSON.stringify({ id: 2022, label: payload.label }), { status: 200 });
       }
@@ -310,7 +308,6 @@ describe("Phase 6 Linode instance read-only management", () => {
         expect(payload).toMatchObject({ region: "jp-osa", type: "g6-dedicated-2", image: "linode/ubuntu22.04", stackscript_id: 2022 });
         expect(payload.stackscript_data.TOKEN).toBe("token-default");
         if (typeof payload.stackscript_data.WINDOWS_PASSWORD !== "string") return new Response(JSON.stringify({ errors: [{ reason: "missing password" }] }), { status: 500 });
-        if (payload.stackscript_data.WINDOWS_USERNAME !== "Administrator") return new Response(JSON.stringify({ errors: [{ reason: "bad username" }] }), { status: 500 });
         if (payload.stackscript_data.INSTALL_WINDOWS_VERSION !== "2k22") return new Response(JSON.stringify({ errors: [{ reason: "bad windows version" }] }), { status: 500 });
         return new Response(JSON.stringify({ id: 92022, label: payload.label, status: "provisioning", region: payload.region, type: payload.type, image: payload.image, ipv4: ["192.0.2.9"], tags: payload.tags }), { status: 200 });
       }
@@ -385,7 +382,6 @@ describe("Phase 6 Linode instance read-only management", () => {
       if (url.endsWith("/networking/firewalls")) return new Response(JSON.stringify({ data: [], page: 1, pages: 1 }), { status: 200 });
       if (url.endsWith("/linode/stackscripts/2022") && init?.method === "PUT") {
         const payload = JSON.parse(String(init.body));
-        expect(payload.script).toContain("WINDOWS_USERNAME");
         expect(payload.script).toContain("WINDOWS_IMAGE_NAME");
         return new Response(JSON.stringify({ id: 2022, label: payload.label }), { status: 200 });
       }
@@ -394,7 +390,6 @@ describe("Phase 6 Linode instance read-only management", () => {
         if (payload.stackscript_data.INSTALL_WINDOWS_VERSION !== "w11") throw new Error("bad windows version");
         if (payload.stackscript_data.WINDOWS_IMAGE_NAME !== "Windows 11 Enterprise LTSC 2024") throw new Error("bad image name");
         if (payload.stackscript_data.WINDOWS_LANG !== "zh-cn") throw new Error("bad lang");
-        if (payload.stackscript_data.WINDOWS_USERNAME !== "Administrator") return new Response(JSON.stringify({ errors: [{ reason: "bad username" }] }), { status: 500 });
         if (payload.stackscript_data.W11_ISO_URL !== isoUrl) throw new Error("bad iso url");
         if (JSON.stringify(payload.stackscript_data).length >= 65535) throw new Error("stackscript data too large");
         return new Response(JSON.stringify({ id: 91124, label: payload.label, status: "provisioning", region: payload.region, type: payload.type, image: payload.image, ipv4: ["192.0.2.11"] }), { status: 200 });
@@ -454,7 +449,7 @@ describe("Phase 6 Linode instance read-only management", () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input);
       if (url.endsWith("/linode/stackscripts/2022") && init?.method === "PUT") return new Response(JSON.stringify({ id: 2022, label: "script" }), { status: 200 });
-      if (url.endsWith("/linode/instances") && init?.method === "POST") return new Response(JSON.stringify({ errors: [{ field: "stackscript_data.WINDOWS_USERNAME", reason: "Unexpected field" }] }), { status: 400 });
+      if (url.endsWith("/linode/instances") && init?.method === "POST") return new Response(JSON.stringify({ errors: [{ field: "stackscript_data.WINDOWS_LANG", reason: "Unexpected field" }] }), { status: 400 });
       throw new Error(`unexpected fetch ${url}`);
     });
     try {
@@ -464,7 +459,7 @@ describe("Phase 6 Linode instance read-only management", () => {
       const body = await response.json() as { error: { message: string } };
       expect(response.status).toBe(502);
       expect(body.error.message).toContain("POST /linode/instances");
-      expect(body.error.message).toContain("stackscript_data.WINDOWS_USERNAME");
+      expect(body.error.message).toContain("stackscript_data.WINDOWS_LANG");
     } finally {
       fetchMock.mockRestore();
     }

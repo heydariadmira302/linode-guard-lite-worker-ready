@@ -115,7 +115,7 @@ export class WindowsInstanceService {
     if (!region || !type) throw new AppError(ErrorCode.VALIDATION_ERROR, "region/type are required", requestId, 400);
     const label = typeof input.label === "string" && input.label.trim() ? input.label.trim() : createDefaultWindowsLabel();
     if (!/^[A-Za-z0-9._-]{3,64}$/.test(label)) throw new AppError(ErrorCode.VALIDATION_ERROR, "Invalid instance label", requestId, 400);
-    const stackscriptData = { TOKEN: linodeToken, WINDOWS_PASSWORD: adminPassword, WINDOWS_USERNAME: windowsUsername, INSTALL_WINDOWS_VERSION: version.stackscript_version, WINDOWS_IMAGE_NAME: version.image_name, WINDOWS_LANG: lang.id, AUTOLOGIN: "true", W11_ISO_URL: isoUrl };
+    const stackscriptData = { TOKEN: linodeToken, WINDOWS_PASSWORD: adminPassword, INSTALL_WINDOWS_VERSION: version.stackscript_version, WINDOWS_IMAGE_NAME: version.image_name, WINDOWS_LANG: lang.id, AUTOLOGIN: "true", W11_ISO_URL: isoUrl };
     if (JSON.stringify(stackscriptData).length > 65535) throw new AppError(ErrorCode.VALIDATION_ERROR, "StackScript data is too large", requestId, 400);
     const payload: any = { region, type, image: WINDOWS_STACKSCRIPT_IMAGE, label, root_pass: tempRootPassword, backups_enabled: false, tags: ["linode-guard-lite", "windows-stackscript", version.id], stackscript_id: stackscriptId, stackscript_data: stackscriptData };
     if (input.firewall_id !== undefined && input.firewall_id !== null) {
@@ -205,10 +205,8 @@ export function validateWindowsPassword(password: string, requestId = "req_windo
 
 export function validateWindowsUsername(username: string, requestId = "req_windows"): string {
   const value = typeof username === "string" && username.trim() ? username.trim() : "Administrator";
-  if (value.length < 1 || value.length > 20) throw new AppError(ErrorCode.VALIDATION_ERROR, "Windows username must be 1-20 characters", requestId, 400);
-  if (!/^[A-Za-z][A-Za-z0-9._-]*$/.test(value) || value.endsWith(".")) throw new AppError(ErrorCode.VALIDATION_ERROR, "Windows username only supports letters, numbers, dot, underscore and hyphen, and must start with a letter", requestId, 400);
-  if (["con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "lpt1", "lpt2", "lpt3"].includes(value.toLowerCase())) throw new AppError(ErrorCode.VALIDATION_ERROR, "Windows username is reserved", requestId, 400);
-  return value;
+  if (value !== "Administrator") throw new AppError(ErrorCode.VALIDATION_ERROR, "Windows username customization is not supported yet", requestId, 400);
+  return "Administrator";
 }
 
 function generateWindowsPassword(): string { return generatePassword(24); }

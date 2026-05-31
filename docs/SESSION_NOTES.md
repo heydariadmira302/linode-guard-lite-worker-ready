@@ -527,7 +527,7 @@ npm test
 - Windows 创建支持 API `administrator_password` 可选输入；不传时继续自动生成强密码。
 - Telegram 创建流程增加“自动生成强密码 / 自己输入密码”选择；自己输入时会校验复杂度并尝试删除用户密码消息。
 - 为避免 Windows autounattend 登录失败风险，Telegram 暂不开放自定义用户名，默认 `Administrator`；Service/API 预留 `windows_username` 并做格式校验。
-- StackScript 增加 `WINDOWS_USERNAME` UDF，并从 `example=Password` 改为无默认示例。
+- StackScript 去掉容易误导的 `example=Password`；用户名自定义暂不进入 StackScript，避免重复创建内置 Administrator。
 
 
 ## 2026-05-31 Windows 创建实例名称自定义
@@ -543,3 +543,10 @@ npm test
 - StackScript Win11 unattend 补强 RDP：关闭 NLA（`UserAuthentication=0`）、`SecurityLayer=1`、FirstLogonCommands 强制开启 RDP、放行 Remote Desktop 防火墙组和 TCP 3389、设置 TermService 自动启动。
 - Stage 3 最后切换 Windows config 后，不再无条件执行 `reboot -f`；Linode API reboot 成功后等待重启完成，仅在 API reboot 重试失败时 fallback 强制 reboot，避免打乱最终启动项。
 - Telegram Windows 创建成功页调整按钮顺序：优先返回主菜单，详情按钮改为“稍后查看服务器详情”，减少创建后立即拉实时详情造成的卡顿感。
+
+
+## 2026-05-31 Windows 11 unattend 安装失败修复
+
+- 根据 LISH 报错“计算机意外地重新启动或遇到错误，Windows 安装无法继续”，回滚自定义用户名进入 unattend 的实现：不再在 autounattend 创建 `LocalAccount Administrator`，避免重复创建内置 Administrator 触发 setup 失败。
+- `WindowsInstanceService` 不再向 StackScript data 传 `WINDOWS_USERNAME`；Telegram/API 仍默认显示/返回 `Administrator`，自定义用户名继续保持未开放。
+- RDP 补强命令从 `&&` 链改成 `& ... & exit /b 0`，避免某个防火墙组名在不同语言环境失败时中断 Windows setup。
