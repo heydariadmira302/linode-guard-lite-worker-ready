@@ -405,11 +405,13 @@ describe("Phase 6 Linode instance read-only management", () => {
       expect(optionsBody.data.regions.map((item) => item.id)).toEqual(["jp-osa"]);
       expect(optionsBody.data.types.map((item) => item.id)).toEqual(["g6-standard-2"]);
 
-      const createResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/windows/instances", { method: "POST", body: JSON.stringify({ region: "jp-osa", type: "g6-standard-2", version: "w11-ltsc-2024", lang: "zh-cn", administrator_password: "MyStrongPass9!" }) }), env as never);
+      const createResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/windows/instances", { method: "POST", body: JSON.stringify({ region: "jp-osa", type: "g6-standard-2", label: "win11-office-01", version: "w11-ltsc-2024", lang: "zh-cn", administrator_password: "MyStrongPass9!" }) }), env as never);
       const createBody = await createResponse.json() as { data: { windows_version: string; windows_lang: string } };
       expect(createResponse.status).toBe(200);
       expect(createBody.data.windows_version).toBe("w11-ltsc-2024");
       expect(createBody.data.windows_lang).toBe("zh-cn");
+      // API accepts a custom Linode label as well as the Telegram flow.
+
 
       const versionFlow = await worker.fetch(telegramRequest(callbackUpdate("windows:create:version:1:w11-ltsc-2024")), env as never);
       const versionBody = await versionFlow.json() as { data: { telegram: { payload: { text: string } } } };
@@ -421,6 +423,12 @@ describe("Phase 6 Linode instance read-only management", () => {
       const passwordFlow = await worker.fetch(telegramRequest(textUpdate("MyStrongPass9!")), env as never);
       const passwordBody = await passwordFlow.json() as { data: { telegram: { payload?: { text: string }; method?: string }[] | { payload: { text: string } } } };
       expect(JSON.stringify(passwordBody)).toContain("已接收自定义密码");
+      expect(JSON.stringify(passwordBody)).toContain("设置服务器名称");
+      const labelFlow = await worker.fetch(telegramRequest(callbackUpdate("windows:create:label:1:custom")), env as never);
+      const labelPrompt = await labelFlow.json() as { data: { telegram: { payload: { text: string } } } };
+      expect(labelPrompt.data.telegram.payload.text).toContain("输入 Linode 服务器名称");
+      const labelInput = await worker.fetch(telegramRequest(textUpdate("win11-office-01", 13)), env as never);
+      expect(JSON.stringify(await labelInput.json())).toContain("服务器名称：win11-office-01");
       await worker.fetch(telegramRequest(callbackUpdate("instances:create:region:1:jp-osa")), env as never);
       await worker.fetch(telegramRequest(callbackUpdate("instances:create:type:1:g6-standard-2")), env as never);
       const confirm = await worker.fetch(telegramRequest(callbackUpdate("instances:create:firewall:1:none")), env as never);

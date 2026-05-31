@@ -528,3 +528,10 @@ npm test
 - Telegram 创建流程增加“自动生成强密码 / 自己输入密码”选择；自己输入时会校验复杂度并尝试删除用户密码消息。
 - 为避免 Windows autounattend 登录失败风险，Telegram 暂不开放自定义用户名，默认 `Administrator`；Service/API 预留 `windows_username` 并做格式校验。
 - StackScript 增加 `WINDOWS_USERNAME` UDF，并从 `example=Password` 改为无默认示例。
+
+
+## 2026-05-31 Windows 创建实例名称自定义
+
+- Telegram Windows 创建流程增加 Linode 实例名称设置步骤：可自定义 label 或跳过自动命名。
+- 自定义 label 走 Linode API 原生实例名称限制：3-64 位，只允许英文、数字、点、下划线、短横线，不支持中文。
+- 本轮未新增 D1 本地备注表，避免迁移和展示复杂度；用户当前选择的是 Linode 实例名称路线。

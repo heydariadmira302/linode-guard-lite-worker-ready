@@ -749,7 +749,7 @@ Windows 创建采用 API-first / Service-first 的私有 StackScript 路线。Te
 
 ### POST /api/v1/accounts/:account_id/windows/instances
 
-请求体支持 `version` / `lang` / `administrator_password` / `windows_username`。`version=w11-ltsc-2024` 时，Service 会自动解析官方 ISO 并传入 StackScript：`INSTALL_WINDOWS_VERSION=w11`、`WINDOWS_IMAGE_NAME`、`WINDOWS_LANG`、`W11_ISO_URL`。解析失败时不创建实例。
+请求体支持 `version` / `lang` / `label` / `administrator_password` / `windows_username`。`version=w11-ltsc-2024` 时，Service 会自动解析官方 ISO 并传入 StackScript：`INSTALL_WINDOWS_VERSION=w11`、`WINDOWS_IMAGE_NAME`、`WINDOWS_LANG`、`W11_ISO_URL`。解析失败时不创建实例。
 
 创建 Windows Server 2022。请求体示例：
 

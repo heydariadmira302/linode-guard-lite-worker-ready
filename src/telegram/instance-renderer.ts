@@ -365,12 +365,52 @@ export function renderWindowsPasswordPromptKeyboard(accountId: number): Telegram
   return { inline_keyboard: [[{ text: "⬅️ 改为自动生成", callback_data: `windows:create:cred:${accountId}:auto` }], [{ text: "❌ 取消", callback_data: "menu:instances" }]] };
 }
 
+
+export function renderWindowsLabelModeText(state: Record<string, unknown>): string {
+  return [
+    "🪟 创建 Windows 服务器",
+    "━━━━━━━━━━━━",
+    "步骤：设置服务器名称",
+    "",
+    `Windows：${state.windows_version_label ?? "Windows Server 2022 Evaluation"}`,
+    state.windows_version === "w11-ltsc-2024" ? `语言：${state.windows_lang ?? "en-us"}` : null,
+    "",
+    "这个名称会作为 Linode 实例名称。",
+    "限制：英文、数字、点、下划线、短横线，3-64 位；不支持中文。"
+  ].filter(Boolean).join("\n");
+}
+
+export function renderWindowsLabelModeKeyboard(accountId: number): TelegramInlineKeyboardMarkup {
+  return { inline_keyboard: [
+    [{ text: "🏷 自定义服务器名称", callback_data: `windows:create:label:${accountId}:custom` }],
+    [{ text: "⏭ 跳过，自动命名", callback_data: `windows:create:label:${accountId}:auto` }],
+    [{ text: "❌ 取消", callback_data: "menu:instances" }]
+  ] };
+}
+
+export function renderWindowsLabelPromptText(): string {
+  return [
+    "🏷 输入 Linode 服务器名称",
+    "━━━━━━━━━━━━",
+    "请发送你想设置的服务器名称。",
+    "",
+    "要求：3-64 位，只能包含英文、数字、点、下划线、短横线。",
+    "例子：win11-office-01",
+    "",
+    "注意：Linode 实例名称不支持中文。"
+  ].join("\n");
+}
+
+export function renderWindowsLabelPromptKeyboard(accountId: number): TelegramInlineKeyboardMarkup {
+  return { inline_keyboard: [[{ text: "⏭ 跳过，自动命名", callback_data: `windows:create:label:${accountId}:auto` }], [{ text: "❌ 取消", callback_data: "menu:instances" }]] };
+}
+
 export function renderWindowsCreateTypeText(state: Record<string, unknown>): string {
   const isW11 = state.windows_version === "w11-ltsc-2024";
   return [
     "🪟 创建 Windows 服务器",
     "━━━━━━━━━━━━",
-    isW11 ? "步骤 4/6：选择服务器配置" : "步骤 3/5：选择服务器配置",
+    isW11 ? "步骤 5/7：选择服务器配置" : "步骤 4/6：选择服务器配置",
     "",
     `Windows：${state.windows_version_label ?? "Windows Server 2022 Evaluation"}`,
     isW11 ? `语言：${state.windows_lang ?? "en-us"}` : null,
@@ -385,7 +425,7 @@ export function renderWindowsCreateFirewallText(state: Record<string, unknown>):
   return [
     "🪟 创建 Windows 服务器",
     "━━━━━━━━━━━━",
-    isW11 ? "步骤 5/6：选择防火墙" : "步骤 4/5：选择防火墙",
+    isW11 ? "步骤 6/7：选择防火墙" : "步骤 5/6：选择防火墙",
     "",
     `Windows：${state.windows_version_label ?? "Windows Server 2022 Evaluation"}`,
     isW11 ? `语言：${state.windows_lang ?? "en-us"}` : null,
