@@ -281,9 +281,13 @@ async function extractLinodeErrorMessage(response: Response): Promise<string | n
 }
 
 function sanitizeLinodeError(value: string): string | null {
-  const trimmed = value.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
+  let trimmed = value.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
   if (!trimmed) return null;
-  if (/token|authorization|bearer|password|secret/i.test(trimmed)) return "Linode 返回了敏感错误信息，已隐藏";
+  trimmed = trimmed
+    .replace(/Bearer\s+[A-Za-z0-9._~+\/-]+=*/gi, "Bearer <redacted>")
+    .replace(/(authorization\s*[:=]\s*)[^,;\s]+/gi, "$1<redacted>")
+    .replace(/(password\s*[:=]\s*)[^,;\s]+/gi, "$1<redacted>")
+    .replace(/(secret\s*[:=]\s*)[^,;\s]+/gi, "$1<redacted>");
   return trimmed.slice(0, 240);
 }
 

@@ -2280,10 +2280,22 @@ function renderTelegramCooldownMessage(
 function formatCallbackErrorMessage(error: AppError): string {
   const generic = mapTelegramErrorMessage(error.code);
   if (error.code === ErrorCode.LINODE_API_ERROR && error.message && error.message !== "Operation failed") {
-    const detail = error.message.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
-    if (detail && !/token|authorization|bearer|password|secret/i.test(detail)) return `${generic}\n\nLinode 返回：${detail.slice(0, 260)}`;
+    const detail = sanitizeCallbackErrorDetail(error.message);
+    if (detail) return `${generic}\n\nLinode 返回：${detail}`;
   }
   return generic;
+}
+
+function sanitizeCallbackErrorDetail(message: string): string | null {
+  const detail = message
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/Bearer\s+[A-Za-z0-9._~+\/-]+=*/gi, "Bearer <redacted>")
+    .replace(/(authorization\s*[:=]\s*)[^,;\s]+/gi, "$1<redacted>")
+    .replace(/(password\s*[:=]\s*)[^,;\s]+/gi, "$1<redacted>")
+    .replace(/(secret\s*[:=]\s*)[^,;\s]+/gi, "$1<redacted>")
+    .trim();
+  return detail ? detail.slice(0, 260) : null;
 }
 
 function isProtectedInstanceError(error: unknown): boolean {
