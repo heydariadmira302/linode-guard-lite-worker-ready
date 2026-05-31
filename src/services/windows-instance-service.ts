@@ -84,8 +84,7 @@ export class WindowsInstanceService {
   async createWindowsInstance(accountId: number, input: CreateWindowsInstanceInput, context: WindowsInstanceServiceContext): Promise<CreateWindowsInstanceResult> {
     const account = await this.getActiveAccount(accountId, context.requestId);
     const publicAccount = await this.toPublicAccount(account);
-    const stackscriptId = await this.getStackScriptId(account.id);
-    if (stackscriptId <= 0) throw new AppError(ErrorCode.VALIDATION_ERROR, "Windows StackScript is not configured for this account", context.requestId, 400);
+    const stackscriptId = await this.ensureCurrentStackScript(account, context);
     const adminPassword = input.administrator_password ? validateWindowsPassword(input.administrator_password, context.requestId) : generateWindowsPassword();
     const windowsUsername = validateWindowsUsername(input.windows_username ?? "Administrator", context.requestId);
     const tempRootPassword = generateLinuxPassword();
@@ -130,6 +129,28 @@ export class WindowsInstanceService {
   private async isIsoCached(version: WindowsVersionId, lang: WindowsLanguageId): Promise<boolean> {
     const cached = await this.settings.get<{ expires_at?: string; iso_url?: string }>(`windows_iso_cache:${version}:${lang}`).catch(() => null);
     return Boolean(cached?.iso_url && cached.expires_at && Date.parse(cached.expires_at) > Date.now());
+  }
+
+  private async ensureCurrentStackScript(account: LinodeAccountRecord, context: WindowsInstanceServiceContext): Promise<number> {
+    const token = await this.decryptAccountToken(account);
+    const client = new LinodeClient(token);
+    const existingId = await this.getStackScriptId(account.id);
+    const payload = this.stackScriptPayload();
+    try {
+      const script = existingId > 0 ? await client.updateStackScript(existingId, payload, context.requestId) : await client.createStackScript(payload, context.requestId);
+      const id = Number(script.id || existingId);
+      if (!Number.isInteger(id) || id <= 0) throw new AppError(ErrorCode.LINODE_API_ERROR, "StackScript did not return id", context.requestId, 502);
+      await this.settings.set(this.stackScriptSettingKey(account.id), id);
+      if (existingId <= 0 || id !== existingId) {
+        await this.recordAudit(context, existingId > 0 ? "windows_stackscript.update" : "windows_stackscript.create", "account", String(account.id), "high", "success", null, { account_id: account.id, stackscript_id: id, image: WINDOWS_STACKSCRIPT_IMAGE, version: WINDOWS_STACKSCRIPT_VERSION });
+      }
+      return id;
+    } catch (error) {
+      const code = error instanceof AppError ? error.code : ErrorCode.LINODE_API_ERROR;
+      await this.recordAudit(context, existingId > 0 ? "windows_stackscript.update" : "windows_stackscript.create", "account", String(account.id), "high", "failed", code, { account_id: account.id, stackscript_id: existingId || null });
+      if (error instanceof AppError) throw error;
+      throw new AppError(ErrorCode.LINODE_API_ERROR, "Linode StackScript 请求失败", context.requestId, 502);
+    }
   }
 
   private async getActiveAccount(accountId: number, requestId: string): Promise<LinodeAccountRecord> {

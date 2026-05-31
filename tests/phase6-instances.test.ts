@@ -290,6 +290,18 @@ describe("Phase 6 Linode instance read-only management", () => {
       if (url.endsWith("/linode/types")) return new Response(JSON.stringify({ data: [{ id: "g6-dedicated-2", label: "Dedicated 4GB", memory: 4096, disk: 81920, vcpus: 2, transfer: 4000, price: { monthly: 36 } }], page: 1, pages: 1 }), { status: 200 });
       if (url.endsWith("/networking/firewalls")) return new Response(JSON.stringify({ data: [], page: 1, pages: 1 }), { status: 200 });
       if (url.endsWith("/linode/instances/92022") && (!init?.method || init.method === "GET")) return new Response(JSON.stringify({ id: 92022, label: "lgl-win-test", status: "provisioning", region: "jp-osa", type: "g6-dedicated-2", image: "linode/ubuntu22.04", ipv4: ["192.0.2.9"] }), { status: 200 });
+      if (url.endsWith("/linode/stackscripts/2022") && init?.method === "PUT") {
+        const payload = JSON.parse(String(init.body));
+        expect(payload.script).toContain("WINDOWS_USERNAME");
+        expect(payload.script).toContain("WINDOWS_LANG");
+        return new Response(JSON.stringify({ id: 2022, label: payload.label }), { status: 200 });
+      }
+      if (url.endsWith("/linode/stackscripts/2022") && init?.method === "PUT") {
+        const payload = JSON.parse(String(init.body));
+        expect(payload.script).toContain("WINDOWS_USERNAME");
+        expect(payload.script).toContain("WINDOWS_IMAGE_NAME");
+        return new Response(JSON.stringify({ id: 2022, label: payload.label }), { status: 200 });
+      }
       if (url.endsWith("/linode/instances") && init?.method === "POST") {
         const payload = JSON.parse(String(init.body));
         expect(payload).toMatchObject({ region: "jp-osa", type: "g6-dedicated-2", image: "linode/ubuntu22.04", stackscript_id: 2022 });
@@ -366,6 +378,12 @@ describe("Phase 6 Linode instance read-only management", () => {
       if (url.endsWith("/regions")) return new Response(JSON.stringify({ data: [{ id: "jp-osa", label: "Osaka", site_type: "core" }, { id: "us-iad", label: "IAD", site_type: "distributed" }], page: 1, pages: 1 }), { status: 200 });
       if (url.endsWith("/linode/types")) return new Response(JSON.stringify({ data: [{ id: "g6-standard-2", label: "Linode 4GB", memory: 4096, disk: 81920, vcpus: 2, transfer: 4000, price: { monthly: 24 } }, { id: "g6-nanode-1", label: "Nanode", memory: 1024, disk: 25600, price: { monthly: 5 } }], page: 1, pages: 1 }), { status: 200 });
       if (url.endsWith("/networking/firewalls")) return new Response(JSON.stringify({ data: [], page: 1, pages: 1 }), { status: 200 });
+      if (url.endsWith("/linode/stackscripts/2022") && init?.method === "PUT") {
+        const payload = JSON.parse(String(init.body));
+        expect(payload.script).toContain("WINDOWS_USERNAME");
+        expect(payload.script).toContain("WINDOWS_IMAGE_NAME");
+        return new Response(JSON.stringify({ id: 2022, label: payload.label }), { status: 200 });
+      }
       if (url.endsWith("/linode/instances") && init?.method === "POST") {
         const payload = JSON.parse(String(init.body));
         if (payload.stackscript_data.INSTALL_WINDOWS_VERSION !== "w11") throw new Error("bad windows version");
