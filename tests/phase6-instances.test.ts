@@ -34,16 +34,21 @@ class FakePreparedStatement {
   bind(...values: unknown[]) { this.values = values; return this; }
   first<T = unknown>() { return Promise.resolve(this.db.first<T>(this.sql, this.values)); }
   all<T = unknown>() { return Promise.resolve({ results: this.db.all<T>(this.sql), success: true, meta: {} }); }
-  run() { return Promise.resolve({ success: true, meta: {} }); }
+  run() { return Promise.resolve(this.db.run(this.sql, this.values)); }
 }
 
 class FakeD1Database {
   accounts: AccountRecord[] = [];
   groups: GroupRecord[] = [{ id: 1, name: "未分组", is_default: 1, created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", deleted_at: null }];
+  settings = new Map<string, string>();
 
   prepare(sql: string) { return new FakePreparedStatement(this, sql); }
 
   first<T>(sql: string, values: unknown[]): T | null {
+    if (sql.includes("FROM settings")) {
+      const value = this.settings.get(String(values[0]));
+      return value ? ({ value_json: value } as T) : null;
+    }
     if (sql.includes("FROM linode_accounts") && sql.includes("WHERE id = ?")) {
       return (this.accounts.find((account) => account.id === Number(values[0])) as T | undefined) ?? null;
     }
@@ -54,6 +59,11 @@ class FakeD1Database {
       return (this.groups.find((group) => group.is_default === 1 && group.deleted_at === null) as T | undefined) ?? null;
     }
     return null;
+  }
+
+  run(sql: string, values: unknown[]) {
+    if (sql.includes("INTO settings")) this.settings.set(String(values[0]), String(values[1]));
+    return { success: true, changes: 1, meta: {} };
   }
 
   all<T>(sql: string): T[] {
@@ -209,6 +219,7 @@ describe("Phase 6 Linode instance read-only management", () => {
 
       const createResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/instances", { method: "POST", body: JSON.stringify({ region: "jp-osa", type: "g6-nanode-1", image: "linode/ubuntu24.04" }) }), env as never);
       const createBody = await createResponse.json() as { ok: boolean; data: { instance: { id: number; status: string }; root_password: string } };
+      if (createResponse.status !== 200) console.log(await createResponse.clone().text());
       expect(createResponse.status).toBe(200);
       expect(createBody.data.instance).toMatchObject({ id: 909, status: "provisioning" });
       expect(createBody.data.root_password.length).toBeGreaterThanOrEqual(20);
@@ -216,12 +227,57 @@ describe("Phase 6 Linode instance read-only management", () => {
 
       const menuResponse = await worker.fetch(telegramRequest(callbackUpdate("menu:instances")), env as never);
       const menuBody = await menuResponse.json() as { data: { telegram: { payload: { reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
-      expect(menuBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "➕ 创建服务器", callback_data: "instances:create" });
+      expect(menuBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "➕ 创建 Linux 服务器", callback_data: "instances:create" });
 
       const flowResponse = await worker.fetch(telegramRequest(callbackUpdate("instances:create")), env as never);
       const flowBody = await flowResponse.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
       expect(flowBody.data.telegram.payload.text).toContain("创建服务器");
       expect(flowBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "👤 #1 default", callback_data: "instances:create:account:1" });
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+
+  it("creates Windows Server through API-first StackScript route", async () => {
+    const db = new FakeD1Database();
+    await addAccount(db, { id: 1, alias: "default", token: "token-default" });
+    const env = { ...baseEnv, DB: db as unknown as D1Database };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/linode/stackscripts") && init?.method === "POST") {
+        const payload = JSON.parse(String(init.body));
+        expect(payload).toMatchObject({ label: "Linode Guard Lite Windows Server", images: ["linode/ubuntu22.04"], is_public: false });
+        expect(payload.script).toContain("WINDOWS_PASSWORD");
+        return new Response(JSON.stringify({ id: 2022, label: payload.label }), { status: 200 });
+      }
+      if (url.endsWith("/regions")) return new Response(JSON.stringify({ data: [{ id: "jp-osa", label: "Osaka", site_type: "core" }], page: 1, pages: 1 }), { status: 200 });
+      if (url.endsWith("/linode/types")) return new Response(JSON.stringify({ data: [{ id: "g6-dedicated-2", label: "Dedicated 4GB", memory: 4096, disk: 81920, vcpus: 2, transfer: 4000, price: { monthly: 36 } }], page: 1, pages: 1 }), { status: 200 });
+      if (url.endsWith("/networking/firewalls")) return new Response(JSON.stringify({ data: [], page: 1, pages: 1 }), { status: 200 });
+      if (url.endsWith("/linode/instances") && init?.method === "POST") {
+        const payload = JSON.parse(String(init.body));
+        expect(payload).toMatchObject({ region: "jp-osa", type: "g6-dedicated-2", image: "linode/ubuntu22.04", stackscript_id: 2022 });
+        expect(payload.stackscript_data.TOKEN).toBe("token-default");
+        expect(payload.stackscript_data.WINDOWS_PASSWORD).toEqual(expect.any(String));
+        expect(payload.stackscript_data.INSTALL_WINDOWS_VERSION).toBe("2k22");
+        return new Response(JSON.stringify({ id: 92022, label: payload.label, status: "provisioning", region: payload.region, type: payload.type, image: payload.image, ipv4: ["192.0.2.9"], tags: payload.tags }), { status: 200 });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    try {
+      const scriptResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/windows/stackscript", { method: "POST" }), env as never);
+      expect(scriptResponse.status).toBe(200);
+      const optionsResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/windows/create-options"), env as never);
+      expect(optionsResponse.status).toBe(200);
+      const createResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/windows/instances", { method: "POST", body: JSON.stringify({ region: "jp-osa", type: "g6-dedicated-2" }) }), env as never);
+      const body = await createResponse.json() as { data: { instance: { id: number }; administrator_password: string; temp_root_password: string } };
+      expect(createResponse.status).toBe(200);
+      expect(body.data.instance.id).toBe(92022);
+      expect(body.data.administrator_password).not.toContain("123@@@");
+      expect(body.data.temp_root_password).not.toContain("LeitboGi0ro");
+      const menuResponse = await worker.fetch(telegramRequest(callbackUpdate("menu:instances")), env as never);
+      const menuBody = await menuResponse.json() as { data: { telegram: { payload: { reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+      expect(menuBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🪟 创建 Windows 服务器", callback_data: "windows:create" });
     } finally {
       fetchMock.mockRestore();
     }

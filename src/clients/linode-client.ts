@@ -80,6 +80,22 @@ export interface CreateLinodeInstanceInput {
   backups_enabled?: boolean;
   tags?: string[];
   firewall_id?: number;
+  stackscript_id?: number;
+  stackscript_data?: Record<string, string>;
+}
+
+export interface StackScriptPayload {
+  label: string;
+  description: string;
+  script: string;
+  images: string[];
+  is_public: boolean;
+  rev_note?: string;
+}
+
+export interface StackScriptResult {
+  id: number;
+  label: string;
 }
 
 interface LinodeListResponse<T> {
@@ -146,6 +162,18 @@ export class LinodeClient {
     const response = await this.request("/linode/instances", requestId, "POST", input);
     const body = await response.json().catch(() => ({})) as Record<string, unknown>;
     return toLinodeInstance(body);
+  }
+
+  async createStackScript(input: StackScriptPayload, requestId: string): Promise<StackScriptResult> {
+    const response = await this.request("/linode/stackscripts", requestId, "POST", input);
+    const body = await response.json().catch(() => ({})) as Record<string, unknown>;
+    return toStackScriptResult(body);
+  }
+
+  async updateStackScript(stackscriptId: number, input: StackScriptPayload, requestId: string): Promise<StackScriptResult> {
+    const response = await this.request(`/linode/stackscripts/${stackscriptId}`, requestId, "PUT", input);
+    const body = await response.json().catch(() => ({})) as Record<string, unknown>;
+    return toStackScriptResult(body);
   }
 
   async bootInstance(instanceId: number, requestId: string): Promise<void> {
@@ -320,4 +348,8 @@ function toLinodeFirewall(raw: Record<string, unknown>): LinodeFirewall {
     id: Number(raw.id),
     label: String(raw.label ?? raw.id ?? "")
   };
+}
+
+function toStackScriptResult(raw: Record<string, unknown>): StackScriptResult {
+  return { id: Number(raw.id), label: String(raw.label ?? "") };
 }

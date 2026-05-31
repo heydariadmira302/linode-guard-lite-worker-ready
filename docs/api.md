@@ -723,3 +723,39 @@ curl -s \
 ## 当前范围限制
 
 当前已支持实例只读、单实例开机、关机、重启、删除、批量操作、Boot safety、protected instance、审计日志查询、账号安全事件监控 MVP、管理员保活确认、定时开关机/重启、单台服务器定时任务和 Cloudflare Cron Job Runner。仍不包含 Web UI、多管理员、OAuth、标签或实例组。
+
+
+## Windows Server 创建 API
+
+Windows 创建采用 API-first / Service-first 的 StackScript 稳定路线。Telegram 只负责选择账号、Region、Plan、Firewall 和确认；核心逻辑在 `WindowsInstanceService`。
+
+### GET /api/v1/accounts/:account_id/windows/stackscript
+
+查看当前账号是否已经配置 Windows 私有 StackScript。
+
+### POST /api/v1/accounts/:account_id/windows/stackscript
+
+为当前 Linode 账号创建或更新私有 StackScript。该操作只写入 Linode StackScript，不创建服务器、不产生实例费用，但属于外部账号写操作，会写审计日志。
+
+### GET /api/v1/accounts/:account_id/windows/create-options
+
+获取 Windows 创建可选项：Region、满足最低内存/磁盘要求的 Plan、Firewall。当前路线固定为 `Windows Server 2022 Evaluation`，基础镜像为 `linode/ubuntu22.04`。
+
+### POST /api/v1/accounts/:account_id/windows/instances
+
+创建 Windows Server 2022。请求体示例：
+
+```json
+{
+  "region": "jp-osa",
+  "type": "g6-dedicated-2",
+  "firewall_id": null
+}
+```
+
+服务端会自动生成：
+
+- Windows `Administrator` 密码
+- 临时 Ubuntu root 密码
+
+响应会一次性返回这些密码；不要写入日志、文档或截图。创建后 StackScript 会把新建 Ubuntu 22.04 实例转换为 Windows Server 2022，安装期间会多次重启，预计 15-30 分钟。Windows 为非官方支持路线，失败时需通过 Linode LISH/控制台查看 `/root/windows-stackscript.log`。

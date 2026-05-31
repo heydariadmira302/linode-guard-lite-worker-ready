@@ -543,3 +543,22 @@ callback: menu:diagnostics
 - 修改时间：`schedules:edit_time:<schedule_id>` → 常用时间或按钮选择小时 / 分钟
 
 修改会调用 `ScheduleService.updateSchedule(...)`，重新校验目标账号 / 分组 / 实例，并在任务启用时重新计算 `next_run_at`。Telegram callback 只负责展示和收集选择，不直接写业务规则。
+
+
+### Windows Server 创建
+
+服务器管理页提供「🪟 创建 Windows 服务器」。当前只开放旧版实机验证过的 Windows Server 2022 StackScript 稳定路线：
+
+```text
+选择账号
+→ 如未配置，先创建/更新当前账号的私有 StackScript
+→ 选择 Region
+→ 选择满足最低要求的 Plan
+→ 选择 Firewall
+→ 高危确认
+→ 调用 WindowsInstanceService.createWindowsInstance(...)
+```
+
+Telegram 不直接实现 Windows 创建业务逻辑，只保存会话状态、展示选项、收集确认并调用 service/API。创建成功后会显示一次性 Administrator 密码和临时 Ubuntu root 密码；提示用户等待 15-30 分钟后用 RDP 3389 连接。
+
+当前不接入 kejilion 的通用 DD 菜单，也不使用公开默认密码。后续如扩展 Windows 11 / Server 2025 / DD 镜像，也必须先落 service/API，并保留高危确认、审计日志和一次性密码展示规则。

@@ -18,7 +18,8 @@ export function renderInstancesMenuKeyboard(): TelegramInlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [{ text: "🖥 查看全部服务器", callback_data: "instances:list:all" }],
-      [{ text: "➕ 创建服务器", callback_data: "instances:create" }],
+      [{ text: "➕ 创建 Linux 服务器", callback_data: "instances:create" }],
+      [{ text: "🪟 创建 Windows 服务器", callback_data: "windows:create" }],
       [{ text: "🔎 筛选", callback_data: "instances:filter" }, { text: "⚡ 批量操作", callback_data: "menu:batch" }],
       [{ text: "🏠 返回主菜单", callback_data: "menu:main" }]
     ]
@@ -284,6 +285,32 @@ export function renderCreateConfirmText(account: PublicAccount, state: Record<st
 
 export function renderCreateConfirmKeyboard(accountId: number): TelegramInlineKeyboardMarkup {
   return { inline_keyboard: [[{ text: "✅ 确认创建", callback_data: `instances:create:confirm:${accountId}`, style: "success" }], [{ text: "⬅️ 上一步：防火墙", callback_data: `instances:create:back_firewall:${accountId}` }], [{ text: "❌ 取消", callback_data: "menu:instances" }]] };
+}
+
+
+export function renderWindowsCreatedText(result: { account: PublicAccount; instance: LinodeInstance; administrator_password: string; temp_root_password: string }): string {
+  const ip = result.instance.ipv4?.[0] ?? "创建后稍后在 Linode 面板查看";
+  return [
+    "✅ Windows 创建请求已提交",
+    "━━━━━━━━━━━━",
+    `账号：#${result.account.id} ${result.account.alias}`,
+    `服务器：${result.instance.label} (${result.instance.id})`,
+    `状态：${translateInstanceStatus(result.instance.status)}`,
+    `地区：${result.instance.region}`,
+    `公网 IP：${ip}`,
+    "RDP：3389（安装完成后连接）",
+    "用户名：Administrator",
+    "",
+    "🔐 Administrator 密码（只显示一次）：",
+    result.administrator_password,
+    "",
+    "🛠 临时 Ubuntu root 密码（调试用，Windows 安装完成后通常不再可用）：",
+    result.temp_root_password,
+    "",
+    "Windows：Windows Server 2022 Evaluation",
+    "预计安装耗时：15-30 分钟，中途重启属于正常现象。",
+    "如果 30 分钟后仍无法 RDP，需要进 Linode LISH/控制台查看 StackScript 日志。"
+  ].join("\n");
 }
 
 export function renderCreatedInstanceText(result: { account: PublicAccount; instance: LinodeInstance; root_password?: string }): string {
