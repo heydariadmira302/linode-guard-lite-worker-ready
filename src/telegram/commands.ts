@@ -11,10 +11,11 @@ import { continueAddAccountFlow } from "./account-flow";
 import { AccountService } from "../services/account-service";
 import { AuditService } from "../services/audit-service";
 import { InstanceService } from "../services/instance-service";
+import { validateWindowsPassword } from "../services/windows-instance-service";
 import { AuditRepository } from "../storage/audit-repository";
 import { renderCheckinInlineKeyboard, renderMainReplyKeyboard } from "./keyboards";
 import { renderAccountActionResultText, renderAccountDetailKeyboard, renderAccountsMenuKeyboard, renderAccountsMenuText, renderDiagnosticsMenuKeyboard, renderDiagnosticsMenuText, renderHelpText, renderMainMenuKeyboard, renderMainMenuText, renderMoreMenuKeyboard, renderMoreMenuText, renderMyIdKeyboard, renderMyIdText, renderPrivacyMenuKeyboard, renderPrivacyMenuText, renderSettingsMenuKeyboard, renderSettingsMenuText } from "./menus";
-import { renderAllInstancesText, renderInstancesListKeyboard } from "./instance-renderer";
+import { renderAllInstancesText, renderCreateRegionKeyboard, renderCreateRegionText, renderInstancesListKeyboard } from "./instance-renderer";
 import { GroupService } from "../services/group-service";
 import { renderGroupsMenuKeyboard, renderGroupsMenuText } from "./group-renderer";
 import { renderSetupWizardText } from "./setup-renderer";
@@ -163,6 +164,8 @@ export async function handleTelegramMessageCommand(
       }
       return client.sendMessage({ chat_id: update.chatId, text: "请点击下方按钮完成打卡。", reply_markup: renderCheckinInlineKeyboard() });
     }
+    const windowsPasswordFlowResult = await continueWindowsPasswordFlow(update, client, sessions, env, requestId);
+    if (windowsPasswordFlowResult) return windowsPasswordFlowResult;
     const accountTokenFlowResult = await continueAccountTokenUpdateFlow(update, client, sessions, env, requestId);
     if (accountTokenFlowResult) return accountTokenFlowResult;
     const scheduleFlowResult = await continueScheduleFlow(update, client, sessions, env, requestId);
@@ -197,6 +200,8 @@ export async function handleTelegramMessageCommand(
       await sessions.clearCurrentSession(update.fromId);
       return client.sendMessage({ chat_id: update.chatId, text: "已取消当前操作。" });
     default: {
+      const windowsPasswordFlowResult = await continueWindowsPasswordFlow(update, client, sessions, env, requestId);
+      if (windowsPasswordFlowResult) return windowsPasswordFlowResult;
       const accountTokenFlowResult = await continueAccountTokenUpdateFlow(update, client, sessions, env, requestId);
       if (accountTokenFlowResult) return accountTokenFlowResult;
       const scheduleFlowResult = await continueScheduleFlow(update, client, sessions, env, requestId);
@@ -213,6 +218,34 @@ export async function handleTelegramMessageCommand(
     }
   }
 }
+
+async function continueWindowsPasswordFlow(
+  update: Extract<ParsedTelegramUpdate, { kind: "message" }>,
+  client: TelegramClient,
+  sessions: Pick<BotSessionService, "clearCurrentSession" | "getCurrentSession" | "setCurrentSession">,
+  _env: Env,
+  requestId: string
+): Promise<TelegramClientResult | null> {
+  const session = await sessions.getCurrentSession(update.fromId);
+  if (!session || session.state !== "creating_windows_password") return null;
+  const parsed = parseSessionData(session.data_json);
+  const accountId = Number(parsed.account_id);
+  const state = parsed.state && typeof parsed.state === "object" ? parsed.state as Record<string, unknown> : {};
+  const options = parsed.options ?? {};
+  const actions: TelegramClientAction[] = [client.deleteMessage(update.chatId, update.messageId) as TelegramClientAction];
+  try {
+    state.administrator_password = validateWindowsPassword(update.text, requestId);
+    state.windows_username = "Administrator";
+    await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_windows_instance", data: { account_id: accountId, options, state } });
+    const text = renderCreateRegionText((options as any).regions ?? []).replace("➕ 创建 Linux 服务器", "🪟 创建 Windows 服务器") + (state.windows_version === "w11-ltsc-2024" ? "\n\nBot 会自动查找官方 ISO，不需要你输入 ISO URL。" : "");
+    actions.push(client.sendMessage({ chat_id: update.chatId, text: `${text}\n\n✅ 已接收自定义密码。后续成功页仍会只显示一次，请核对并保存。`, reply_markup: renderCreateRegionKeyboard(accountId, (options as any).regions ?? []) }) as TelegramClientAction);
+    return actions;
+  } catch {
+    actions.push(client.sendMessage({ chat_id: update.chatId, text: "密码不符合要求：12-64 位，包含大小写字母、数字、符号，不能有空格/中文/< > & 引号，也不能太弱。请重新发送，或发送 /cancel 取消。", reply_markup: renderCheckinInlineKeyboard() }) as TelegramClientAction);
+    return actions;
+  }
+}
+
 async function continueBatchDeleteConfirmFlow(
   update: Extract<ParsedTelegramUpdate, { kind: "message" }>,
   client: TelegramClient,

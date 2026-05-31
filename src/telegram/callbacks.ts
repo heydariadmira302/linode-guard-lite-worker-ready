@@ -40,6 +40,14 @@ import {
   renderAccountInstancesText,
   renderCreatedInstanceText,
   renderWindowsCreatedText,
+  renderWindowsCredentialModeKeyboard,
+  renderWindowsCredentialModeText,
+  renderWindowsPasswordPromptKeyboard,
+  renderWindowsPasswordPromptText,
+  renderWindowsLanguageKeyboard,
+  renderWindowsLanguageText,
+  renderWindowsVersionKeyboard,
+  renderWindowsVersionText,
   renderWindowsCreateConfirmKeyboard,
   renderWindowsCreateConfirmText,
   renderWindowsCreateFirewallText,
@@ -1827,9 +1835,52 @@ export async function routeTelegramCallback(
 
 需要先在当前 Linode 账号创建私有 StackScript。这个操作只写入 StackScript，不会创建服务器。`, reply_markup: { inline_keyboard: [[{ text: "✅ 创建/更新私有 StackScript", callback_data: `windows:stackscript:ensure:${accountId}` }], [{ text: "❌ 取消", callback_data: "menu:instances" }]] } });
       }
-      const options = await service.getCreateOptions(accountId, requestId);
-      await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_windows_instance", data: { account_id: accountId, options } });
-      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderCreateRegionText(options.regions).replace("➕ 创建 Linux 服务器", "🪟 创建 Windows 服务器"), reply_markup: renderCreateRegionKeyboard(accountId, options.regions) });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsVersionText(), reply_markup: renderWindowsVersionKeyboard(accountId) });
+    } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
+  }
+
+
+  const windowsVersionMatch = update.data.match(/^windows:create:version:(\d+):(2k22|w11-ltsc-2024)$/);
+  if (windowsVersionMatch && env?.DB && sessions) {
+    try {
+      const accountId = Number(windowsVersionMatch[1]);
+      const version = windowsVersionMatch[2];
+      if (version === "w11-ltsc-2024") {
+        return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsLanguageText(), reply_markup: renderWindowsLanguageKeyboard(accountId) });
+      }
+      const options = await new WindowsInstanceService(env).getCreateOptions(accountId, requestId, { version: "2k22", lang: "en-us" });
+      await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_windows_instance", data: { account_id: accountId, options, state: { windows_version: "2k22", windows_version_label: options.version.label, windows_lang: "en-us" } } });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsCredentialModeText({ windows_version: "2k22", windows_version_label: options.version.label, windows_lang: "en-us" }), reply_markup: renderWindowsCredentialModeKeyboard(accountId) });
+    } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
+  }
+
+  const windowsLangMatch = update.data.match(/^windows:create:lang:(\d+):(zh-cn|en-us)$/);
+  if (windowsLangMatch && env?.DB && sessions) {
+    try {
+      const accountId = Number(windowsLangMatch[1]);
+      const lang = windowsLangMatch[2] as "zh-cn" | "en-us";
+      const options = await new WindowsInstanceService(env).getCreateOptions(accountId, requestId, { version: "w11-ltsc-2024", lang });
+      await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_windows_instance", data: { account_id: accountId, options, state: { windows_version: "w11-ltsc-2024", windows_version_label: options.version.label, windows_lang: lang } } });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsCredentialModeText({ windows_version: "w11-ltsc-2024", windows_version_label: options.version.label, windows_lang: lang }), reply_markup: renderWindowsCredentialModeKeyboard(accountId) });
+    } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
+  }
+
+
+  const windowsCredMatch = update.data.match(/^windows:create:cred:(\d+):(auto|custom)$/);
+  if (windowsCredMatch && env?.DB && sessions) {
+    try {
+      const accountId = Number(windowsCredMatch[1]);
+      const mode = windowsCredMatch[2];
+      const parsed = await getCreateInstanceSession(sessions, update.fromId);
+      if (mode === "custom") {
+        await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_windows_password", data: { account_id: accountId, options: parsed.options, state: parsed.state } });
+        return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsPasswordPromptText(), reply_markup: renderWindowsPasswordPromptKeyboard(accountId) });
+      }
+      delete parsed.state.administrator_password;
+      parsed.state.windows_username = "Administrator";
+      await saveCreateInstanceSession(sessions, update, accountId, parsed);
+      const text = renderCreateRegionText(parsed.options.regions).replace("➕ 创建 Linux 服务器", "🪟 创建 Windows 服务器") + (parsed.state.windows_version === "w11-ltsc-2024" ? "\n\nBot 会自动查找官方 ISO，不需要你输入 ISO URL。" : "");
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text, reply_markup: renderCreateRegionKeyboard(accountId, parsed.options.regions) });
     } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
   }
 
@@ -1851,7 +1902,7 @@ StackScript ID：${status.stackscript_id}
     try {
       const accountId = Number(windowsConfirmMatch[1]);
       const parsed = await getCreateInstanceSession(sessions, update.fromId);
-      const data = await new WindowsInstanceService(env).createWindowsInstance(accountId, { region: String(parsed.state.region), type: String(parsed.state.type), firewall_id: parsed.state.firewall_id === undefined ? null : Number(parsed.state.firewall_id) }, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      const data = await new WindowsInstanceService(env).createWindowsInstance(accountId, { region: String(parsed.state.region), type: String(parsed.state.type), firewall_id: parsed.state.firewall_id === undefined ? null : Number(parsed.state.firewall_id), version: parsed.state.windows_version as any, lang: parsed.state.windows_lang as any, administrator_password: typeof parsed.state.administrator_password === "string" ? parsed.state.administrator_password : undefined, windows_username: typeof parsed.state.windows_username === "string" ? parsed.state.windows_username : undefined }, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
       await sessions.clearCurrentSession(update.fromId);
       return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsCreatedText(data), reply_markup: { inline_keyboard: [[{ text: "🖥 打开服务器详情", callback_data: `instances:detail:${data.account.id}:${data.instance.id}:account_${data.account.id}` }], [{ text: "↩️ 返回账号服务器", callback_data: `instances:list:account:${data.account.id}` }]] } });
     } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
@@ -2142,14 +2193,14 @@ StackScript ID：${status.stackscript_id}
 
 async function getCreateInstanceSession(sessions: Pick<BotSessionService, "getCurrentSession" | "setCurrentSession" | "clearCurrentSession">, userId: string): Promise<{ accountId: number; options: any; state: Record<string, unknown> }> {
   const session = await sessions.getCurrentSession(userId);
-  if (!session || !["creating_instance", "creating_windows_instance"].includes(session.state)) throw new AppError(ErrorCode.VALIDATION_ERROR, "创建服务器会话已过期，请重新开始。", "req_telegram", 400);
+  if (!session || !["creating_instance", "creating_windows_instance", "creating_windows_password"].includes(session.state)) throw new AppError(ErrorCode.VALIDATION_ERROR, "创建服务器会话已过期，请重新开始。", "req_telegram", 400);
   const parsed = parseCallbackSessionData(session.data_json);
   return { accountId: Number(parsed.account_id), options: parsed.options ?? {}, state: (parsed.state && typeof parsed.state === "object" ? parsed.state : {}) as Record<string, unknown> };
 }
 
 async function saveCreateInstanceSession(sessions: Pick<BotSessionService, "getCurrentSession" | "setCurrentSession" | "clearCurrentSession">, update: Extract<ParsedTelegramUpdate, { kind: "callback_query" }>, accountId: number, parsed: { options: any; state: Record<string, unknown> }): Promise<void> {
   const current = await sessions.getCurrentSession(update.fromId);
-  await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: current?.state === "creating_windows_instance" ? "creating_windows_instance" : "creating_instance", data: { account_id: accountId, options: parsed.options, state: parsed.state } });
+  await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: current?.state === "creating_windows_instance" || current?.state === "creating_windows_password" ? "creating_windows_instance" : "creating_instance", data: { account_id: accountId, options: parsed.options, state: parsed.state } });
 }
 
 function parseCallbackSessionData(dataJson?: string | null): Record<string, any> {

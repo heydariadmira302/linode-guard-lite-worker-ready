@@ -11,7 +11,7 @@ export function renderInstancesMenuText(): string {
     "进入服务器详情后，可以执行开机、关机、重启等操作。",
     "",
     "需要缩小范围时，再按账号、分组或状态筛选。"
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 export function renderInstancesMenuKeyboard(): TelegramInlineKeyboardMarkup {
@@ -218,6 +218,47 @@ export function renderCreateInstanceAccountKeyboard(accounts: PublicAccount[]): 
   return { inline_keyboard: [...accounts.map((account) => [{ text: `👤 #${account.id} ${account.alias}`, callback_data: `instances:create:account:${account.id}` }]), [{ text: "↩️ 返回服务器管理", callback_data: "menu:instances" }]] };
 }
 
+
+export function renderWindowsVersionText(): string {
+  return [
+    "🪟 创建 Windows 服务器",
+    "━━━━━━━━━━━━",
+    "步骤 1/6：选择 Windows 版本",
+    "",
+    "稳定路线：Windows Server 2022 Evaluation。",
+    "实验路线：Windows 11 Enterprise LTSC 2024，Bot 会自动查找官方 ISO，不需要你输入 ISO URL。"
+  ].join("\n");
+}
+
+export function renderWindowsVersionKeyboard(accountId: number): TelegramInlineKeyboardMarkup {
+  return { inline_keyboard: [
+    [{ text: "🪟 Windows Server 2022", callback_data: `windows:create:version:${accountId}:2k22` }],
+    [{ text: "🧪 Windows 11 LTSC 2024", callback_data: `windows:create:version:${accountId}:w11-ltsc-2024` }],
+    [{ text: "⬅️ 上一步：账号", callback_data: "windows:create" }],
+    [{ text: "❌ 取消", callback_data: "menu:instances" }]
+  ] };
+}
+
+export function renderWindowsLanguageText(): string {
+  return [
+    "🪟 创建 Windows 服务器",
+    "━━━━━━━━━━━━",
+    "步骤 2/6：选择 Windows 11 语言",
+    "",
+    "Bot 会自动查找官方 Windows 11 ISO，不需要你输入 ISO URL。",
+    "解析失败时会提示稍后重试，不会创建收费 Linode。"
+  ].join("\n");
+}
+
+export function renderWindowsLanguageKeyboard(accountId: number): TelegramInlineKeyboardMarkup {
+  return { inline_keyboard: [
+    [{ text: "🇨🇳 简体中文 zh-cn", callback_data: `windows:create:lang:${accountId}:zh-cn` }],
+    [{ text: "🇺🇸 English en-us", callback_data: `windows:create:lang:${accountId}:en-us` }],
+    [{ text: "⬅️ 上一步：版本", callback_data: `windows:create:account:${accountId}` }],
+    [{ text: "❌ 取消", callback_data: "menu:instances" }]
+  ] };
+}
+
 export function renderCreateRegionText(regions: CreateInstanceChoice[], page = 0): string {
   const items = pageItems(filterRegions(regions), page, 12);
   return ["➕ 创建 Linux 服务器", "━━━━━━━━━━━━", "步骤 1/4：选择地区", "", "按钮为短名，本页完整名称：", ...items.map((item, idx) => `${idx + 1}. ${item.label}｜${item.id}`)].join("\n");
@@ -283,55 +324,106 @@ export function renderCreateConfirmKeyboard(accountId: number): TelegramInlineKe
 
 
 
-export function renderWindowsCreateTypeText(state: Record<string, unknown>): string {
+
+export function renderWindowsCredentialModeText(state: Record<string, unknown>): string {
   return [
     "🪟 创建 Windows 服务器",
     "━━━━━━━━━━━━",
-    "步骤 2/3：选择服务器配置",
+    "步骤：设置登录凭据",
     "",
-    "Windows：Windows Server 2022 Evaluation",
-    `地区：${state.region_label ?? state.region ?? "未选择"}`,
-    "最低建议：4GB 内存 / 80GB 磁盘以上",
-    "格式：CPU / 内存 / 流量 / 月费"
+    `Windows：${state.windows_version_label ?? "Windows Server 2022 Evaluation"}`,
+    state.windows_version === "w11-ltsc-2024" ? `语言：${state.windows_lang ?? "en-us"}` : null,
+    "",
+    "推荐使用自动生成强密码，安全且不容易因为特殊字符转义导致安装后无法登录。",
+    "如果选择自己输入，Bot 会尝试删除你发送的密码消息，但 Telegram 聊天里仍可能短暂出现。"
+  ].filter(Boolean).join("\n");
+}
+
+export function renderWindowsCredentialModeKeyboard(accountId: number): TelegramInlineKeyboardMarkup {
+  return { inline_keyboard: [
+    [{ text: "🔐 自动生成强密码（推荐）", callback_data: `windows:create:cred:${accountId}:auto` }],
+    [{ text: "✍️ 自己输入密码", callback_data: `windows:create:cred:${accountId}:custom` }],
+    [{ text: "❌ 取消", callback_data: "menu:instances" }]
+  ] };
+}
+
+export function renderWindowsPasswordPromptText(): string {
+  return [
+    "✍️ 输入 Windows 登录密码",
+    "━━━━━━━━━━━━",
+    "请发送你想设置的密码。",
+    "",
+    "要求：12-64 位，必须包含大写字母、小写字母、数字和符号。",
+    "支持符号：! @ # $ % ^ * _ - + = ?",
+    "不要包含空格、中文、< > & 引号。",
+    "",
+    "收到后我会尽量删除你发来的密码消息。"
   ].join("\n");
+}
+
+export function renderWindowsPasswordPromptKeyboard(accountId: number): TelegramInlineKeyboardMarkup {
+  return { inline_keyboard: [[{ text: "⬅️ 改为自动生成", callback_data: `windows:create:cred:${accountId}:auto` }], [{ text: "❌ 取消", callback_data: "menu:instances" }]] };
+}
+
+export function renderWindowsCreateTypeText(state: Record<string, unknown>): string {
+  const isW11 = state.windows_version === "w11-ltsc-2024";
+  return [
+    "🪟 创建 Windows 服务器",
+    "━━━━━━━━━━━━",
+    isW11 ? "步骤 4/6：选择服务器配置" : "步骤 3/5：选择服务器配置",
+    "",
+    `Windows：${state.windows_version_label ?? "Windows Server 2022 Evaluation"}`,
+    isW11 ? `语言：${state.windows_lang ?? "en-us"}` : null,
+    `地区：${state.region_label ?? state.region ?? "未选择"}`,
+    isW11 ? "最低建议：4GB / 80GB，推荐 8GB+" : "最低建议：4GB 内存 / 80GB 磁盘以上",
+    "格式：CPU / 内存 / 流量 / 月费"
+  ].filter(Boolean).join("\n");
 }
 
 export function renderWindowsCreateFirewallText(state: Record<string, unknown>): string {
+  const isW11 = state.windows_version === "w11-ltsc-2024";
   return [
     "🪟 创建 Windows 服务器",
     "━━━━━━━━━━━━",
-    "步骤 3/3：选择防火墙",
+    isW11 ? "步骤 5/6：选择防火墙" : "步骤 4/5：选择防火墙",
     "",
-    "Windows：Windows Server 2022 Evaluation",
+    `Windows：${state.windows_version_label ?? "Windows Server 2022 Evaluation"}`,
+    isW11 ? `语言：${state.windows_lang ?? "en-us"}` : null,
     `地区：${state.region_label ?? state.region ?? "未选择"}`,
     `配置：${state.type_label ?? state.type ?? "未选择"}`
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 export function renderWindowsCreateConfirmText(account: PublicAccount, state: Record<string, unknown>): string {
+  const isW11 = state.windows_version === "w11-ltsc-2024";
   return [
     "🪟 创建 Windows 服务器",
     "━━━━━━━━━━━━",
     `账号：#${account.id} ${account.alias}`,
     `名称：${state.label ?? "自动生成"}`,
-    "Windows：Windows Server 2022 Evaluation",
+    `Windows：${state.windows_version_label ?? "Windows Server 2022 Evaluation"}`,
+    isW11 ? `语言：${state.windows_lang ?? "en-us"}` : null,
     "基础镜像：Ubuntu 22.04 + 私有 StackScript",
+    isW11 ? "ISO：Bot 会自动查找官方 ISO，不需要你输入 ISO URL" : null,
     `地区：${state.region_label ?? state.region}`,
     `配置：${state.type_label ?? state.type}`,
     `防火墙：${state.firewall_label ?? "不使用防火墙"}`,
+    `Windows 用户名：${state.windows_username ?? "Administrator"}`,
+    `密码：${state.administrator_password ? "用户自定义（只显示一次）" : "自动生成（只显示一次）"}`,
     "",
     "⚠️ 确认后会调用 Linode API 创建收费 Linode。",
-    "⚠️ StackScript 会把新建 Ubuntu 机器转换为 Windows，安装约 15-30 分钟，中途多次重启属正常。",
-    "⚠️ 安装脚本需要临时使用当前 Linode Token 调用 Linode API 配置磁盘/启动项。",
-    "🔐 Administrator 密码和临时 Ubuntu root 密码只会在创建成功消息里显示一次，请创建后立即复制保存。"
-  ].join("\n");
+    isW11 ? "⚠️ Windows 11 是非官方实验路线，成功率低于 Windows Server 2022。" : null,
+    isW11 ? "⚠️ 安装预计 20-40 分钟，多次重启属正常。" : "⚠️ StackScript 会把新建 Ubuntu 机器转换为 Windows，安装约 15-30 分钟，中途多次重启属正常。",
+    "⚠️ 安装脚本会临时使用当前 Linode Token 调用 Linode API 配置磁盘/启动项。",
+    "🔐 Administrator 密码和临时 Ubuntu root 密码只会在创建成功消息里显示一次，请立即复制保存。"
+  ].filter(Boolean).join("\n");
 }
 
 export function renderWindowsCreateConfirmKeyboard(accountId: number): TelegramInlineKeyboardMarkup {
   return { inline_keyboard: [[{ text: "✅ 确认创建 Windows", callback_data: `windows:create:confirm:${accountId}`, style: "success" }], [{ text: "⬅️ 上一步：防火墙", callback_data: `instances:create:back_firewall:${accountId}` }], [{ text: "❌ 取消", callback_data: "menu:instances" }]] };
 }
 
-export function renderWindowsCreatedText(result: { account: PublicAccount; instance: LinodeInstance; administrator_password: string; temp_root_password: string }): string {
+export function renderWindowsCreatedText(result: { account: PublicAccount; instance: LinodeInstance; windows_version_label?: string; windows_version?: string; windows_lang?: string; windows_username?: string; administrator_password: string; temp_root_password: string }): string {
   const ip = result.instance.ipv4?.[0] ?? "创建后稍后在 Linode 面板查看";
   return [
     "✅ Windows 创建请求已提交",
@@ -342,7 +434,7 @@ export function renderWindowsCreatedText(result: { account: PublicAccount; insta
     `地区：${result.instance.region}`,
     `公网 IP：${ip}`,
     "RDP：3389（安装完成后连接）",
-    "用户名：Administrator",
+    `用户名：${result.windows_username ?? "Administrator"}`,
     "",
     "⚠️ 重要：下面两个密码不会再次显示，请立刻复制保存。",
     "如果关闭/清理消息后忘记密码，需要通过 Linode 控制台重置或重装。",
@@ -355,8 +447,9 @@ export function renderWindowsCreatedText(result: { account: PublicAccount; insta
     "",
     "⚠️ 再提醒一次：请现在保存密码，这条消息之后不会提供找回入口。",
     "",
-    "Windows：Windows Server 2022 Evaluation",
-    "预计安装耗时：15-30 分钟，中途重启属于正常现象。",
+    `Windows：${result.windows_version_label ?? "Windows Server 2022 Evaluation"}`,
+    result.windows_version === "w11-ltsc-2024" ? `语言：${result.windows_lang}` : null,
+    result.windows_version === "w11-ltsc-2024" ? "预计安装耗时：20-40 分钟，中途重启属于正常现象。" : "预计安装耗时：15-30 分钟，中途重启属于正常现象。",
     "如果 30 分钟后仍无法 RDP，需要进 Linode LISH/控制台查看 StackScript 日志。"
   ].join("\n");
 }

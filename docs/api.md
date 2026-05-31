@@ -725,9 +725,13 @@ curl -s \
 当前已支持实例只读、单实例开机、关机、重启、删除、批量操作、Boot safety、protected instance、审计日志查询、账号安全事件监控 MVP、管理员保活确认、定时开关机/重启、单台服务器定时任务和 Cloudflare Cron Job Runner。仍不包含 Web UI、多管理员、OAuth、标签或实例组。
 
 
-## Windows Server 创建 API
+## Windows Server / Windows 11 创建 API
 
-Windows 创建采用 API-first / Service-first 的 StackScript 稳定路线。Telegram 只负责选择账号、Region、Plan、Firewall 和确认；核心逻辑在 `WindowsInstanceService`。
+Windows 创建采用 API-first / Service-first 的私有 StackScript 路线。Telegram 只负责选择账号、版本、语言、Region、Plan、Firewall 和确认；核心逻辑在 `WindowsInstanceService`。Windows Server 2022 为稳定路线，Windows 11 Enterprise LTSC 2024 为实验路线。
+
+### GET /api/v1/windows/versions
+
+返回可创建的 Windows 版本与语言：`2k22`、`w11-ltsc-2024`，语言 `zh-cn` / `en-us`。Windows 11 会标记 `requires_iso_resolve=true`、`iso_resolved_automatically=true`。
 
 ### GET /api/v1/accounts/:account_id/windows/stackscript
 
@@ -739,9 +743,13 @@ Windows 创建采用 API-first / Service-first 的 StackScript 稳定路线。Te
 
 ### GET /api/v1/accounts/:account_id/windows/create-options
 
+支持 query：`version=2k22|w11-ltsc-2024`、`lang=zh-cn|en-us`。返回符合该版本最低内存/磁盘要求的 core region 与 plan，并返回 `iso_resolve_required` / `iso_cached`。
+
 获取 Windows 创建可选项：Region、满足最低内存/磁盘要求的 Plan、Firewall。当前路线固定为 `Windows Server 2022 Evaluation`，基础镜像为 `linode/ubuntu22.04`。
 
 ### POST /api/v1/accounts/:account_id/windows/instances
+
+请求体支持 `version` / `lang` / `administrator_password` / `windows_username`。`version=w11-ltsc-2024` 时，Service 会自动解析官方 ISO 并传入 StackScript：`INSTALL_WINDOWS_VERSION=w11`、`WINDOWS_IMAGE_NAME`、`WINDOWS_LANG`、`W11_ISO_URL`。解析失败时不创建实例。
 
 创建 Windows Server 2022。请求体示例：
 

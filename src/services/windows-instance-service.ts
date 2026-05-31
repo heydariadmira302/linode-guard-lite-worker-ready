@@ -1,4 +1,6 @@
 import windowsStackScript from "./windows-stackscript-template";
+import { WindowsIsoResolverService } from "./windows-iso-resolver-service";
+import { WindowsVersionService, type WindowsLanguageId, type WindowsVersionId } from "./windows-version-service";
 import { LinodeClient, type LinodeFirewall, type LinodeInstance, type LinodeRegion, type LinodeType } from "../clients/linode-client";
 import { decryptLinodeToken } from "../crypto/token-crypto";
 import type { Env } from "../env";
@@ -20,14 +22,15 @@ export const WINDOWS_STACKSCRIPT_MIN_DISK_MB = 81920;
 
 export interface WindowsInstanceServiceContext { requestId: string; actor: string; source: string }
 export interface WindowsStackScriptStatus { account: PublicAccount; stackscript_id: number | null; configured: boolean; version: string; version_label: string; base_image: string }
-export interface WindowsCreateOptions { account: PublicAccount; stackscript: WindowsStackScriptStatus; regions: LinodeRegion[]; types: LinodeType[]; firewalls: LinodeFirewall[] }
-export interface CreateWindowsInstanceInput { region: string; type: string; firewall_id?: number | null; label?: string }
-export interface CreateWindowsInstanceResult { account: PublicAccount; instance: LinodeInstance; stackscript_id: number; windows_version: string; administrator_password: string; temp_root_password: string }
+export interface WindowsCreateOptions { account: PublicAccount; stackscript: WindowsStackScriptStatus; regions: LinodeRegion[]; types: LinodeType[]; firewalls: LinodeFirewall[]; version: ReturnType<WindowsVersionService["getVersion"]>; lang: ReturnType<WindowsVersionService["getLanguage"]>; iso_resolve_required: boolean; iso_cached: boolean | null }
+export interface CreateWindowsInstanceInput { region: string; type: string; firewall_id?: number | null; label?: string; version?: WindowsVersionId; lang?: WindowsLanguageId; administrator_password?: string; windows_username?: string }
+export interface CreateWindowsInstanceResult { account: PublicAccount; instance: LinodeInstance; stackscript_id: number; windows_version: string; windows_version_label: string; windows_lang: string; windows_username: string; administrator_password: string; temp_root_password: string }
 
 export class WindowsInstanceService {
   private readonly accounts: AccountsRepository;
   private readonly settings: SettingsRepository;
   private readonly audit?: AuditService;
+  private readonly versions = new WindowsVersionService();
 
   constructor(private readonly env: Env, accounts?: AccountsRepository, settings?: SettingsRepository, audit?: AuditService) {
     if (!env.DB && (!accounts || !settings)) throw new AppError(ErrorCode.CONFIG_MISSING, "Missing D1 binding DB", "req_windows", 500);
@@ -64,15 +67,18 @@ export class WindowsInstanceService {
     }
   }
 
-  async getCreateOptions(accountId: number, requestId: string): Promise<WindowsCreateOptions> {
+  async getCreateOptions(accountId: number, requestId: string, input: { version?: WindowsVersionId; lang?: WindowsLanguageId } = {}): Promise<WindowsCreateOptions> {
     const account = await this.getActiveAccount(accountId, requestId);
+    const version = this.versions.getVersion(input.version, requestId);
+    const lang = this.versions.getLanguage(input.lang, requestId);
     const token = await this.decryptAccountToken(account);
     const client = new LinodeClient(token);
     const [regions, types, firewalls] = await Promise.all([client.listRegions(requestId), client.listTypes(requestId), client.listFirewalls(requestId).catch((error) => {
       if (error instanceof AppError && error.code === ErrorCode.TOKEN_PERMISSION_ERROR) return [] as LinodeFirewall[];
       throw error;
     })]);
-    return { account: await this.toPublicAccount(account), stackscript: await this.getStatus(account.id, requestId), regions, types: filterWindowsTypes(types), firewalls };
+    const isoCached = version.requires_iso_resolve ? await this.isIsoCached(version.id, lang.id) : null;
+    return { account: await this.toPublicAccount(account), stackscript: await this.getStatus(account.id, requestId), regions: filterCoreRegions(regions), types: filterWindowsTypes(types, version.min_memory_mb, version.min_disk_mb), firewalls, version, lang, iso_resolve_required: version.requires_iso_resolve, iso_cached: isoCached };
   }
 
   async createWindowsInstance(accountId: number, input: CreateWindowsInstanceInput, context: WindowsInstanceServiceContext): Promise<CreateWindowsInstanceResult> {
@@ -80,17 +86,21 @@ export class WindowsInstanceService {
     const publicAccount = await this.toPublicAccount(account);
     const stackscriptId = await this.getStackScriptId(account.id);
     if (stackscriptId <= 0) throw new AppError(ErrorCode.VALIDATION_ERROR, "Windows StackScript is not configured for this account", context.requestId, 400);
-    const adminPassword = generateWindowsPassword();
+    const adminPassword = input.administrator_password ? validateWindowsPassword(input.administrator_password, context.requestId) : generateWindowsPassword();
+    const windowsUsername = validateWindowsUsername(input.windows_username ?? "Administrator", context.requestId);
     const tempRootPassword = generateLinuxPassword();
     const token = await this.decryptAccountToken(account);
-    const payload = this.buildCreatePayload(input, stackscriptId, token, adminPassword, tempRootPassword, context.requestId);
+    const version = this.versions.getVersion(input.version, context.requestId);
+    const lang = this.versions.getLanguage(input.lang, context.requestId);
+    const iso = version.requires_iso_resolve ? await new WindowsIsoResolverService(this.env, this.settings).resolve({ version: version.id, lang: lang.id, requestId: context.requestId }) : null;
+    const payload = this.buildCreatePayload(input, stackscriptId, token, adminPassword, windowsUsername, tempRootPassword, context.requestId, version, lang, iso?.iso_url ?? "NOURL");
     try {
       const instance = await new LinodeClient(token).createInstance(payload, context.requestId);
-      await this.recordAudit(context, "windows_instance.create", "instance", String(instance.id || payload.label), "critical", "success", null, { account_id: account.id, region: payload.region, type: payload.type, stackscript_id: stackscriptId, version: WINDOWS_STACKSCRIPT_VERSION });
-      return { account: publicAccount, instance, stackscript_id: stackscriptId, windows_version: WINDOWS_STACKSCRIPT_VERSION, administrator_password: adminPassword, temp_root_password: tempRootPassword };
+      await this.recordAudit(context, "windows_instance.create", "instance", String(instance.id || payload.label), "critical", "success", null, { account_id: account.id, region: payload.region, type: payload.type, stackscript_id: stackscriptId, version: version.id, lang: lang.id, iso_resolved: Boolean(iso) });
+      return { account: publicAccount, instance, stackscript_id: stackscriptId, windows_version: version.id, windows_version_label: version.label, windows_lang: lang.id, windows_username: windowsUsername, administrator_password: adminPassword, temp_root_password: tempRootPassword };
     } catch (error) {
       const code = error instanceof AppError ? error.code : ErrorCode.LINODE_API_ERROR;
-      await this.recordAudit(context, "windows_instance.create", "instance", input.label ?? null, "critical", "failed", code, { account_id: account.id, region: input.region, type: input.type, stackscript_id: stackscriptId });
+      await this.recordAudit(context, "windows_instance.create", "instance", input.label ?? null, "critical", "failed", code, { account_id: account.id, region: input.region, type: input.type, stackscript_id: stackscriptId, version: input.version ?? "2k22", lang: input.lang ?? "en-us" });
       if (error instanceof AppError) throw error;
       throw new AppError(ErrorCode.LINODE_API_ERROR, "Linode Windows 创建请求失败", context.requestId, 502);
     }
@@ -100,19 +110,26 @@ export class WindowsInstanceService {
     return { label: WINDOWS_STACKSCRIPT_LABEL, description: "Windows Server 2022 deployment for Linode Guard Lite. API-first private StackScript route.", script: windowsStackScript, images: [WINDOWS_STACKSCRIPT_IMAGE], is_public: false, rev_note: "Linode Guard Lite Windows Server 2022 route" };
   }
 
-  private buildCreatePayload(input: CreateWindowsInstanceInput, stackscriptId: number, linodeToken: string, adminPassword: string, tempRootPassword: string, requestId: string) {
+  private buildCreatePayload(input: CreateWindowsInstanceInput, stackscriptId: number, linodeToken: string, adminPassword: string, windowsUsername: string, tempRootPassword: string, requestId: string, version: ReturnType<WindowsVersionService["getVersion"]>, lang: ReturnType<WindowsVersionService["getLanguage"]>, isoUrl: string) {
     const region = typeof input.region === "string" ? input.region.trim() : "";
     const type = typeof input.type === "string" ? input.type.trim() : "";
     if (!region || !type) throw new AppError(ErrorCode.VALIDATION_ERROR, "region/type are required", requestId, 400);
     const label = typeof input.label === "string" && input.label.trim() ? input.label.trim() : createDefaultWindowsLabel();
     if (!/^[A-Za-z0-9._-]{3,64}$/.test(label)) throw new AppError(ErrorCode.VALIDATION_ERROR, "Invalid instance label", requestId, 400);
-    const payload: any = { region, type, image: WINDOWS_STACKSCRIPT_IMAGE, label, root_pass: tempRootPassword, backups_enabled: false, tags: ["linode-guard-lite", "windows-stackscript", "windows-server-2022-eval"], stackscript_id: stackscriptId, stackscript_data: { TOKEN: linodeToken, WINDOWS_PASSWORD: adminPassword, INSTALL_WINDOWS_VERSION: WINDOWS_STACKSCRIPT_VERSION, AUTOLOGIN: "true", W11_ISO_URL: "NOURL" } };
+    const stackscriptData = { TOKEN: linodeToken, WINDOWS_PASSWORD: adminPassword, WINDOWS_USERNAME: windowsUsername, INSTALL_WINDOWS_VERSION: version.stackscript_version, WINDOWS_IMAGE_NAME: version.image_name, WINDOWS_LANG: lang.id, AUTOLOGIN: "true", W11_ISO_URL: isoUrl };
+    if (JSON.stringify(stackscriptData).length > 65535) throw new AppError(ErrorCode.VALIDATION_ERROR, "StackScript data is too large", requestId, 400);
+    const payload: any = { region, type, image: WINDOWS_STACKSCRIPT_IMAGE, label, root_pass: tempRootPassword, backups_enabled: false, tags: ["linode-guard-lite", "windows-stackscript", version.id], stackscript_id: stackscriptId, stackscript_data: stackscriptData };
     if (input.firewall_id !== undefined && input.firewall_id !== null) {
       const firewallId = Number(input.firewall_id);
       if (!Number.isInteger(firewallId) || firewallId <= 0) throw new AppError(ErrorCode.VALIDATION_ERROR, "Invalid firewall id", requestId, 400);
       payload.firewall_id = firewallId;
     }
     return payload;
+  }
+
+  private async isIsoCached(version: WindowsVersionId, lang: WindowsLanguageId): Promise<boolean> {
+    const cached = await this.settings.get<{ expires_at?: string; iso_url?: string }>(`windows_iso_cache:${version}:${lang}`).catch(() => null);
+    return Boolean(cached?.iso_url && cached.expires_at && Date.parse(cached.expires_at) > Date.now());
   }
 
   private async getActiveAccount(accountId: number, requestId: string): Promise<LinodeAccountRecord> {
@@ -143,12 +160,34 @@ export class WindowsInstanceService {
   }
 }
 
-function filterWindowsTypes(types: LinodeType[]): LinodeType[] {
-  return types.filter((item) => Number(item.memory ?? 0) >= WINDOWS_STACKSCRIPT_MIN_MEMORY_MB && Number(item.disk ?? 0) >= WINDOWS_STACKSCRIPT_MIN_DISK_MB).sort((a, b) => Number(a.price?.monthly ?? 0) - Number(b.price?.monthly ?? 0));
+function filterWindowsTypes(types: LinodeType[], minMemoryMb = WINDOWS_STACKSCRIPT_MIN_MEMORY_MB, minDiskMb = WINDOWS_STACKSCRIPT_MIN_DISK_MB): LinodeType[] {
+  return types.filter((item) => Number(item.memory ?? 0) >= minMemoryMb && Number(item.disk ?? 0) >= minDiskMb).sort((a, b) => Number(a.price?.monthly ?? 0) - Number(b.price?.monthly ?? 0));
+}
+
+function filterCoreRegions(regions: LinodeRegion[]): LinodeRegion[] {
+  return regions.filter((item) => !item.site_type || item.site_type === "core");
 }
 
 function createDefaultWindowsLabel(): string {
   return `lgl-win-${new Date().toISOString().replace(/[-:]/g, "").slice(0, 13)}`;
+}
+
+export function validateWindowsPassword(password: string, requestId = "req_windows"): string {
+  const value = typeof password === "string" ? password.trim() : "";
+  if (value.length < 12 || value.length > 64) throw new AppError(ErrorCode.VALIDATION_ERROR, "Windows password must be 12-64 characters", requestId, 400);
+  if (/\s/.test(value)) throw new AppError(ErrorCode.VALIDATION_ERROR, "Windows password must not contain spaces", requestId, 400);
+  if (/[<>&"']/.test(value)) throw new AppError(ErrorCode.VALIDATION_ERROR, "Windows password contains unsupported XML characters", requestId, 400);
+  if (!/[a-z]/.test(value) || !/[A-Z]/.test(value) || !/[0-9]/.test(value) || !/[!@#$%^*_.+=?-]/.test(value)) throw new AppError(ErrorCode.VALIDATION_ERROR, "Windows password must include upper/lower letters, number and symbol", requestId, 400);
+  if (/(password|administrator|admin|123456|qwerty)/i.test(value)) throw new AppError(ErrorCode.VALIDATION_ERROR, "Windows password is too weak", requestId, 400);
+  return value;
+}
+
+export function validateWindowsUsername(username: string, requestId = "req_windows"): string {
+  const value = typeof username === "string" && username.trim() ? username.trim() : "Administrator";
+  if (value.length < 1 || value.length > 20) throw new AppError(ErrorCode.VALIDATION_ERROR, "Windows username must be 1-20 characters", requestId, 400);
+  if (!/^[A-Za-z][A-Za-z0-9._-]*$/.test(value) || value.endsWith(".")) throw new AppError(ErrorCode.VALIDATION_ERROR, "Windows username only supports letters, numbers, dot, underscore and hyphen, and must start with a letter", requestId, 400);
+  if (["con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "lpt1", "lpt2", "lpt3"].includes(value.toLowerCase())) throw new AppError(ErrorCode.VALIDATION_ERROR, "Windows username is reserved", requestId, 400);
+  return value;
 }
 
 function generateWindowsPassword(): string { return generatePassword(24); }
@@ -158,7 +197,7 @@ function generatePassword(length: number): string {
   const lower = "abcdefghijkmnopqrstuvwxyz";
   const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
   const digits = "23456789";
-  const symbols = "!@#$%^&*_-+=?";
+  const symbols = "!@#$%^*_-+=?";
   const alphabet = lower + upper + digits + symbols;
   const required = [randomChar(lower), randomChar(upper), randomChar(digits), randomChar(symbols)];
   const rest = Array.from({ length: Math.max(0, length - required.length) }, () => randomChar(alphabet));

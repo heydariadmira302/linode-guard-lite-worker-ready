@@ -92,6 +92,17 @@ npm run build:upload
 
 旧部署：先检查表和列，再按缺失情况选择 legacy migration。`ALTER TABLE ADD COLUMN` 在 D1/SQLite 中不能重复执行。若 `jobs.locked_until` / `locked_by` / `lock_started_at` 不存在，才执行 `migrations/0005_job_locks.sql`。
 
+## Windows 创建
+
+Telegram 入口「🪟 创建 Windows 服务器」已采用 API-first / Service-first 路线：Telegram 只负责选择账号、版本、语言、Region、Plan、Firewall 与高危确认，核心创建由 `WindowsInstanceService` 调用 Linode API + 私有 StackScript 完成。
+
+当前版本：
+
+- Windows Server 2022 Evaluation：稳定路线。
+- Windows 11 Enterprise LTSC 2024：实验路线，Bot 自动解析官方 ISO，用户不需要输入 ISO URL；支持 `zh-cn` / `en-us`。
+
+参考与致谢：kitknox/winode <https://github.com/kitknox/winode>、bin456789/reinstall <https://github.com/bin456789/reinstall>、leitbogioro/Tools <https://github.com/leitbogioro/Tools>。
+
 ## 文档
 
 - `QUICK_DEPLOY.md`

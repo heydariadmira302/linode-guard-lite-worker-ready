@@ -510,3 +510,21 @@ npm test
 - 修改时间支持常用 08:50 / 23:05，以及按钮式小时/分钟选择；不再需要删除重建。
 - 保活策略原本已有编辑能力，本轮强化入口文案：列表/详情使用「详情/修改」「修改策略」，避免用户以为不能改。
 - 本轮继续保持 Service-first：Telegram 只作为适配层调用 `ScheduleService.updateSchedule(...)` / `AdminPresenceService.updatePolicy(...)`。
+
+
+## 2026-05-31 Windows 11 Telegram 创建实现
+
+- 新增 Windows 版本模型与 `/api/v1/windows/versions`，支持 `2k22` 与 `w11-ltsc-2024`，语言支持 `zh-cn` / `en-us`。
+- 新增 Windows ISO Resolver，Win11 LTSC 2024 自动解析官方 ISO，D1 settings 缓存 6 小时，限制 HTTPS 与 Microsoft 官方下载域名。
+- `WindowsInstanceService` 支持 version/lang，Win11 自动传 `WINDOWS_IMAGE_NAME` / `WINDOWS_LANG` / `W11_ISO_URL`，并校验 StackScript data 长度。
+- Telegram Windows 创建流程改为选择版本；Win11 继续选择语言，再走 Region → Plan → Firewall → Confirm。
+- StackScript 模板补充 Win11 UDF、语言映射、autounattend 修正和 W11 ISO 下载启用。
+- 致谢参考：kitknox/winode、bin456789/reinstall、leitbogioro/Tools。
+
+
+## 2026-05-31 Windows 创建密码策略补强
+
+- Windows 创建支持 API `administrator_password` 可选输入；不传时继续自动生成强密码。
+- Telegram 创建流程增加“自动生成强密码 / 自己输入密码”选择；自己输入时会校验复杂度并尝试删除用户密码消息。
+- 为避免 Windows autounattend 登录失败风险，Telegram 暂不开放自定义用户名，默认 `Administrator`；Service/API 预留 `windows_username` 并做格式校验。
+- StackScript 增加 `WINDOWS_USERNAME` UDF，并从 `example=Password` 改为无默认示例。

@@ -10,7 +10,7 @@ import { handleAddProtectedInstance, handleGetAppSettings, handleRemoveProtected
 import { handleAccountBatch, handleAllAccountsBatch, handleGroupBatch } from "./api/batch";
 import { handleDeploymentDiagnostics, handleJobsDiagnostics, handleSetupInitialize, handleSetupSchema } from "./api/diagnostics";
 import { handleBootAccountInstance, handleCreateAccountInstance, handleDeleteAccountInstance, handleGetAccountInstance, handleGetCreateInstanceOptions, handleListAccountInstances, handleListAllInstances, handleRebootAccountInstance, handleShutdownAccountInstance } from "./api/instances";
-import { handleCreateWindowsInstance, handleEnsureWindowsStackScript, handleGetWindowsCreateOptions, handleGetWindowsStackScriptStatus } from "./api/windows-instances";
+import { handleCreateWindowsInstance, handleEnsureWindowsStackScript, handleGetWindowsCreateOptions, handleGetWindowsStackScriptStatus, handleGetWindowsVersions } from "./api/windows-instances";
 import { handleHealth } from "./api/health";
 import { handleAdminPresenceCheckin, handleAdminPresenceStatus, handleCreateAdminPresencePolicy, handleDeleteAdminPresencePolicy, handleDisableAdminPresencePolicy, handleEnableAdminPresencePolicy, handleGetAdminPresencePolicy, handleListAdminPresencePolicies, handleUpdateAdminPresencePolicy } from "./api/admin-presence";
 import { handleConfirmSecurityEvent, handleGenerateLinodeToken, handleGetSecuritySettings, handleListSecurityEvents, handleMarkSecurityEventSuspicious, handleSecurityCheck, handleUpdateSecuritySettings } from "./api/security";
@@ -87,6 +87,7 @@ export async function routeRequest(request: Request, env: Env, requestId: string
       if (request.method === "POST" && allBatchMatch) return await handleAllAccountsBatch(request, env, requestId, allBatchMatch[1] as "boot" | "shutdown" | "delete");
       const accountBatchMatch = url.pathname.match(/^\/api\/v1\/accounts\/(\d+)\/instances\/batch\/(boot|shutdown|delete)$/);
       if (request.method === "POST" && accountBatchMatch) return await handleAccountBatch(request, env, requestId, Number(accountBatchMatch[1]), accountBatchMatch[2] as "boot" | "shutdown" | "delete");
+      if (request.method === "GET" && url.pathname === "/api/v1/windows/versions") return await handleGetWindowsVersions(request, env, requestId);
       const windowsStackScriptStatusMatch = url.pathname.match(/^\/api\/v1\/accounts\/(\d+)\/windows\/stackscript$/);
       if (request.method === "GET" && windowsStackScriptStatusMatch) return await handleGetWindowsStackScriptStatus(request, env, requestId, Number(windowsStackScriptStatusMatch[1]));
       if (request.method === "POST" && windowsStackScriptStatusMatch) return await handleEnsureWindowsStackScript(request, env, requestId, Number(windowsStackScriptStatusMatch[1]));

@@ -115,6 +115,18 @@ function callbackUpdate(data: string) {
   };
 }
 
+function textUpdate(text: string, messageId = 12) {
+  return {
+    update_id: 21,
+    message: {
+      message_id: messageId,
+      chat: { id: 123456789 },
+      from: { id: 123456789 },
+      text
+    }
+  };
+}
+
 async function addAccount(db: FakeD1Database, input: { id: number; alias: string; token: string; status?: string }) {
   db.accounts.push({
     id: input.id,
@@ -248,6 +260,16 @@ describe("Phase 6 Linode instance read-only management", () => {
   });
 
 
+  it("exposes Windows versions API", async () => {
+    const env = { ...baseEnv, DB: new FakeD1Database() as unknown as D1Database };
+    const response = await worker.fetch(apiRequest("/api/v1/windows/versions"), env as never);
+    const body = await response.json() as { data: { versions: Array<{ id: string; label: string; requires_iso_resolve: boolean }>; languages: Array<{ id: string; windows_locale: string }> } };
+    expect(response.status).toBe(200);
+    expect(body.data.versions.map((item) => item.id)).toEqual(["2k22", "w11-ltsc-2024"]);
+    expect(body.data.versions.find((item) => item.id === "w11-ltsc-2024")?.requires_iso_resolve).toBe(true);
+    expect(body.data.languages.map((item) => ({ id: item.id, windows_locale: item.windows_locale }))).toEqual(expect.arrayContaining([{ id: "zh-cn", windows_locale: "zh-CN" }, { id: "en-us", windows_locale: "en-US" }]));
+  });
+
   it("creates Windows Server through API-first StackScript route", async () => {
     const db = new FakeD1Database();
     await addAccount(db, { id: 1, alias: "default", token: "token-default" });
@@ -258,6 +280,10 @@ describe("Phase 6 Linode instance read-only management", () => {
         const payload = JSON.parse(String(init.body));
         expect(payload).toMatchObject({ label: "Linode Guard Lite Windows Server", images: ["linode/ubuntu22.04"], is_public: false });
         expect(payload.script).toContain("WINDOWS_PASSWORD");
+        expect(payload.script).toContain("WINDOWS_LANG");
+        expect(payload.script).toContain("WINDOWS_IMAGE_NAME");
+        expect(payload.script).not.toContain("[B<?xml");
+        expect(payload.script).not.toContain("Windows 10 Pro");
         return new Response(JSON.stringify({ id: 2022, label: payload.label }), { status: 200 });
       }
       if (url.endsWith("/regions")) return new Response(JSON.stringify({ data: [{ id: "jp-osa", label: "Osaka", site_type: "core" }], page: 1, pages: 1 }), { status: 200 });
@@ -268,8 +294,9 @@ describe("Phase 6 Linode instance read-only management", () => {
         const payload = JSON.parse(String(init.body));
         expect(payload).toMatchObject({ region: "jp-osa", type: "g6-dedicated-2", image: "linode/ubuntu22.04", stackscript_id: 2022 });
         expect(payload.stackscript_data.TOKEN).toBe("token-default");
-        expect(payload.stackscript_data.WINDOWS_PASSWORD).toEqual(expect.any(String));
-        expect(payload.stackscript_data.INSTALL_WINDOWS_VERSION).toBe("2k22");
+        if (typeof payload.stackscript_data.WINDOWS_PASSWORD !== "string") return new Response(JSON.stringify({ errors: [{ reason: "missing password" }] }), { status: 500 });
+        if (payload.stackscript_data.WINDOWS_USERNAME !== "Administrator") return new Response(JSON.stringify({ errors: [{ reason: "bad username" }] }), { status: 500 });
+        if (payload.stackscript_data.INSTALL_WINDOWS_VERSION !== "2k22") return new Response(JSON.stringify({ errors: [{ reason: "bad windows version" }] }), { status: 500 });
         return new Response(JSON.stringify({ id: 92022, label: payload.label, status: "provisioning", region: payload.region, type: payload.type, image: payload.image, ipv4: ["192.0.2.9"], tags: payload.tags }), { status: 200 });
       }
       throw new Error(`unexpected fetch ${url}`);
@@ -283,8 +310,8 @@ describe("Phase 6 Linode instance read-only management", () => {
       const body = await createResponse.json() as { data: { instance: { id: number }; administrator_password: string; temp_root_password: string } };
       expect(createResponse.status).toBe(200);
       expect(body.data.instance.id).toBe(92022);
-      expect(body.data.administrator_password).not.toContain("123@@@");
-      expect(body.data.temp_root_password).not.toContain("LeitboGi0ro");
+      expect(body.data.administrator_password).not.toContain("public-default-password");
+      expect(body.data.temp_root_password).not.toContain("public-default-password");
       expect([...db.settings.keys()].some((key) => key.startsWith("windows_instance:"))).toBe(false);
       const menuResponse = await worker.fetch(telegramRequest(callbackUpdate("menu:instances")), env as never);
       const menuBody = await menuResponse.json() as { data: { telegram: { payload: { reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
@@ -292,10 +319,18 @@ describe("Phase 6 Linode instance read-only management", () => {
 
       const startFlow = await worker.fetch(telegramRequest(callbackUpdate("windows:create:account:1")), env as never);
       expect(startFlow.status).toBe(200);
+      const versionBody = await startFlow.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+      expect(versionBody.data.telegram.payload.text).toContain("选择 Windows 版本");
+      expect(versionBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🧪 Windows 11 LTSC 2024", callback_data: "windows:create:version:1:w11-ltsc-2024" });
+      const credentialFlow = await worker.fetch(telegramRequest(callbackUpdate("windows:create:version:1:2k22")), env as never);
+      const credentialBody = await credentialFlow.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+      expect(credentialBody.data.telegram.payload.text).toContain("设置登录凭据");
+      expect(credentialBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🔐 自动生成强密码（推荐）", callback_data: "windows:create:cred:1:auto" });
+      await worker.fetch(telegramRequest(callbackUpdate("windows:create:cred:1:auto")), env as never);
       await worker.fetch(telegramRequest(callbackUpdate("instances:create:region:1:jp-osa")), env as never);
       const typeFlow = await worker.fetch(telegramRequest(callbackUpdate("instances:create:type:1:g6-dedicated-2")), env as never);
       const typeBody = await typeFlow.json() as { data?: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } }; error?: unknown };
-      expect(typeBody.data!.telegram.payload.text).toContain("步骤 3/3：选择防火墙");
+      expect(typeBody.data!.telegram.payload.text).toContain("选择防火墙");
       expect(typeBody.data!.telegram.payload.text).not.toContain("选择系统");
       const confirmFlow = await worker.fetch(telegramRequest(callbackUpdate("instances:create:firewall:1:none")), env as never);
       const confirmBody = await confirmFlow.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
@@ -314,6 +349,66 @@ describe("Phase 6 Linode instance read-only management", () => {
       expect(detailBody.data.telegram.payload.text).toContain("RDP：192.0.2.9:3389");
       expect(detailBody.data.telegram.payload.text).toContain("Windows 用户名：Administrator");
       expect(JSON.stringify(detailBody.data.telegram.payload.reply_markup)).not.toContain("copy_text");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("creates Windows 11 with automatic ISO resolve and Telegram language choice", async () => {
+    const db = new FakeD1Database();
+    await addAccount(db, { id: 1, alias: "default", token: "token-default" });
+    db.settings.set("windows_stackscript_id:1", JSON.stringify(2022));
+    const env = { ...baseEnv, DB: db as unknown as D1Database };
+    const isoUrl = "https://software.download.prss.microsoft.com/db/Win11_Enterprise_LTS_2024_zh-cn_x64.iso";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.includes("massgrave.dev")) return new Response(`<a href="${isoUrl}">iso</a>`, { status: 200 });
+      if (url.endsWith("/regions")) return new Response(JSON.stringify({ data: [{ id: "jp-osa", label: "Osaka", site_type: "core" }, { id: "us-iad", label: "IAD", site_type: "distributed" }], page: 1, pages: 1 }), { status: 200 });
+      if (url.endsWith("/linode/types")) return new Response(JSON.stringify({ data: [{ id: "g6-standard-2", label: "Linode 4GB", memory: 4096, disk: 81920, vcpus: 2, transfer: 4000, price: { monthly: 24 } }, { id: "g6-nanode-1", label: "Nanode", memory: 1024, disk: 25600, price: { monthly: 5 } }], page: 1, pages: 1 }), { status: 200 });
+      if (url.endsWith("/networking/firewalls")) return new Response(JSON.stringify({ data: [], page: 1, pages: 1 }), { status: 200 });
+      if (url.endsWith("/linode/instances") && init?.method === "POST") {
+        const payload = JSON.parse(String(init.body));
+        if (payload.stackscript_data.INSTALL_WINDOWS_VERSION !== "w11") throw new Error("bad windows version");
+        if (payload.stackscript_data.WINDOWS_IMAGE_NAME !== "Windows 11 Enterprise LTSC 2024") throw new Error("bad image name");
+        if (payload.stackscript_data.WINDOWS_LANG !== "zh-cn") throw new Error("bad lang");
+        if (payload.stackscript_data.WINDOWS_USERNAME !== "Administrator") return new Response(JSON.stringify({ errors: [{ reason: "bad username" }] }), { status: 500 });
+        if (payload.stackscript_data.W11_ISO_URL !== isoUrl) throw new Error("bad iso url");
+        if (JSON.stringify(payload.stackscript_data).length >= 65535) throw new Error("stackscript data too large");
+        return new Response(JSON.stringify({ id: 91124, label: payload.label, status: "provisioning", region: payload.region, type: payload.type, image: payload.image, ipv4: ["192.0.2.11"] }), { status: 200 });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    try {
+      const optionsResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/windows/create-options?version=w11-ltsc-2024&lang=zh-cn"), env as never);
+      const optionsBody = await optionsResponse.json() as { data: { regions: Array<{ id: string }>; types: Array<{ id: string }>; iso_resolve_required: boolean } };
+      expect(optionsResponse.status).toBe(200);
+      expect(optionsBody.data.iso_resolve_required).toBe(true);
+      expect(optionsBody.data.regions.map((item) => item.id)).toEqual(["jp-osa"]);
+      expect(optionsBody.data.types.map((item) => item.id)).toEqual(["g6-standard-2"]);
+
+      const createResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/windows/instances", { method: "POST", body: JSON.stringify({ region: "jp-osa", type: "g6-standard-2", version: "w11-ltsc-2024", lang: "zh-cn", administrator_password: "MyStrongPass9!" }) }), env as never);
+      const createBody = await createResponse.json() as { data: { windows_version: string; windows_lang: string } };
+      expect(createResponse.status).toBe(200);
+      expect(createBody.data.windows_version).toBe("w11-ltsc-2024");
+      expect(createBody.data.windows_lang).toBe("zh-cn");
+
+      const versionFlow = await worker.fetch(telegramRequest(callbackUpdate("windows:create:version:1:w11-ltsc-2024")), env as never);
+      const versionBody = await versionFlow.json() as { data: { telegram: { payload: { text: string } } } };
+      expect(versionBody.data.telegram.payload.text).toContain("不需要你输入 ISO URL");
+      const credFlow = await worker.fetch(telegramRequest(callbackUpdate("windows:create:lang:1:zh-cn")), env as never);
+      const credBody = await credFlow.json() as { data: { telegram: { payload: { text: string } } } };
+      expect(credBody.data.telegram.payload.text).toContain("设置登录凭据");
+      await worker.fetch(telegramRequest(callbackUpdate("windows:create:cred:1:custom")), env as never);
+      const passwordFlow = await worker.fetch(telegramRequest(textUpdate("MyStrongPass9!")), env as never);
+      const passwordBody = await passwordFlow.json() as { data: { telegram: { payload?: { text: string }; method?: string }[] | { payload: { text: string } } } };
+      expect(JSON.stringify(passwordBody)).toContain("已接收自定义密码");
+      await worker.fetch(telegramRequest(callbackUpdate("instances:create:region:1:jp-osa")), env as never);
+      await worker.fetch(telegramRequest(callbackUpdate("instances:create:type:1:g6-standard-2")), env as never);
+      const confirm = await worker.fetch(telegramRequest(callbackUpdate("instances:create:firewall:1:none")), env as never);
+      const confirmBody = await confirm.json() as { data: { telegram: { payload: { text: string } } } };
+      expect(confirmBody.data.telegram.payload.text).toContain("Windows 11 是非官方实验路线");
+      expect(confirmBody.data.telegram.payload.text).toContain("20-40 分钟");
+      expect(confirmBody.data.telegram.payload.text).toContain("Bot 会自动查找官方 ISO");
     } finally {
       fetchMock.mockRestore();
     }
