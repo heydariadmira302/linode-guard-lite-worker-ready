@@ -18,6 +18,7 @@ export function renderInstancesMenuKeyboard(): TelegramInlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [{ text: "🖥 查看全部服务器", callback_data: "instances:list:all" }],
+      [{ text: "➕ 创建服务器", callback_data: "instances:create" }],
       [{ text: "🔎 筛选", callback_data: "instances:filter" }, { text: "⚡ 批量操作", callback_data: "menu:batch" }],
       [{ text: "🏠 返回主菜单", callback_data: "menu:main" }]
     ]
@@ -197,6 +198,145 @@ export function renderInstanceDangerKeyboard(result: InstanceDetailResult, sourc
       [{ text: "❌ 取消，返回详情", callback_data: `instances:detail:${accountId}:${instanceId}:${source}` }]
     ]
   };
+}
+
+
+export interface CreateInstanceChoice {
+  id: string | number;
+  label: string;
+  country?: string;
+  site_type?: string;
+  disk?: number;
+  memory?: number;
+  vcpus?: number;
+  transfer?: number;
+  network_out?: number;
+  price?: { monthly?: number };
+  deprecated?: boolean;
+}
+
+export function renderCreateInstanceAccountText(accounts: PublicAccount[]): string {
+  return ["➕ 创建服务器", "━━━━━━━━━━━━", "先选择要用哪个 Linode 账号创建服务器。", "", accounts.length ? accounts.map((account) => `#${account.id} ${account.alias}${account.group_name ? `（${account.group_name}）` : ""}`).join("\n") : "暂无启用中的 Linode 账号，请先添加账号。"].join("\n");
+}
+
+export function renderCreateInstanceAccountKeyboard(accounts: PublicAccount[]): TelegramInlineKeyboardMarkup {
+  return { inline_keyboard: [...accounts.map((account) => [{ text: `👤 #${account.id} ${account.alias}`, callback_data: `instances:create:account:${account.id}` }]), [{ text: "↩️ 返回服务器管理", callback_data: "menu:instances" }]] };
+}
+
+export function renderCreateRegionText(regions: CreateInstanceChoice[], page = 0): string {
+  const items = pageItems(filterRegions(regions), page, 12);
+  return ["➕ 创建 Linux 服务器", "━━━━━━━━━━━━", "步骤 1/4：选择地区", "", "按钮为短名，本页完整名称：", ...items.map((item, idx) => `${idx + 1}. ${item.label}｜${item.id}`)].join("\n");
+}
+
+export function renderCreateRegionKeyboard(accountId: number, regions: CreateInstanceChoice[], page = 0): TelegramInlineKeyboardMarkup {
+  const filtered = filterRegions(regions);
+  const items = pageItems(filtered, page, 12);
+  const rows = chunkButtons(items.map((item, idx) => ({ text: `${idx + 1}. ${shortText(item.label, 18)}`, callback_data: `instances:create:region:${accountId}:${item.id}` })), 2);
+  addPagination(rows, `instances:create:region_page:${accountId}`, page, filtered.length, 12);
+  rows.push([{ text: "❌ 取消", callback_data: "menu:instances" }]);
+  return { inline_keyboard: rows };
+}
+
+export function renderCreateTypeText(types: CreateInstanceChoice[], state: Record<string, unknown>, page = 0): string {
+  return ["➕ 创建 Linux 服务器", "━━━━━━━━━━━━", "步骤 2/4：选择套餐", "", `地区：${state.region_label ?? state.region ?? "未选择"}`, "格式：CPU / 内存 / 流量 / 月费"].join("\n");
+}
+
+export function renderCreateTypeKeyboard(accountId: number, types: CreateInstanceChoice[], state: Record<string, unknown>, page = 0): TelegramInlineKeyboardMarkup {
+  const filtered = filterTypes(types);
+  const items = pageItems(filtered, page, 8);
+  const rows = items.map((item) => [{ text: formatTypeButton(item), callback_data: `instances:create:type:${accountId}:${item.id}` }]);
+  addPagination(rows, `instances:create:type_page:${accountId}`, page, filtered.length, 8);
+  rows.push([{ text: "⬅️ 上一步：地区", callback_data: `instances:create:account:${accountId}` }]);
+  rows.push([{ text: "❌ 取消", callback_data: "menu:instances" }]);
+  return { inline_keyboard: rows };
+}
+
+export function renderCreateImageText(images: CreateInstanceChoice[], state: Record<string, unknown>, page = 0): string {
+  const items = pageItems(filterImages(images), page, 12);
+  return ["➕ 创建 Linux 服务器", "━━━━━━━━━━━━", "步骤 3/4：选择系统", "", `地区：${state.region_label ?? state.region ?? "未选择"}`, `套餐：${state.type_label ?? state.type ?? "未选择"}`, "", "按钮为短名，本页完整名称：", ...items.map((item, idx) => `${idx + 1}. ${item.label}`)].join("\n");
+}
+
+export function renderCreateImageKeyboard(accountId: number, images: CreateInstanceChoice[], page = 0): TelegramInlineKeyboardMarkup {
+  const filtered = filterImages(images);
+  const items = pageItems(filtered, page, 12);
+  const rows = chunkButtons(items.map((item, idx) => ({ text: `${idx + 1}. ${shortText(item.label, 18)}`, callback_data: `instances:create:image:${accountId}:${item.id}` })), 2);
+  addPagination(rows, `instances:create:image_page:${accountId}`, page, filtered.length, 12);
+  rows.push([{ text: "⬅️ 上一步：套餐", callback_data: `instances:create:back_type:${accountId}` }]);
+  rows.push([{ text: "❌ 取消", callback_data: "menu:instances" }]);
+  return { inline_keyboard: rows };
+}
+
+export function renderCreateFirewallText(state: Record<string, unknown>): string {
+  return ["➕ 创建 Linux 服务器", "━━━━━━━━━━━━", "步骤 4/4：选择防火墙", "", `地区：${state.region_label ?? state.region ?? "未选择"}`, `套餐：${state.type_label ?? state.type ?? "未选择"}`, `系统：${state.image_label ?? state.image ?? "未选择"}`].join("\n");
+}
+
+export function renderCreateFirewallKeyboard(accountId: number, firewalls: CreateInstanceChoice[]): TelegramInlineKeyboardMarkup {
+  const rows: TelegramInlineKeyboardButton[][] = [[{ text: "不使用防火墙", callback_data: `instances:create:firewall:${accountId}:none` }]];
+  rows.push(...chunkButtons(firewalls.slice(0, 20).map((item) => ({ text: shortText(item.label, 32), callback_data: `instances:create:firewall:${accountId}:${item.id}` })), 1));
+  rows.push([{ text: "⬅️ 上一步：系统", callback_data: `instances:create:back_image:${accountId}` }]);
+  rows.push([{ text: "❌ 取消", callback_data: "menu:instances" }]);
+  return { inline_keyboard: rows };
+}
+
+export function renderCreateConfirmText(account: PublicAccount, state: Record<string, unknown>): string {
+  return ["➕ 创建 Linux 服务器", "━━━━━━━━━━━━", `账号：#${account.id} ${account.alias}`, `名称：${state.label ?? "自动生成"}`, `地区：${state.region_label ?? state.region}`, `套餐：${state.type_label ?? state.type}`, `系统：${state.image_label ?? state.image}`, `防火墙：${state.firewall_label ?? "不使用防火墙"}`, "Root 密码：创建时自动生成，成功后只显示一次", "", "⚠️ 确认创建后会调用 Linode API，并可能产生费用。"].join("\n");
+}
+
+export function renderCreateConfirmKeyboard(accountId: number): TelegramInlineKeyboardMarkup {
+  return { inline_keyboard: [[{ text: "✅ 确认创建", callback_data: `instances:create:confirm:${accountId}`, style: "success" }], [{ text: "⬅️ 上一步：防火墙", callback_data: `instances:create:back_firewall:${accountId}` }], [{ text: "❌ 取消", callback_data: "menu:instances" }]] };
+}
+
+export function renderCreatedInstanceText(result: { account: PublicAccount; instance: LinodeInstance; root_password?: string }): string {
+  return ["✅ 创建请求已提交", "━━━━━━━━━━━━", `账号：#${result.account.id} ${result.account.alias}`, `服务器：${result.instance.label} (${result.instance.id})`, `状态：${translateInstanceStatus(result.instance.status)}`, `地区：${result.instance.region}`, `IPv4：${result.instance.ipv4?.join(", ") || "等待分配"}`, "", "🔐 临时 root 密码：", result.root_password ?? "只通过 API 响应返回一次", "", "请尽快登录后修改密码。"].join("\n");
+}
+
+function filterRegions(regions: CreateInstanceChoice[]): CreateInstanceChoice[] {
+  const publicRegions = regions.filter((item) => !item.site_type || item.site_type === "core");
+  return (publicRegions.length ? publicRegions : regions).sort((a, b) => String(a.country ?? "").localeCompare(String(b.country ?? "")) || String(a.label).localeCompare(String(b.label)));
+}
+
+function filterTypes(types: CreateInstanceChoice[]): CreateInstanceChoice[] {
+  const standard = types.filter((item) => String(item.id).startsWith("g6-"));
+  return (standard.length ? standard : types).sort((a, b) => Number(a.price?.monthly ?? 0) - Number(b.price?.monthly ?? 0));
+}
+
+function filterImages(images: CreateInstanceChoice[]): CreateInstanceChoice[] {
+  const linux = images.filter((item) => String(item.id).startsWith("linode/") && !item.deprecated);
+  const priority = ["ubuntu24.04", "ubuntu22.04", "debian13", "debian12", "almalinux9", "rocky9"];
+  return (linux.length ? linux : images).sort((a, b) => imageRank(String(a.id), priority) - imageRank(String(b.id), priority) || String(a.label).localeCompare(String(b.label)));
+}
+
+function imageRank(id: string, priority: string[]): number {
+  const rank = priority.findIndex((token) => id.includes(token));
+  return rank === -1 ? priority.length : rank;
+}
+
+function pageItems<T>(items: T[], page: number, pageSize: number): T[] {
+  return items.slice(page * pageSize, page * pageSize + pageSize);
+}
+
+function addPagination(rows: TelegramInlineKeyboardButton[][], prefix: string, page: number, total: number, pageSize: number): void {
+  const nav: TelegramInlineKeyboardButton[] = [];
+  if (page > 0) nav.push({ text: "上一页", callback_data: `${prefix}:${page - 1}` });
+  if ((page + 1) * pageSize < total) nav.push({ text: "下一页", callback_data: `${prefix}:${page + 1}` });
+  if (nav.length) rows.push(nav);
+}
+
+function chunkButtons(buttons: TelegramInlineKeyboardButton[], size: number): TelegramInlineKeyboardButton[][] {
+  const rows: TelegramInlineKeyboardButton[][] = [];
+  for (let i = 0; i < buttons.length; i += size) rows.push(buttons.slice(i, i + size));
+  return rows;
+}
+
+function shortText(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+}
+
+function formatTypeButton(item: CreateInstanceChoice): string {
+  const memory = typeof item.memory === "number" ? `${Math.round(item.memory / 1024)}G` : "?";
+  const transfer = typeof item.transfer === "number" ? `${item.transfer}G` : "?";
+  const price = typeof item.price?.monthly === "number" ? `$${item.price.monthly}/月` : "价格未知";
+  return `${item.vcpus ?? "?"}H ${memory} / ${transfer} / ${price}`;
 }
 
 function renderSpecsLines(specs: unknown): string[] {

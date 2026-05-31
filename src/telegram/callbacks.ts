@@ -37,6 +37,19 @@ import { renderAddAccountAliasKeyboard, renderAddAccountAliasPrompt, startAddAcc
 import {
   renderAccountInstanceBlock,
   renderAccountInstancesText,
+  renderCreatedInstanceText,
+  renderCreateConfirmKeyboard,
+  renderCreateConfirmText,
+  renderCreateFirewallKeyboard,
+  renderCreateFirewallText,
+  renderCreateImageKeyboard,
+  renderCreateImageText,
+  renderCreateInstanceAccountKeyboard,
+  renderCreateInstanceAccountText,
+  renderCreateRegionKeyboard,
+  renderCreateRegionText,
+  renderCreateTypeKeyboard,
+  renderCreateTypeText,
   renderAllInstancesText,
   renderInstanceAccountsKeyboard,
   renderInstanceAccountsText,
@@ -1786,6 +1799,130 @@ export async function routeTelegramCallback(
     }
   }
 
+
+  if (update.data === "instances:create" && env?.DB) {
+    try {
+      const accounts = await new AccountService(env).listAccounts();
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderCreateInstanceAccountText(accounts), reply_markup: renderCreateInstanceAccountKeyboard(accounts) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const createAccountMatch = update.data.match(/^instances:create:account:(\d+)$/);
+  if (createAccountMatch && env?.DB && sessions) {
+    try {
+      const accountId = Number(createAccountMatch[1]);
+      const options = await new InstanceService(env).getCreateOptions(accountId, requestId);
+      await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_instance", data: { account_id: accountId, options } });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderCreateRegionText(options.regions), reply_markup: renderCreateRegionKeyboard(accountId, options.regions) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const createRegionPageMatch = update.data.match(/^instances:create:region_page:(\d+):(\d+)$/);
+  if (createRegionPageMatch && sessions) {
+    const parsed = await getCreateInstanceSession(sessions, update.fromId);
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderCreateRegionText(parsed.options.regions, Number(createRegionPageMatch[2])), reply_markup: renderCreateRegionKeyboard(Number(createRegionPageMatch[1]), parsed.options.regions, Number(createRegionPageMatch[2])) });
+  }
+
+  const createRegionMatch = update.data.match(/^instances:create:region:(\d+):(.+)$/);
+  if (createRegionMatch && sessions) {
+    const accountId = Number(createRegionMatch[1]);
+    const parsed = await getCreateInstanceSession(sessions, update.fromId);
+    const region = String(createRegionMatch[2]);
+    const selected = parsed.options.regions.find((item: any) => String(item.id) === region);
+    parsed.state.region = region;
+    parsed.state.region_label = selected?.label ?? region;
+    await saveCreateInstanceSession(sessions, update, accountId, parsed);
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderCreateTypeText(parsed.options.types, parsed.state), reply_markup: renderCreateTypeKeyboard(accountId, parsed.options.types, parsed.state) });
+  }
+
+  const createTypePageMatch = update.data.match(/^instances:create:type_page:(\d+):(\d+)$/);
+  if (createTypePageMatch && sessions) {
+    const parsed = await getCreateInstanceSession(sessions, update.fromId);
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderCreateTypeText(parsed.options.types, parsed.state, Number(createTypePageMatch[2])), reply_markup: renderCreateTypeKeyboard(Number(createTypePageMatch[1]), parsed.options.types, parsed.state, Number(createTypePageMatch[2])) });
+  }
+
+  const createTypeMatch = update.data.match(/^instances:create:type:(\d+):(.+)$/);
+  if (createTypeMatch && sessions) {
+    const accountId = Number(createTypeMatch[1]);
+    const parsed = await getCreateInstanceSession(sessions, update.fromId);
+    const type = String(createTypeMatch[2]);
+    const selected = parsed.options.types.find((item: any) => String(item.id) === type);
+    parsed.state.type = type;
+    parsed.state.type_label = selected?.label ?? type;
+    await saveCreateInstanceSession(sessions, update, accountId, parsed);
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderCreateImageText(parsed.options.images, parsed.state), reply_markup: renderCreateImageKeyboard(accountId, parsed.options.images) });
+  }
+
+  const createImagePageMatch = update.data.match(/^instances:create:image_page:(\d+):(\d+)$/);
+  if (createImagePageMatch && sessions) {
+    const parsed = await getCreateInstanceSession(sessions, update.fromId);
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderCreateImageText(parsed.options.images, parsed.state, Number(createImagePageMatch[2])), reply_markup: renderCreateImageKeyboard(Number(createImagePageMatch[1]), parsed.options.images, Number(createImagePageMatch[2])) });
+  }
+
+  const createImageMatch = update.data.match(/^instances:create:image:(\d+):(.+)$/);
+  if (createImageMatch && sessions) {
+    const accountId = Number(createImageMatch[1]);
+    const parsed = await getCreateInstanceSession(sessions, update.fromId);
+    const image = String(createImageMatch[2]);
+    const selected = parsed.options.images.find((item: any) => String(item.id) === image);
+    parsed.state.image = image;
+    parsed.state.image_label = selected?.label ?? image;
+    await saveCreateInstanceSession(sessions, update, accountId, parsed);
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderCreateFirewallText(parsed.state), reply_markup: renderCreateFirewallKeyboard(accountId, parsed.options.firewalls) });
+  }
+
+  const createFirewallMatch = update.data.match(/^instances:create:firewall:(\d+):(.+)$/);
+  if (createFirewallMatch && sessions) {
+    const accountId = Number(createFirewallMatch[1]);
+    const parsed = await getCreateInstanceSession(sessions, update.fromId);
+    const firewall = String(createFirewallMatch[2]);
+    if (firewall !== "none") {
+      const selected = parsed.options.firewalls.find((item: any) => String(item.id) === firewall);
+      parsed.state.firewall_id = Number(firewall);
+      parsed.state.firewall_label = selected?.label ?? firewall;
+    } else {
+      delete parsed.state.firewall_id;
+      parsed.state.firewall_label = "不使用防火墙";
+    }
+    await saveCreateInstanceSession(sessions, update, accountId, parsed);
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderCreateConfirmText(parsed.options.account, parsed.state), reply_markup: renderCreateConfirmKeyboard(accountId) });
+  }
+
+  const createBackTypeMatch = update.data.match(/^instances:create:back_type:(\d+)$/);
+  if (createBackTypeMatch && sessions) {
+    const parsed = await getCreateInstanceSession(sessions, update.fromId);
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderCreateTypeText(parsed.options.types, parsed.state), reply_markup: renderCreateTypeKeyboard(Number(createBackTypeMatch[1]), parsed.options.types, parsed.state) });
+  }
+
+  const createBackImageMatch = update.data.match(/^instances:create:back_image:(\d+)$/);
+  if (createBackImageMatch && sessions) {
+    const parsed = await getCreateInstanceSession(sessions, update.fromId);
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderCreateImageText(parsed.options.images, parsed.state), reply_markup: renderCreateImageKeyboard(Number(createBackImageMatch[1]), parsed.options.images) });
+  }
+
+  const createBackFirewallMatch = update.data.match(/^instances:create:back_firewall:(\d+)$/);
+  if (createBackFirewallMatch && sessions) {
+    const parsed = await getCreateInstanceSession(sessions, update.fromId);
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderCreateFirewallText(parsed.state), reply_markup: renderCreateFirewallKeyboard(Number(createBackFirewallMatch[1]), parsed.options.firewalls) });
+  }
+
+  const createConfirmMatch = update.data.match(/^instances:create:confirm:(\d+)$/);
+  if (createConfirmMatch && env?.DB && sessions) {
+    try {
+      const accountId = Number(createConfirmMatch[1]);
+      const parsed = await getCreateInstanceSession(sessions, update.fromId);
+      const data = await new InstanceService(env).createInstance(accountId, { region: String(parsed.state.region), type: String(parsed.state.type), image: String(parsed.state.image), firewall_id: parsed.state.firewall_id === undefined ? null : Number(parsed.state.firewall_id) }, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      await sessions.clearCurrentSession(update.fromId);
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderCreatedInstanceText(data), reply_markup: { inline_keyboard: [[{ text: "🔄 查看服务器状态", callback_data: `instances:detail:${data.account.id}:${data.instance.id}:account_${data.account.id}` }], [{ text: "↩️ 返回账号服务器", callback_data: `instances:list:account:${data.account.id}` }]] } });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
   const bootMatch = update.data.match(/^instances:boot:(\d+):(\d+)(?::([A-Za-z0-9_]+))?$/);
   if (bootMatch && env) {
     try {
@@ -1942,6 +2079,28 @@ export async function routeTelegramCallback(
     text: `暂不支持的菜单入口：${update.data}\n后续阶段会通过聊天框下方的固定按钮逐步接入。`,
     reply_markup: renderCheckinInlineKeyboard()
   });
+}
+
+
+async function getCreateInstanceSession(sessions: Pick<BotSessionService, "getCurrentSession" | "setCurrentSession" | "clearCurrentSession">, userId: string): Promise<{ accountId: number; options: any; state: Record<string, unknown> }> {
+  const session = await sessions.getCurrentSession(userId);
+  if (!session || session.state !== "creating_instance") throw new AppError(ErrorCode.VALIDATION_ERROR, "创建服务器会话已过期，请重新开始。", "req_telegram", 400);
+  const parsed = parseCallbackSessionData(session.data_json);
+  return { accountId: Number(parsed.account_id), options: parsed.options ?? {}, state: (parsed.state && typeof parsed.state === "object" ? parsed.state : {}) as Record<string, unknown> };
+}
+
+async function saveCreateInstanceSession(sessions: Pick<BotSessionService, "getCurrentSession" | "setCurrentSession" | "clearCurrentSession">, update: Extract<ParsedTelegramUpdate, { kind: "callback_query" }>, accountId: number, parsed: { options: any; state: Record<string, unknown> }): Promise<void> {
+  await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_instance", data: { account_id: accountId, options: parsed.options, state: parsed.state } });
+}
+
+function parseCallbackSessionData(dataJson?: string | null): Record<string, any> {
+  if (!dataJson) return {};
+  try {
+    const parsed = JSON.parse(dataJson);
+    return parsed && typeof parsed === "object" ? parsed as Record<string, any> : {};
+  } catch {
+    return {};
+  }
 }
 
 function instanceListBackCallback(source: string | undefined, accountId: number): string {

@@ -42,6 +42,46 @@ export interface LinodePersonalAccessTokenResult {
   token: string;
 }
 
+export interface LinodeRegion {
+  id: string;
+  label: string;
+  country?: string;
+  site_type?: string;
+}
+
+export interface LinodeType {
+  id: string;
+  label: string;
+  disk?: number;
+  memory?: number;
+  vcpus?: number;
+  transfer?: number;
+  network_out?: number;
+  price?: { monthly?: number; hourly?: number };
+}
+
+export interface LinodeImage {
+  id: string;
+  label: string;
+  deprecated?: boolean;
+}
+
+export interface LinodeFirewall {
+  id: number;
+  label: string;
+}
+
+export interface CreateLinodeInstanceInput {
+  region: string;
+  type: string;
+  image: string;
+  label: string;
+  root_pass: string;
+  backups_enabled?: boolean;
+  tags?: string[];
+  firewall_id?: number;
+}
+
 interface LinodeListResponse<T> {
   data?: T[];
   page?: number;
@@ -78,6 +118,32 @@ export class LinodeClient {
 
   async getInstance(instanceId: number, requestId: string): Promise<LinodeInstance> {
     const response = await this.request(`/linode/instances/${instanceId}`, requestId);
+    const body = await response.json().catch(() => ({})) as Record<string, unknown>;
+    return toLinodeInstance(body);
+  }
+
+  async listRegions(requestId: string): Promise<LinodeRegion[]> {
+    const items = await this.listAllPages("/regions", requestId);
+    return items.map(toLinodeRegion);
+  }
+
+  async listTypes(requestId: string): Promise<LinodeType[]> {
+    const items = await this.listAllPages("/linode/types", requestId);
+    return items.map(toLinodeType);
+  }
+
+  async listImages(requestId: string): Promise<LinodeImage[]> {
+    const items = await this.listAllPages("/images", requestId);
+    return items.map(toLinodeImage);
+  }
+
+  async listFirewalls(requestId: string): Promise<LinodeFirewall[]> {
+    const items = await this.listAllPages("/networking/firewalls", requestId);
+    return items.map(toLinodeFirewall);
+  }
+
+  async createInstance(input: CreateLinodeInstanceInput, requestId: string): Promise<LinodeInstance> {
+    const response = await this.request("/linode/instances", requestId, "POST", input);
     const body = await response.json().catch(() => ({})) as Record<string, unknown>;
     return toLinodeInstance(body);
   }
@@ -215,5 +281,43 @@ function toLinodeLoginEvent(raw: Record<string, unknown>): LinodeLoginEvent {
     datetime: typeof raw.datetime === "string" ? raw.datetime : new Date().toISOString(),
     status: typeof raw.status === "string" ? raw.status : undefined,
     raw
+  };
+}
+
+function toLinodeRegion(raw: Record<string, unknown>): LinodeRegion {
+  return {
+    id: String(raw.id ?? ""),
+    label: String(raw.label ?? raw.id ?? ""),
+    country: typeof raw.country === "string" ? raw.country : undefined,
+    site_type: typeof raw.site_type === "string" ? raw.site_type : undefined
+  };
+}
+
+function toLinodeType(raw: Record<string, unknown>): LinodeType {
+  const price = raw.price && typeof raw.price === "object" ? raw.price as Record<string, unknown> : undefined;
+  return {
+    id: String(raw.id ?? ""),
+    label: String(raw.label ?? raw.id ?? ""),
+    disk: typeof raw.disk === "number" ? raw.disk : undefined,
+    memory: typeof raw.memory === "number" ? raw.memory : undefined,
+    vcpus: typeof raw.vcpus === "number" ? raw.vcpus : undefined,
+    transfer: typeof raw.transfer === "number" ? raw.transfer : undefined,
+    network_out: typeof raw.network_out === "number" ? raw.network_out : typeof raw.network === "number" ? raw.network as number : undefined,
+    price: price ? { monthly: typeof price.monthly === "number" ? price.monthly : undefined, hourly: typeof price.hourly === "number" ? price.hourly : undefined } : undefined
+  };
+}
+
+function toLinodeImage(raw: Record<string, unknown>): LinodeImage {
+  return {
+    id: String(raw.id ?? ""),
+    label: String(raw.label ?? raw.id ?? ""),
+    deprecated: Boolean(raw.deprecated)
+  };
+}
+
+function toLinodeFirewall(raw: Record<string, unknown>): LinodeFirewall {
+  return {
+    id: Number(raw.id),
+    label: String(raw.label ?? raw.id ?? "")
   };
 }

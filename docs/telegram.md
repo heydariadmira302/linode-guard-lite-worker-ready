@@ -52,7 +52,7 @@ accounts:detail:<account_id>
 /start → 服务器管理
 ```
 
-服务器管理入口采用“列表优先”：聊天框下方和主菜单里的「🖥 服务器」会直接展示全部服务器列表；`menu:instances` 作为服务器管理说明页，只保留「🖥 查看全部服务器 / 🔎 筛选 / ⚡ 批量操作 / 返回主菜单」。
+服务器管理入口采用“列表优先”：聊天框下方和主菜单里的「🖥 服务器」会直接展示全部服务器列表；`menu:instances` 作为服务器管理说明页，提供「🖥 查看全部服务器 / ➕ 创建服务器 / 🔎 筛选 / ⚡ 批量操作 / 返回主菜单」。
 
 服务器筛选页包含：
 
@@ -82,6 +82,27 @@ accounts:detail:<account_id>
 点击「选择账号」后，Bot 会列出 active Linode 账号。
 
 选择某个账号后，Bot 会展示该账号下的服务器列表。
+
+### 创建服务器
+
+创建服务器参考旧版 Bot 的流程，但新版必须保持 API-first / Service-first：
+
+```text
+Telegram 选择账号 / Region / Plan / OS / Firewall
+→ InstanceService.getCreateOptions(...) / InstanceService.createInstance(...)
+→ Linode API
+```
+
+当前 Telegram 创建入口为「➕ 创建服务器」，流程：
+
+1. 选择账号
+2. 选择 Region
+3. 选择 Plan
+4. 选择 Linux Image
+5. 选择 Firewall 或不使用防火墙
+6. 确认创建
+
+确认后调用 `InstanceService.createInstance(...)`，不会在 Telegram callback 里直接拼业务逻辑。创建成功后会展示一次性 root 密码，并提醒尽快修改。当前先支持官方 Linux 创建；Windows StackScript 路线后续如接入，也应先落 service/API，再接 Telegram 展示层。
 
 ### 实例详情
 

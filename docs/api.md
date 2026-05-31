@@ -137,6 +137,25 @@ curl -s \
   http://127.0.0.1:8787/api/v1/accounts/1/instances/101
 ```
 
+
+### GET /api/v1/accounts/:account_id/instances/create-options
+
+创建服务器选项接口。用于前端/Telegram 创建向导获取 Region、Plan、Image、Firewall 列表。响应不会返回 token 明文或 encrypted_token。
+
+```bash
+curl -s   -H "Authorization: Bearer <API_AUTH_TOKEN>"   http://127.0.0.1:8787/api/v1/accounts/1/instances/create-options
+```
+
+### POST /api/v1/accounts/:account_id/instances
+
+创建官方 Linux 服务器。核心创建逻辑在 `InstanceService.createInstance(...)`，Telegram 只负责收集参数并调用该能力。
+
+```bash
+curl -X POST   -H "Authorization: Bearer <API_AUTH_TOKEN>"   -H "Content-Type: application/json"   -d '{"region":"jp-osa","type":"g6-nanode-1","image":"linode/ubuntu24.04","firewall_id":null}'   http://127.0.0.1:8787/api/v1/accounts/1/instances
+```
+
+成功响应会返回创建出的实例摘要和一次性 `root_password`。不要把该密码写入日志、文档或截图；Telegram 展示后应提醒用户尽快修改。
+
 ## 安全说明
 
 - Instances API 会使用已保存账号 Token 调用 Linode API。

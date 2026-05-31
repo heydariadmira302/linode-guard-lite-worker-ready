@@ -22,6 +22,25 @@ export async function handleGetAccountInstance(_request: Request, env: Env, requ
   return createJsonResponse({ ok: true, data }, { requestId });
 }
 
+export async function handleGetCreateInstanceOptions(_request: Request, env: Env, requestId: string, accountId: number): Promise<Response> {
+  ensureDb(env, requestId);
+  const data = await new InstanceService(env).getCreateOptions(accountId, requestId);
+  return createJsonResponse({ ok: true, data }, { requestId });
+}
+
+export async function handleCreateAccountInstance(request: Request, env: Env, requestId: string, accountId: number): Promise<Response> {
+  ensureDb(env, requestId);
+  const body = await request.json().catch(() => ({})) as Record<string, unknown>;
+  const data = await new InstanceService(env).createInstance(accountId, {
+    region: String(body.region ?? ""),
+    type: String(body.type ?? ""),
+    image: String(body.image ?? ""),
+    label: typeof body.label === "string" ? body.label : undefined,
+    firewall_id: body.firewall_id === null || body.firewall_id === undefined ? null : Number(body.firewall_id)
+  }, { requestId, actor: "api:default", source: "api" });
+  return createJsonResponse({ ok: true, data }, { requestId });
+}
+
 export async function handleBootAccountInstance(_request: Request, env: Env, requestId: string, accountId: number, instanceId: number): Promise<Response> {
   ensureDb(env, requestId);
   const data = await new InstanceService(env).bootInstance(accountId, instanceId, { requestId, actor: "api:default", source: "api" });

@@ -182,6 +182,51 @@ describe("Phase 6 Linode instance read-only management", () => {
     }
   });
 
+
+  it("creates a Linux instance through API-first service and exposes Telegram create flow", async () => {
+    const db = new FakeD1Database();
+    await addAccount(db, { id: 1, alias: "default", token: "token-default" });
+    const env = { ...baseEnv, DB: db as unknown as D1Database };
+    const calls: string[] = [];
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      calls.push(`${init?.method ?? "GET"} ${String(input)} ${new Headers(init?.headers).get("authorization")}`);
+      if (String(input).endsWith("/regions")) return new Response(JSON.stringify({ data: [{ id: "jp-osa", label: "Osaka, JP", country: "jp", site_type: "core" }], page: 1, pages: 1 }), { status: 200 });
+      if (String(input).endsWith("/linode/types")) return new Response(JSON.stringify({ data: [{ id: "g6-nanode-1", label: "Nanode 1GB", vcpus: 1, memory: 1024, transfer: 1000, price: { monthly: 5 } }], page: 1, pages: 1 }), { status: 200 });
+      if (String(input).endsWith("/images")) return new Response(JSON.stringify({ data: [{ id: "linode/ubuntu24.04", label: "Ubuntu 24.04 LTS", deprecated: false }], page: 1, pages: 1 }), { status: 200 });
+      if (String(input).endsWith("/networking/firewalls")) return new Response(JSON.stringify({ data: [], page: 1, pages: 1 }), { status: 200 });
+      if (String(input).endsWith("/linode/instances") && init?.method === "POST") {
+        const payload = JSON.parse(String(init.body));
+        expect(payload).toMatchObject({ region: "jp-osa", type: "g6-nanode-1", image: "linode/ubuntu24.04", backups_enabled: false, tags: ["linode-guard-lite"] });
+        expect(payload.root_pass).toEqual(expect.any(String));
+        return new Response(JSON.stringify({ id: 909, label: payload.label, status: "provisioning", region: payload.region, type: payload.type, image: payload.image, ipv4: [] }), { status: 200 });
+      }
+      throw new Error(`unexpected fetch ${String(input)}`);
+    });
+    try {
+      const optionsResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/instances/create-options"), env as never);
+      expect(optionsResponse.status).toBe(200);
+      expect(JSON.stringify(await optionsResponse.json())).not.toContain("token-default");
+
+      const createResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/instances", { method: "POST", body: JSON.stringify({ region: "jp-osa", type: "g6-nanode-1", image: "linode/ubuntu24.04" }) }), env as never);
+      const createBody = await createResponse.json() as { ok: boolean; data: { instance: { id: number; status: string }; root_password: string } };
+      expect(createResponse.status).toBe(200);
+      expect(createBody.data.instance).toMatchObject({ id: 909, status: "provisioning" });
+      expect(createBody.data.root_password.length).toBeGreaterThanOrEqual(20);
+      expect(calls).toContain("POST https://api.linode.com/v4/linode/instances Bearer token-default");
+
+      const menuResponse = await worker.fetch(telegramRequest(callbackUpdate("menu:instances")), env as never);
+      const menuBody = await menuResponse.json() as { data: { telegram: { payload: { reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+      expect(menuBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "➕ 创建服务器", callback_data: "instances:create" });
+
+      const flowResponse = await worker.fetch(telegramRequest(callbackUpdate("instances:create")), env as never);
+      const flowBody = await flowResponse.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+      expect(flowBody.data.telegram.payload.text).toContain("创建服务器");
+      expect(flowBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "👤 #1 default", callback_data: "instances:create:account:1" });
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
   it("returns unified errors for missing auth, missing account, invalid token, permission errors, and Linode API errors", async () => {
     const db = new FakeD1Database();
     await addAccount(db, { id: 1, alias: "default", token: "token-default" });

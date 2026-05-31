@@ -1,4 +1,4 @@
-import { LinodeClient, type LinodeInstance } from "../clients/linode-client";
+import { LinodeClient, type CreateLinodeInstanceInput, type LinodeFirewall, type LinodeImage, type LinodeInstance, type LinodeRegion, type LinodeType } from "../clients/linode-client";
 import { decryptLinodeToken } from "../crypto/token-crypto";
 import type { Env } from "../env";
 import { getLinodeTokenEncryptionKey } from "./runtime-secret-service";
@@ -33,6 +33,29 @@ export interface InstanceActionResult {
   account: PublicAccount;
   instance_id: number;
   result: "success";
+}
+
+export interface CreateInstanceOptionsResult {
+  account: PublicAccount;
+  regions: LinodeRegion[];
+  types: LinodeType[];
+  images: LinodeImage[];
+  firewalls: LinodeFirewall[];
+}
+
+export interface CreateInstanceInput {
+  region: string;
+  type: string;
+  image: string;
+  label?: string;
+  firewall_id?: number | null;
+  root_pass?: string;
+}
+
+export interface CreateInstanceResult {
+  account: PublicAccount;
+  instance: LinodeInstance;
+  root_password?: string;
 }
 
 type InstanceAction = "boot" | "shutdown" | "reboot" | "delete";
@@ -81,6 +104,40 @@ export class InstanceService {
     return { account: await this.toPublicAccount(account), instance };
   }
 
+  async getCreateOptions(accountId: number, requestId: string): Promise<CreateInstanceOptionsResult> {
+    const account = await this.getActiveAccount(accountId, requestId);
+    const token = await decryptLinodeToken(account.encrypted_token, await getLinodeTokenEncryptionKey(this.env));
+    const client = new LinodeClient(token);
+    const [regions, types, images, firewalls] = await Promise.all([
+      client.listRegions(requestId),
+      client.listTypes(requestId),
+      client.listImages(requestId),
+      client.listFirewalls(requestId).catch((error) => {
+        if (error instanceof AppError && error.code === ErrorCode.TOKEN_PERMISSION_ERROR) return [] as LinodeFirewall[];
+        throw error;
+      })
+    ]);
+    return { account: await this.toPublicAccount(account), regions, types, images, firewalls };
+  }
+
+  async createInstance(accountId: number, input: CreateInstanceInput, context: InstanceServiceContext): Promise<CreateInstanceResult> {
+    const account = await this.getActiveAccount(accountId, context.requestId);
+    const publicAccount = await this.toPublicAccount(account);
+    const rootPassword = input.root_pass ?? generateRootPassword();
+    const payload = this.buildCreateInstancePayload(input, rootPassword, context.requestId);
+    try {
+      const token = await decryptLinodeToken(account.encrypted_token, await getLinodeTokenEncryptionKey(this.env));
+      const instance = await new LinodeClient(token).createInstance(payload, context.requestId);
+      await this.recordAudit(context, "instance.create", "instance", String(instance.id || payload.label), "medium", "success", null, { account_id: account.id, account_alias: account.alias, region: payload.region, type: payload.type, image: payload.image, firewall_id: payload.firewall_id ?? null });
+      return { account: publicAccount, instance, root_password: rootPassword };
+    } catch (error) {
+      const code = error instanceof AppError ? error.code : ErrorCode.LINODE_API_ERROR;
+      await this.recordAudit(context, "instance.create", "instance", input.label ?? null, "medium", "failed", code, { account_id: account.id, account_alias: account.alias, region: input.region, type: input.type, image: input.image, firewall_id: input.firewall_id ?? null });
+      if (error instanceof AppError) throw error;
+      throw new AppError(ErrorCode.LINODE_API_ERROR, "Linode API 请求失败", context.requestId, 502);
+    }
+  }
+
   async bootInstance(accountId: number, instanceId: number, context: InstanceServiceContext): Promise<InstanceActionResult> {
     return await this.runInstanceAction(accountId, instanceId, context, "boot");
   }
@@ -122,6 +179,30 @@ export class InstanceService {
       if (error instanceof AppError) throw error;
       throw new AppError(ErrorCode.LINODE_API_ERROR, "Linode API 请求失败", context.requestId, 502);
     }
+  }
+
+  private buildCreateInstancePayload(input: CreateInstanceInput, rootPassword: string, requestId: string): CreateLinodeInstanceInput {
+    const region = typeof input.region === "string" ? input.region.trim() : "";
+    const type = typeof input.type === "string" ? input.type.trim() : "";
+    const image = typeof input.image === "string" ? input.image.trim() : "";
+    const label = typeof input.label === "string" && input.label.trim() ? input.label.trim() : createDefaultInstanceLabel();
+    if (!region || !type || !image) throw new AppError(ErrorCode.VALIDATION_ERROR, "region/type/image are required", requestId, 400);
+    if (!/^[A-Za-z0-9._-]{3,64}$/.test(label)) throw new AppError(ErrorCode.VALIDATION_ERROR, "Invalid instance label", requestId, 400);
+    const payload: CreateLinodeInstanceInput = {
+      region,
+      type,
+      image,
+      label,
+      root_pass: rootPassword,
+      backups_enabled: false,
+      tags: ["linode-guard-lite"]
+    };
+    if (input.firewall_id !== undefined && input.firewall_id !== null) {
+      const firewallId = Number(input.firewall_id);
+      if (!Number.isInteger(firewallId) || firewallId <= 0) throw new AppError(ErrorCode.VALIDATION_ERROR, "Invalid firewall id", requestId, 400);
+      payload.firewall_id = firewallId;
+    }
+    return payload;
   }
 
   private async listForAccountRecord(account: LinodeAccountRecord, requestId: string): Promise<AccountInstancesResult> {
@@ -212,4 +293,35 @@ export class InstanceService {
       group_name: groupName
     };
   }
+}
+
+function createDefaultInstanceLabel(): string {
+  return `lgl-${new Date().toISOString().replace(/[-:]/g, "").slice(0, 13)}`;
+}
+
+function generateRootPassword(): string {
+  const lower = "abcdefghijkmnopqrstuvwxyz";
+  const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const digits = "23456789";
+  const symbols = "!@#$%^&*_-+=?";
+  const alphabet = lower + upper + digits + symbols;
+  const required = [randomChar(lower), randomChar(upper), randomChar(digits), randomChar(symbols)];
+  const rest = Array.from({ length: 28 }, () => randomChar(alphabet));
+  return shuffle([...required, ...rest]).join("");
+}
+
+function randomChar(chars: string): string {
+  const array = new Uint32Array(1);
+  crypto.getRandomValues(array);
+  return chars[array[0] % chars.length];
+}
+
+function shuffle<T>(items: T[]): T[] {
+  for (let i = items.length - 1; i > 0; i -= 1) {
+    const array = new Uint32Array(1);
+    crypto.getRandomValues(array);
+    const j = array[0] % (i + 1);
+    [items[i], items[j]] = [items[j], items[i]];
+  }
+  return items;
 }
