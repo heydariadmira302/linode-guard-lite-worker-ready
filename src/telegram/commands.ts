@@ -241,7 +241,7 @@ async function continueWindowsPasswordFlow(
     actions.push(client.sendMessage({ chat_id: update.chatId, text: `${text}\n\n✅ 已接收自定义密码。后续成功页仍会只显示一次，请核对并保存。`, reply_markup: renderCreateRegionKeyboard(accountId, (options as any).regions ?? []) }) as TelegramClientAction);
     return actions;
   } catch {
-    actions.push(client.sendMessage({ chat_id: update.chatId, text: "密码不符合要求：12-64 位，包含大小写字母、数字、符号，不能有空格/中文/< > & 引号，也不能太弱。请重新发送，或发送 /cancel 取消。", reply_markup: renderCheckinInlineKeyboard() }) as TelegramClientAction);
+    actions.push(client.sendMessage({ chat_id: update.chatId, text: "密码不符合要求：10-64 位，包含大小写字母、数字、符号，不能有空格/中文/< > & 引号，也不能太弱。请重新发送，或发送 /cancel 取消。", reply_markup: renderCheckinInlineKeyboard() }) as TelegramClientAction);
     return actions;
   }
 }

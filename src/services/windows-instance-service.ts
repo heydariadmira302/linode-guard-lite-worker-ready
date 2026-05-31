@@ -195,7 +195,7 @@ function createDefaultWindowsLabel(): string {
 
 export function validateWindowsPassword(password: string, requestId = "req_windows"): string {
   const value = typeof password === "string" ? password.trim() : "";
-  if (value.length < 12 || value.length > 64) throw new AppError(ErrorCode.VALIDATION_ERROR, "Windows password must be 12-64 characters", requestId, 400);
+  if (value.length < 10 || value.length > 64) throw new AppError(ErrorCode.VALIDATION_ERROR, "Windows password must be 10-64 characters", requestId, 400);
   if (/\s/.test(value)) throw new AppError(ErrorCode.VALIDATION_ERROR, "Windows password must not contain spaces", requestId, 400);
   if (/[<>&"']/.test(value)) throw new AppError(ErrorCode.VALIDATION_ERROR, "Windows password contains unsupported XML characters", requestId, 400);
   if (!/[a-z]/.test(value) || !/[A-Z]/.test(value) || !/[0-9]/.test(value) || !/[!@#$%^*_.+=?-]/.test(value)) throw new AppError(ErrorCode.VALIDATION_ERROR, "Windows password must include upper/lower letters, number and symbol", requestId, 400);
