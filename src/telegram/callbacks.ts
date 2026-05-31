@@ -2279,9 +2279,12 @@ function renderTelegramCooldownMessage(
 
 function formatCallbackErrorMessage(error: AppError): string {
   const generic = mapTelegramErrorMessage(error.code);
-  if (error.code === ErrorCode.LINODE_API_ERROR && error.message && error.message !== "Operation failed") {
-    const detail = sanitizeCallbackErrorDetail(error.message);
-    if (detail) return `${generic}\n\nLinode 返回：${detail}`;
+  const detail = sanitizeCallbackErrorDetail(error.message);
+  if (error.code === ErrorCode.LINODE_API_ERROR && detail && detail !== "Operation failed" && detail !== generic) {
+    return `${generic}\n\n错误详情：${detail}`;
+  }
+  if (detail && detail !== generic && error.code !== ErrorCode.UNAUTHORIZED && error.code !== ErrorCode.FORBIDDEN) {
+    return `${generic}\n\n错误详情：${detail}`;
   }
   return generic;
 }
@@ -2310,7 +2313,7 @@ function renderTelegramCallbackError(
 ): TelegramClientResult {
   const appError = error instanceof AppError
     ? error
-    : new AppError(ErrorCode.LINODE_API_ERROR, "Operation failed", requestId, 502);
+    : new AppError(ErrorCode.LINODE_API_ERROR, error instanceof Error && error.message ? error.message : "Operation failed", requestId, 502);
   return client.editMessage({
     chat_id: update.chatId,
     message_id: update.messageId,
