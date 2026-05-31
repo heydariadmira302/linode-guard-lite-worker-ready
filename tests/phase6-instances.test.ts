@@ -432,6 +432,31 @@ describe("Phase 6 Linode instance read-only management", () => {
     }
   });
 
+
+  it("shows Linode endpoint details when Windows confirm fails", async () => {
+    const db = new FakeD1Database();
+    await addAccount(db, { id: 1, alias: "default", token: "token-default" });
+    db.settings.set("windows_stackscript_id:1", JSON.stringify(2022));
+    const env = { ...baseEnv, DB: db as unknown as D1Database };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/linode/stackscripts/2022") && init?.method === "PUT") return new Response(JSON.stringify({ id: 2022, label: "script" }), { status: 200 });
+      if (url.endsWith("/linode/instances") && init?.method === "POST") return new Response(JSON.stringify({ errors: [{ field: "stackscript_data.WINDOWS_USERNAME", reason: "Unexpected field" }] }), { status: 400 });
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    try {
+      await worker.fetch(telegramRequest(callbackUpdate("windows:create:confirm:1")), env as never);
+      // No session path in this test would fail earlier, so exercise the API error mapper directly through HTTP create.
+      const response = await worker.fetch(apiRequest("/api/v1/accounts/1/windows/instances", { method: "POST", body: JSON.stringify({ region: "jp-osa", type: "g6-standard-2", version: "2k22", lang: "en-us", administrator_password: "MyStrong9!" }) }), env as never);
+      const body = await response.json() as { error: { message: string } };
+      expect(response.status).toBe(502);
+      expect(body.error.message).toContain("POST /linode/instances");
+      expect(body.error.message).toContain("stackscript_data.WINDOWS_USERNAME");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
   it("returns unified errors for missing auth, missing account, invalid token, permission errors, and Linode API errors", async () => {
     const db = new FakeD1Database();
     await addAccount(db, { id: 1, alias: "default", token: "token-default" });

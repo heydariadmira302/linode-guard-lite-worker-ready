@@ -223,21 +223,21 @@ export class LinodeClient {
         body: body === undefined ? undefined : JSON.stringify(body)
       });
     } catch {
-      throw new AppError(ErrorCode.LINODE_API_ERROR, "Linode API request failed", requestId, 502);
+      throw new AppError(ErrorCode.LINODE_API_ERROR, `Linode API ${method} ${path} 网络请求失败`, requestId, 502);
     }
 
     if (response.status === 401) {
-      throw new AppError(ErrorCode.TOKEN_INVALID, "Linode Token 无效或已被撤销", requestId, 401);
+      throw new AppError(ErrorCode.TOKEN_INVALID, `Linode Token 无效或已被撤销（${method} ${path}）`, requestId, 401);
     }
     if (response.status === 403) {
-      throw new AppError(ErrorCode.TOKEN_PERMISSION_ERROR, "Linode Token 权限不足", requestId, 403);
+      throw new AppError(ErrorCode.TOKEN_PERMISSION_ERROR, `Linode Token 权限不足（${method} ${path}）`, requestId, 403);
     }
     if (response.status === 429) {
-      throw new AppError(ErrorCode.RATE_LIMITED, "Linode API 限流，请稍后重试", requestId, 429);
+      throw new AppError(ErrorCode.RATE_LIMITED, `Linode API 限流，请稍后重试（${method} ${path}）`, requestId, 429);
     }
     if (!response.ok) {
       const detail = await extractLinodeErrorMessage(response);
-      throw new AppError(ErrorCode.LINODE_API_ERROR, detail ? `Linode API 请求失败：${detail}` : "Linode API 请求失败", requestId, 502);
+      throw new AppError(ErrorCode.LINODE_API_ERROR, detail ? `Linode API ${method} ${path} 失败（HTTP ${response.status}）：${detail}` : `Linode API ${method} ${path} 失败（HTTP ${response.status}）`, requestId, 502);
     }
     return response;
   }
