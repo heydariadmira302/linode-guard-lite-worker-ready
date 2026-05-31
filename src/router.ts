@@ -9,7 +9,6 @@ import { handleListAuditLogs } from "./api/audit-logs";
 import { handleAddProtectedInstance, handleGetAppSettings, handleRemoveProtectedInstance, handleUpdateAppSettings } from "./api/app-settings";
 import { handleAccountBatch, handleAllAccountsBatch, handleGroupBatch } from "./api/batch";
 import { handleDeploymentDiagnostics, handleJobsDiagnostics, handleSetupInitialize, handleSetupSchema } from "./api/diagnostics";
-import { handleDeploymentNotificationStatus, handleDeploymentNotificationTrigger } from "./api/deployment-notification";
 import { handleBootAccountInstance, handleCreateAccountInstance, handleDeleteAccountInstance, handleGetAccountInstance, handleGetCreateInstanceOptions, handleListAccountInstances, handleListAllInstances, handleRebootAccountInstance, handleShutdownAccountInstance } from "./api/instances";
 import { handleCreateWindowsInstance, handleEnsureWindowsStackScript, handleGetWindowsCreateOptions, handleGetWindowsStackScriptStatus } from "./api/windows-instances";
 import { handleHealth } from "./api/health";
@@ -33,8 +32,6 @@ export async function routeRequest(request: Request, env: Env, requestId: string
       }
       if (request.method === "GET" && url.pathname === "/api/v1/diagnostics/deployment") return await handleDeploymentDiagnostics(request, env, requestId);
       if (request.method === "GET" && url.pathname === "/api/v1/diagnostics/jobs") return await handleJobsDiagnostics(request, env, requestId);
-      if (request.method === "GET" && url.pathname === "/api/v1/diagnostics/deployment-notification") return await handleDeploymentNotificationStatus(request, env, requestId);
-      if (request.method === "POST" && url.pathname === "/api/v1/diagnostics/deployment-notification/trigger") return await handleDeploymentNotificationTrigger(request, env, requestId);
       if (request.method === "POST" && url.pathname === "/api/v1/setup/schema") return await handleSetupSchema(request, env, requestId);
       if (request.method === "POST" && url.pathname === "/api/v1/setup/initialize") return await handleSetupInitialize(request, env, requestId);
       if (request.method === "GET" && url.pathname === "/api/v1/accounts") return await handleListAccounts(request, env, requestId);
