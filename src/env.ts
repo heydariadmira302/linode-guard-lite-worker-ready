@@ -10,6 +10,7 @@ export interface Env {
   OPERATION_LOG_RETENTION_DAYS?: string;
   LOGIN_EVENT_RETENTION_DAYS?: string;
   CF_VERSION_METADATA?: WorkerVersionMetadata;
+  PUBLIC_BASE_URL?: string;
 }
 
 function hasValue(value: unknown): value is string {

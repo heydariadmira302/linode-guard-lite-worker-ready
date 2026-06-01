@@ -11,6 +11,7 @@ import { handleAccountBatch, handleAllAccountsBatch, handleGroupBatch } from "./
 import { handleDeploymentDiagnostics, handleJobsDiagnostics, handleSetupInitialize, handleSetupSchema } from "./api/diagnostics";
 import { handleBootAccountInstance, handleCreateAccountInstance, handleDeleteAccountInstance, handleGetAccountInstance, handleGetCreateInstanceOptions, handleListAccountInstances, handleListAllInstances, handleRebootAccountInstance, handleShutdownAccountInstance } from "./api/instances";
 import { handleCreateWindowsInstance, handleEnsureWindowsStackScript, handleGetWindowsCreateOptions, handleGetWindowsStackScriptStatus, handleGetWindowsVersions } from "./api/windows-instances";
+import { handleWindowsInstallCallback } from "./api/windows-install-callback";
 import { handleHealth } from "./api/health";
 import { handleAdminPresenceCheckin, handleAdminPresenceStatus, handleCreateAdminPresencePolicy, handleDeleteAdminPresencePolicy, handleDisableAdminPresencePolicy, handleEnableAdminPresencePolicy, handleGetAdminPresencePolicy, handleListAdminPresencePolicies, handleUpdateAdminPresencePolicy } from "./api/admin-presence";
 import { handleConfirmSecurityEvent, handleGenerateLinodeToken, handleGetSecuritySettings, handleListSecurityEvents, handleMarkSecurityEventSuspicious, handleSecurityCheck, handleUpdateSecuritySettings } from "./api/security";
@@ -26,6 +27,7 @@ export async function routeRequest(request: Request, env: Env, requestId: string
     if (request.method === "GET" && url.pathname === "/setup") return handleSetupPage(request);
     if (request.method === "POST" && url.pathname === "/telegram/webhook") return await handleTelegramWebhook(request, env, requestId);
     if (url.pathname.startsWith("/api/v1/")) {
+      if (request.method === "POST" && url.pathname === "/api/v1/windows/install-callback") return await handleWindowsInstallCallback(request, env, requestId);
       const isBootstrapSetupRoute = await shouldAllowBootstrapSetup(request, env);
       if (!isBootstrapSetupRoute && !(await verifyApiBearerToken(request, env))) {
         throw new AppError(ErrorCode.UNAUTHORIZED, "Missing or invalid API bearer token", requestId, 401);

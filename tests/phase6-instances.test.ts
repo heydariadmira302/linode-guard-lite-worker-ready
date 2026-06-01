@@ -42,10 +42,24 @@ class FakeD1Database {
   groups: GroupRecord[] = [{ id: 1, name: "未分组", is_default: 1, created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", deleted_at: null }];
   settings = new Map<string, string>();
   botSessions: Record<string, unknown>[] = [];
+  windowsInstalls: Record<string, any>[] = [];
 
   prepare(sql: string) { return new FakePreparedStatement(this, sql); }
 
   first<T>(sql: string, values: unknown[]): T | null {
+    if (sql.includes("INTO windows_installs")) {
+      const row = { id: this.windowsInstalls.length + 1, account_id: Number(values[0]), instance_id: null, instance_label: String(values[1]), ip_address: values[2] as string | null, status: "installing", callback_token_hash: String(values[3]), telegram_chat_id: values[4] as string | null, telegram_user_id: values[5] as string | null, created_at: String(values[6]), updated_at: String(values[7]), metadata_json: values[8] as string | null, notified_at: null, callback_received_at: null };
+      this.windowsInstalls.push(row);
+      return row as T;
+    }
+    if (sql.includes("UPDATE windows_installs SET status = 'ready'")) {
+      const row = this.windowsInstalls.find((install) => Number(install.id) === Number(values[4]));
+      if (row) { row.status = "ready"; row.ip_address = values[0] ?? row.ip_address; row.callback_received_at = String(values[1]); row.updated_at = String(values[2]); row.metadata_json = values[3] ?? row.metadata_json; return row as T; }
+      return null;
+    }
+    if (sql.includes("FROM windows_installs")) {
+      return (this.windowsInstalls.find((install) => install.callback_token_hash === String(values[0]) && install.status === "installing") as T | undefined) ?? null;
+    }
     if (sql.includes("FROM bot_sessions")) {
       return (this.botSessions.find((session) => session.telegram_user_id === String(values[0])) as T | undefined) ?? null;
     }
@@ -240,7 +254,7 @@ describe("Phase 6 Linode instance read-only management", () => {
 
       const createResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/instances", { method: "POST", body: JSON.stringify({ region: "jp-osa", type: "g6-nanode-1", image: "linode/ubuntu24.04" }) }), env as never);
       const createBody = await createResponse.json() as { ok: boolean; data: { instance: { id: number; status: string }; root_password: string } };
-      if (createResponse.status !== 200) console.log(await createResponse.clone().text());
+      if (createResponse.status !== 200) throw new Error(JSON.stringify(createBody));
       expect(createResponse.status).toBe(200);
       expect(createBody.data.instance).toMatchObject({ id: 909, status: "provisioning" });
       expect(createBody.data.root_password.length).toBeGreaterThanOrEqual(20);
@@ -265,8 +279,9 @@ describe("Phase 6 Linode instance read-only management", () => {
     const response = await worker.fetch(apiRequest("/api/v1/windows/versions"), env as never);
     const body = await response.json() as { data: { versions: Array<{ id: string; label: string; requires_iso_resolve: boolean }>; languages: Array<{ id: string; windows_locale: string }> } };
     expect(response.status).toBe(200);
-    expect(body.data.versions.map((item) => item.id)).toEqual(["2k22", "2k25-cn", "w11-ltsc-2024"]);
+    expect(body.data.versions.map((item) => item.id)).toEqual(["2k22", "2k25-cn", "2k25-en", "w11-ltsc-2024"]);
     expect(body.data.versions.find((item) => item.id === "2k25-cn")?.label).toContain("2025");
+    expect(body.data.versions.find((item) => item.id === "2k25-en")?.label).toContain("English");
     expect(body.data.versions.find((item) => item.id === "w11-ltsc-2024")?.requires_iso_resolve).toBe(true);
     expect(body.data.languages.map((item) => ({ id: item.id, windows_locale: item.windows_locale }))).toEqual(expect.arrayContaining([{ id: "zh-cn", windows_locale: "zh-CN" }, { id: "en-us", windows_locale: "en-US" }]));
   });
@@ -290,6 +305,7 @@ describe("Phase 6 Linode instance read-only management", () => {
         expect(payload.script).toContain("Allow RDP 3389");
         expect(payload.script).toContain("WINDOWS_REBOOT_OK");
         expect(payload.script).toContain("2k25-cn");
+        expect(payload.script).toContain("2k25-en");
         expect(payload.script).toContain("Windows Server 2025 SERVERDATACENTER");
         expect(payload.script).toContain("linode_api()");
         expect(payload.script).toContain("autounattend.xml was not copied");
@@ -325,7 +341,7 @@ describe("Phase 6 Linode instance read-only management", () => {
       const optionsResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/windows/create-options"), env as never);
       expect(optionsResponse.status).toBe(200);
       const createResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/windows/instances", { method: "POST", body: JSON.stringify({ region: "jp-osa", type: "g6-dedicated-2" }) }), env as never);
-      const body = await createResponse.json() as { data: { instance: { id: number }; administrator_password: string; temp_root_password: string } };
+      const body = await createResponse.json() as { data: { instance: { id: number }; administrator_password: string; temp_root_password: string }; error?: { message: string } };
       expect(createResponse.status).toBe(200);
       expect(body.data.instance.id).toBe(92022);
       expect(body.data.administrator_password).not.toContain("public-default-password");
@@ -340,6 +356,7 @@ describe("Phase 6 Linode instance read-only management", () => {
       const versionBody = await startFlow.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
       expect(versionBody.data.telegram.payload.text).toContain("选择 Windows 版本");
       expect(versionBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🇨🇳 Windows Server 2025 简体中文", callback_data: "windows:create:version:1:2k25-cn" });
+      expect(versionBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🇺🇸 Windows Server 2025 English", callback_data: "windows:create:version:1:2k25-en" });
       expect(versionBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🧪 Windows 11 LTSC 2024", callback_data: "windows:create:version:1:w11-ltsc-2024" });
       const credentialFlow = await worker.fetch(telegramRequest(callbackUpdate("windows:create:version:1:2k22")), env as never);
       const credentialBody = await credentialFlow.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
@@ -505,6 +522,55 @@ describe("Phase 6 Linode instance read-only management", () => {
       const flowBody = await flow.json() as { data: { telegram: { payload: { text: string } } } };
       expect(flowBody.data.telegram.payload.text).toContain("Windows Server 2025 简体中文版");
       expect(flowBody.data.telegram.payload.text).toContain("zh-cn");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+
+  it("creates Windows Server 2025 English through StackScript route", async () => {
+    const db = new FakeD1Database();
+    await addAccount(db, { id: 1, alias: "default", token: "token-default" });
+    db.settings.set("windows_stackscript_id:1", JSON.stringify(2022));
+    const env = { ...baseEnv, DB: db as unknown as D1Database };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/regions")) return new Response(JSON.stringify({ data: [{ id: "jp-osa", label: "Osaka", site_type: "core" }], page: 1, pages: 1 }), { status: 200 });
+      if (url.endsWith("/linode/types")) return new Response(JSON.stringify({ data: [{ id: "g6-standard-2", label: "Linode 4GB", memory: 4096, disk: 81920, price: { monthly: 24 } }], page: 1, pages: 1 }), { status: 200 });
+      if (url.endsWith("/networking/firewalls")) return new Response(JSON.stringify({ data: [], page: 1, pages: 1 }), { status: 200 });
+      if (url.endsWith("/linode/stackscripts/2022") && init?.method === "PUT") {
+        const payload = JSON.parse(String(init.body));
+        expect(payload.script).toContain("2k25-en");
+        expect(payload.script).toContain("Windows Server 2025 English");
+        expect(payload.script).toContain("W2K25_EN_ISO_URL");
+        return new Response(JSON.stringify({ id: 2022, label: payload.label }), { status: 200 });
+      }
+      if (url.endsWith("/linode/instances") && init?.method === "POST") {
+        const payload = JSON.parse(String(init.body));
+        expect(payload.stackscript_data.INSTALL_WINDOWS_VERSION).toBe("2k25-en");
+        expect(payload.stackscript_data.WINDOWS_LANG).toBe("en-us");
+        expect(payload.stackscript_data.WINDOWS_IMAGE_NAME).toBe("Windows Server 2025 SERVERDATACENTER");
+        return new Response(JSON.stringify({ id: 92526, label: payload.label, status: "provisioning", region: payload.region, type: payload.type, image: payload.image, ipv4: ["192.0.2.26"] }), { status: 200 });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    try {
+      const optionsResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/windows/create-options?version=2k25-en"), env as never);
+      const optionsBody = await optionsResponse.json() as { data: { version: { id: string }; lang: { id: string } } };
+      expect(optionsResponse.status).toBe(200);
+      expect(optionsBody.data.version.id).toBe("2k25-en");
+      expect(optionsBody.data.lang.id).toBe("en-us");
+
+      const createResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/windows/instances", { method: "POST", body: JSON.stringify({ region: "jp-osa", type: "g6-standard-2", version: "2k25-en", administrator_password: "MyStrongPass9!" }) }), env as never);
+      const createBody = await createResponse.json() as { data: { windows_version: string; windows_lang: string } };
+      expect(createResponse.status).toBe(200);
+      expect(createBody.data.windows_version).toBe("2k25-en");
+      expect(createBody.data.windows_lang).toBe("en-us");
+
+      const flow = await worker.fetch(telegramRequest(callbackUpdate("windows:create:version:1:2k25-en")), env as never);
+      const flowBody = await flow.json() as { data: { telegram: { payload: { text: string } } } };
+      expect(flowBody.data.telegram.payload.text).toContain("Windows Server 2025 English");
+      expect(flowBody.data.telegram.payload.text).toContain("en-us");
     } finally {
       fetchMock.mockRestore();
     }

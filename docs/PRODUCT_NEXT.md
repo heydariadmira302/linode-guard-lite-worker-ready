@@ -572,4 +572,4 @@ Reply Keyboard 固定提供：
 
 ## 13. Windows 创建目标
 
-Windows 创建继续坚持 API-first / Service-first。Telegram 创建入口先选版本，并允许选择自动生成强密码或自己输入密码；Windows Server 2025 简体中文版为新增实验路线；Windows 11 Enterprise LTSC 2024 为实验路线，支持 zh-cn/en-us，ISO 由 Service 自动解析，不允许用户手动输入 ISO URL。已有 VPS 使用 bin456789/reinstall 重装 Win11 作为后续高级模式保留，本轮不开发。
+Windows 创建继续坚持 API-first / Service-first。Telegram 创建入口先选版本，并允许选择自动生成强密码或自己输入密码；Windows Server 2025 简体中文版 / English 为新增实验路线；Windows 安装完成后可通过一次性回调 token 主动通知 Telegram；Windows 11 Enterprise LTSC 2024 为实验路线，支持 zh-cn/en-us，ISO 由 Service 自动解析，不允许用户手动输入 ISO URL。已有 VPS 使用 bin456789/reinstall 重装 Win11 作为后续高级模式保留，本轮不开发。

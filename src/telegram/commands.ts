@@ -269,7 +269,7 @@ async function continueWindowsLabelFlow(
   }
   state.label = label;
   await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_windows_instance", data: { account_id: accountId, options, state } });
-  const text = renderCreateRegionText((options as any).regions ?? []).replace("➕ 创建 Linux 服务器", "🪟 创建 Windows 服务器") + (state.windows_version === "w11-ltsc-2024" ? "\n\nBot 会自动查找官方 ISO，不需要你输入 ISO URL。" : state.windows_version === "2k25-cn" ? "\n\nWindows Server 2025 简体中文版会使用官方 Evaluation ISO 路线。" : "");
+  const text = renderCreateRegionText((options as any).regions ?? []).replace("➕ 创建 Linux 服务器", "🪟 创建 Windows 服务器") + (state.windows_version === "w11-ltsc-2024" ? "\n\nBot 会自动查找官方 ISO，不需要你输入 ISO URL。" : state.windows_version === "2k25-cn" ? "\n\nWindows Server 2025 简体中文版会使用官方 Evaluation ISO 路线。" : state.windows_version === "2k25-en" ? "\n\nWindows Server 2025 English 会使用官方 Evaluation ISO 路线。" : "");
   return client.sendMessage({ chat_id: update.chatId, text: `${text}\n\n✅ 服务器名称：${label}`, reply_markup: renderCreateRegionKeyboard(accountId, (options as any).regions ?? [], 0, `windows:create:back_label:${accountId}`, "⬅️ 上一步：命名") });
 }
 

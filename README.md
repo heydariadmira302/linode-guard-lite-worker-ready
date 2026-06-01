@@ -99,7 +99,7 @@ Telegram 入口「🪟 创建 Windows 服务器」已采用 API-first / Service-
 当前版本：
 
 - Windows Server 2022 Evaluation：稳定路线。
-- Windows Server 2025 简体中文版：新增实验路线，使用 Microsoft 官方 Evaluation ISO，默认 `zh-cn`。
+- Windows Server 2025：新增实验路线，支持简体中文 `zh-cn` 与 English `en-us`，使用 Microsoft 官方 Evaluation ISO。
 - Windows 11 Enterprise LTSC 2024：实验路线，Bot 自动解析官方 ISO，用户不需要输入 ISO URL；支持 `zh-cn` / `en-us`。
 
 参考与致谢：kitknox/winode <https://github.com/kitknox/winode>、bin456789/reinstall <https://github.com/bin456789/reinstall>、leitbogioro/Tools <https://github.com/leitbogioro/Tools>。
@@ -117,6 +117,10 @@ Telegram 入口「🪟 创建 Windows 服务器」已采用 API-first / Service-
 - `docs/troubleshooting.md`
 - `docs/PRODUCT_NEXT.md`
 - `docs/SESSION_NOTES.md`
+
+## Windows 安装完成通知
+
+创建 Windows 服务器时，系统会生成一次性安装完成回调 token，只保存 hash 到 D1。Windows 首次登录阶段启用 RDP 后会回调 `/api/v1/windows/install-callback`，Bot 会主动通知管理员“Windows 安装完成，可以尝试远程桌面登录”。通知不会重复发送 Administrator 密码。若未配置 `PUBLIC_BASE_URL`，回调 URL 为空，安装仍继续，但不会主动通知。
 
 ## 风险说明
 

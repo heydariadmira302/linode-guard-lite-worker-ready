@@ -1,5 +1,7 @@
 import windowsStackScript from "./windows-stackscript-template";
 import { WindowsIsoResolverService } from "./windows-iso-resolver-service";
+import { WindowsInstallMonitorService } from "./windows-install-monitor-service";
+import { WindowsInstallRepository } from "../storage/windows-install-repository";
 import { WindowsVersionService, type WindowsLanguageId, type WindowsVersionId } from "./windows-version-service";
 import { LinodeClient, type LinodeFirewall, type LinodeInstance, type LinodeRegion, type LinodeType } from "../clients/linode-client";
 import { decryptLinodeToken } from "../crypto/token-crypto";
@@ -20,7 +22,7 @@ export const WINDOWS_STACKSCRIPT_VERSION_LABEL = "Windows Server 2022 Evaluation
 export const WINDOWS_STACKSCRIPT_MIN_MEMORY_MB = 4096;
 export const WINDOWS_STACKSCRIPT_MIN_DISK_MB = 81920;
 
-export interface WindowsInstanceServiceContext { requestId: string; actor: string; source: string }
+export interface WindowsInstanceServiceContext { requestId: string; actor: string; source: string; telegramChatId?: string; telegramUserId?: string }
 export interface WindowsStackScriptStatus { account: PublicAccount; stackscript_id: number | null; configured: boolean; version: string; version_label: string; base_image: string }
 export interface WindowsCreateOptions { account: PublicAccount; stackscript: WindowsStackScriptStatus; regions: LinodeRegion[]; types: LinodeType[]; firewalls: LinodeFirewall[]; version: ReturnType<WindowsVersionService["getVersion"]>; lang: ReturnType<WindowsVersionService["getLanguage"]>; iso_resolve_required: boolean; iso_cached: boolean | null }
 export interface CreateWindowsInstanceInput { region: string; type: string; firewall_id?: number | null; label?: string; version?: WindowsVersionId; lang?: WindowsLanguageId; administrator_password?: string; windows_username?: string }
@@ -30,6 +32,7 @@ export class WindowsInstanceService {
   private readonly accounts: AccountsRepository;
   private readonly settings: SettingsRepository;
   private readonly audit?: AuditService;
+  private readonly installs?: WindowsInstallRepository;
   private readonly versions = new WindowsVersionService();
 
   constructor(private readonly env: Env, accounts?: AccountsRepository, settings?: SettingsRepository, audit?: AuditService) {
@@ -37,6 +40,7 @@ export class WindowsInstanceService {
     this.accounts = accounts ?? new AccountsRepository(env.DB as D1Database);
     this.settings = settings ?? new SettingsRepository(env.DB as D1Database);
     this.audit = audit ?? (env.DB ? new AuditService(new AuditRepository(env.DB)) : undefined);
+    this.installs = env.DB ? new WindowsInstallRepository(env.DB as D1Database) : undefined;
   }
 
   async getStatus(accountId: number, requestId: string): Promise<WindowsStackScriptStatus> {
@@ -70,7 +74,7 @@ export class WindowsInstanceService {
   async getCreateOptions(accountId: number, requestId: string, input: { version?: WindowsVersionId; lang?: WindowsLanguageId } = {}): Promise<WindowsCreateOptions> {
     const account = await this.getActiveAccount(accountId, requestId);
     const version = this.versions.getVersion(input.version, requestId);
-    const lang = this.versions.getLanguage(version.id === "2k25-cn" ? "zh-cn" : input.lang, requestId);
+    const lang = this.versions.getLanguage(version.id === "2k25-cn" ? "zh-cn" : version.id === "2k25-en" ? "en-us" : input.lang, requestId);
     const token = await this.decryptAccountToken(account);
     const client = new LinodeClient(token);
     const [regions, types, firewalls] = await Promise.all([client.listRegions(requestId), client.listTypes(requestId), client.listFirewalls(requestId).catch((error) => {
@@ -90,13 +94,17 @@ export class WindowsInstanceService {
     const tempRootPassword = generateLinuxPassword();
     const token = await this.decryptAccountToken(account);
     const version = this.versions.getVersion(input.version, context.requestId);
-    const lang = this.versions.getLanguage(version.id === "2k25-cn" ? "zh-cn" : input.lang, context.requestId);
+    const lang = this.versions.getLanguage(version.id === "2k25-cn" ? "zh-cn" : version.id === "2k25-en" ? "en-us" : input.lang, context.requestId);
     const client = new LinodeClient(token);
     await this.validateCreateTarget(client, input.region, input.type, version, context.requestId);
     const iso = version.requires_iso_resolve ? await new WindowsIsoResolverService(this.env, this.settings).resolve({ version: version.id, lang: lang.id, requestId: context.requestId }) : null;
-    const payload = this.buildCreatePayload(input, stackscriptId, token, adminPassword, windowsUsername, tempRootPassword, context.requestId, version, lang, iso?.iso_url ?? "NOURL");
+    const installMonitor = this.installs ? new WindowsInstallMonitorService(this.env, this.installs) : null;
+    const preliminaryLabel = this.resolveLabel(input, context.requestId);
+    const install = installMonitor ? await installMonitor.createInstallRecord({ accountId: account.id, instanceLabel: preliminaryLabel, telegramChatId: context.telegramChatId ?? null, telegramUserId: context.telegramUserId ?? null, metadata: { version: version.id, lang: lang.id } }) : null;
+    const payload = await this.buildCreatePayload(input, stackscriptId, token, adminPassword, windowsUsername, tempRootPassword, context.requestId, version, lang, iso?.iso_url ?? "NOURL", install?.callbackToken ?? "", preliminaryLabel);
     try {
       const instance = await client.createInstance(payload, context.requestId);
+      if (this.installs && install) await this.installs.attachInstance(install.record.id, Number(instance.id), Array.isArray((instance as any).ipv4) ? (instance as any).ipv4[0] : null, { version: version.id, lang: lang.id, label: payload.label });
       await this.recordAudit(context, "windows_instance.create", "instance", String(instance.id || payload.label), "critical", "success", null, { account_id: account.id, region: payload.region, type: payload.type, stackscript_id: stackscriptId, version: version.id, lang: lang.id, iso_resolved: Boolean(iso) });
       return { account: publicAccount, instance, stackscript_id: stackscriptId, windows_version: version.id, windows_version_label: version.label, windows_lang: lang.id, windows_username: windowsUsername, administrator_password: adminPassword, temp_root_password: tempRootPassword };
     } catch (error) {
@@ -123,13 +131,13 @@ export class WindowsInstanceService {
     return { label: WINDOWS_STACKSCRIPT_LABEL, description: "Windows Server 2022 deployment for Linode Guard Lite. API-first private StackScript route.", script: windowsStackScript, images: [WINDOWS_STACKSCRIPT_IMAGE], is_public: false, rev_note: "Linode Guard Lite Windows Server 2022 route" };
   }
 
-  private buildCreatePayload(input: CreateWindowsInstanceInput, stackscriptId: number, linodeToken: string, adminPassword: string, windowsUsername: string, tempRootPassword: string, requestId: string, version: ReturnType<WindowsVersionService["getVersion"]>, lang: ReturnType<WindowsVersionService["getLanguage"]>, isoUrl: string) {
+  private async buildCreatePayload(input: CreateWindowsInstanceInput, stackscriptId: number, linodeToken: string, adminPassword: string, windowsUsername: string, tempRootPassword: string, requestId: string, version: ReturnType<WindowsVersionService["getVersion"]>, lang: ReturnType<WindowsVersionService["getLanguage"]>, isoUrl: string, installCallbackToken: string, resolvedLabel?: string) {
     const region = typeof input.region === "string" ? input.region.trim() : "";
     const type = typeof input.type === "string" ? input.type.trim() : "";
     if (!region || !type) throw new AppError(ErrorCode.VALIDATION_ERROR, "region/type are required", requestId, 400);
-    const label = typeof input.label === "string" && input.label.trim() ? input.label.trim() : createDefaultWindowsLabel();
+    const label = resolvedLabel ?? this.resolveLabel(input, requestId);
     if (!/^[A-Za-z0-9._-]{3,64}$/.test(label)) throw new AppError(ErrorCode.VALIDATION_ERROR, "Invalid instance label", requestId, 400);
-    const stackscriptData = { TOKEN: linodeToken, WINDOWS_PASSWORD: adminPassword, INSTALL_WINDOWS_VERSION: version.stackscript_version, WINDOWS_IMAGE_NAME: version.image_name, WINDOWS_LANG: lang.id, AUTOLOGIN: "true", W11_ISO_URL: isoUrl };
+    const stackscriptData = { TOKEN: linodeToken, WINDOWS_PASSWORD: adminPassword, INSTALL_WINDOWS_VERSION: version.stackscript_version, WINDOWS_IMAGE_NAME: version.image_name, WINDOWS_LANG: lang.id, AUTOLOGIN: "true", W11_ISO_URL: isoUrl, INSTALL_CALLBACK_URL: await this.getWindowsInstallCallbackUrl(), INSTALL_CALLBACK_TOKEN: installCallbackToken };
     if (JSON.stringify(stackscriptData).length > 65535) throw new AppError(ErrorCode.VALIDATION_ERROR, "StackScript data is too large", requestId, 400);
     const payload: any = { region, type, image: WINDOWS_STACKSCRIPT_IMAGE, label, root_pass: tempRootPassword, backups_enabled: false, tags: ["linode-guard-lite", "windows-stackscript", version.id], stackscript_id: stackscriptId, stackscript_data: stackscriptData };
     if (input.firewall_id !== undefined && input.firewall_id !== null) {
@@ -138,6 +146,18 @@ export class WindowsInstanceService {
       payload.firewall_id = firewallId;
     }
     return payload;
+  }
+
+  private resolveLabel(input: CreateWindowsInstanceInput, requestId: string): string {
+    const label = typeof input.label === "string" && input.label.trim() ? input.label.trim() : createDefaultWindowsLabel();
+    if (!/^[A-Za-z0-9._-]{3,64}$/.test(label)) throw new AppError(ErrorCode.VALIDATION_ERROR, "Invalid instance label", requestId, 400);
+    return label;
+  }
+
+  private async getWindowsInstallCallbackUrl(): Promise<string> {
+    const fromSettings = await this.settings.get<string>("public_base_url").catch(() => null);
+    const base = (typeof fromSettings === "string" && fromSettings.trim() ? fromSettings : (typeof this.env.PUBLIC_BASE_URL === "string" ? this.env.PUBLIC_BASE_URL : "")).trim().replace(/\/+$/, "");
+    return base ? `${base}/api/v1/windows/install-callback` : "";
   }
 
   private async isIsoCached(version: WindowsVersionId, lang: WindowsLanguageId): Promise<boolean> {

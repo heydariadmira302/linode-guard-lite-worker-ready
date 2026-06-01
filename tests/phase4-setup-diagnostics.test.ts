@@ -248,11 +248,13 @@ describe("Phase 4 setup wizard and diagnostics", () => {
     try {
       const headers = new Headers({ Authorization: "Bearer 123456:realish-token", "content-type": "application/json" });
       const response = await worker.fetch(new Request("https://worker.example.com/api/v1/setup/initialize", { method: "POST", headers, body: JSON.stringify({ runtime_secrets: {}, configure_telegram_webhook: true }) }), env as never);
-      const body = await response.json() as { ok: boolean; data: { telegram_webhook?: { ok: boolean; webhook_url?: string } } };
+      const body = await response.json() as { ok: boolean; data: { telegram_webhook?: { ok: boolean; webhook_url?: string }; public_base_url?: { value: string; saved: boolean } } };
 
       expect(response.status).toBe(200);
       expect(body.ok).toBe(true);
       expect(body.data.telegram_webhook).toMatchObject({ ok: true, webhook_url: "https://worker.example.com/telegram/webhook" });
+      expect(body.data.public_base_url).toMatchObject({ value: "https://worker.example.com", saved: true });
+      expect(db.settings.get("public_base_url")).toBe(JSON.stringify("https://worker.example.com"));
       expect(body.data).toMatchObject({ install_notification: { attempted: true, ok: true, chat_id: "123456789" } });
       expect(calls).toHaveLength(2);
       expect(calls[0].url).toBe("https://api.telegram.org/bot123456:realish-token/setWebhook");

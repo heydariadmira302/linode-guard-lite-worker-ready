@@ -559,3 +559,16 @@ npm test
 - `WindowsInstanceService` 创建前新增 service 层硬校验：Region 必须是 core，Plan 必须满足当前 Windows 版本最低内存/磁盘要求，避免绕过 create-options 创建不合规实例。
 - StackScript 模板启用 `2k25-cn` 分支，使用官方 Windows Server 2025 zh-CN Evaluation ISO，并复用 2k22 VirtIO 注入路线；增加 Linode API helper 和安装介质/autounattend 复制校验，失败时明确中断。
 - 更新 Phase 6 Windows 测试覆盖版本 API、Telegram 版本按钮、Server 2025 payload、StackScript 关键内容和创建前校验。
+
+## 2026-06-01 Windows Server 2025 English 补充
+
+- 新增 Windows 版本 `2k25-en`：Windows Server 2025 English，Telegram 版本选择页可直接选择，默认语言 `en-us`。
+- StackScript 模板新增 `2k25-en` UDF 分支，使用 Microsoft 官方 Evaluation en-US ISO，并复用 Server 2025/2022 VirtIO 注入与 RDP 兜底逻辑。
+- 更新 Phase 6 Windows 测试覆盖 Server 2025 English 的版本 API、Telegram 按钮、创建 payload 和 StackScript 关键内容。
+
+## 2026-06-01 Windows 安装完成主动通知
+
+- 新增 `windows_installs` 表和 `migrations/0006_windows_installs.sql`，记录 Windows 安装状态、实例、一次性 callback token hash、Telegram chat/user 和通知时间。
+- 创建 Windows 实例时生成一次性安装完成 callback token，只保存 hash；StackScript data 增加 `INSTALL_CALLBACK_URL` / `INSTALL_CALLBACK_TOKEN`。`PUBLIC_BASE_URL` 配置后会生成 `/api/v1/windows/install-callback` 完整地址。
+- StackScript 在 Windows 首次登录命令里启用 RDP 后调用回调接口；回调成功后 Bot 主动发送“Windows 安装完成，可以尝试远程桌面登录”，不重复发送密码。
+- 新增 `tests/phase22-windows-install-callback.test.ts`，完整验证回调 token、状态更新、Telegram 通知和 token 不泄露。验证通过：`npm run typecheck`、`npm test`（25 files / 132 tests）、`npm run build:upload`。

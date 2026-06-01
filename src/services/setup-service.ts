@@ -88,6 +88,7 @@ export type InitializeSetupResult = {
   runtime_secrets: { created: string[]; existing: string[]; manual?: string[]; values?: RuntimeSecrets };
   telegram_webhook?: { attempted: boolean; ok: boolean; webhook_url?: string; error?: string };
   install_notification?: { attempted: boolean; ok: boolean; chat_id?: string; error?: string };
+  public_base_url?: { value: string | null; source: "request" | "env" | "existing" | "none"; saved: boolean };
   jobs: { created: string[]; existing: string[] };
   admin_presence: { initialized: boolean };
 };
@@ -227,6 +228,8 @@ export class SetupService {
       result.runtime_secrets.values = { api_auth_token: runtimeSecrets.secrets.api_auth_token, telegram_webhook_secret: "", linode_token_encryption_key: "" };
     }
 
+    result.public_base_url = await ensurePublicBaseUrl(settingsRepository, this.env, options.webhookUrl);
+
     if (options.configureTelegramWebhook && options.webhookUrl) {
       result.telegram_webhook = await configureTelegramWebhook(this.env.TELEGRAM_BOT_TOKEN, options.webhookUrl, runtimeSecrets.secrets.telegram_webhook_secret);
     }
@@ -243,6 +246,19 @@ export class SetupService {
     result.install_notification = await sendInstallNotification(this.env, options.webhookUrl ?? null, Boolean(result.telegram_webhook?.ok));
     return result;
   }
+}
+
+async function ensurePublicBaseUrl(settingsRepository: SettingsRepository, env: Env, webhookUrl?: string): Promise<{ value: string | null; source: "request" | "env" | "existing" | "none"; saved: boolean }> {
+  const fromRequest = webhookUrl ? new URL(webhookUrl).origin : "";
+  const fromEnv = typeof env.PUBLIC_BASE_URL === "string" && env.PUBLIC_BASE_URL.trim() ? env.PUBLIC_BASE_URL.trim().replace(/\/+$/, "") : "";
+  const existing = await settingsRepository.get<string>("public_base_url").catch(() => null);
+  const value = fromRequest || fromEnv || (typeof existing === "string" ? existing : "");
+  if (!value) return { value: null, source: "none", saved: false };
+  if (!existing || existing !== value) {
+    await settingsRepository.set("public_base_url", value);
+    return { value, source: fromRequest ? "request" : fromEnv ? "env" : "existing", saved: true };
+  }
+  return { value, source: fromRequest ? "request" : fromEnv ? "env" : "existing", saved: false };
 }
 
 async function sendInstallNotification(env: Env, webhookUrl: string | null, webhookOk: boolean): Promise<{ attempted: boolean; ok: boolean; chat_id?: string; error?: string }> {

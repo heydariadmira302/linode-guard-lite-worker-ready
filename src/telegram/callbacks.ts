@@ -1843,7 +1843,7 @@ export async function routeTelegramCallback(
   }
 
 
-  const windowsVersionMatch = update.data.match(/^windows:create:version:(\d+):(2k22|2k25-cn|w11-ltsc-2024)$/);
+  const windowsVersionMatch = update.data.match(/^windows:create:version:(\d+):(2k22|2k25-cn|2k25-en|w11-ltsc-2024)$/);
   if (windowsVersionMatch && env?.DB && sessions) {
     try {
       const accountId = Number(windowsVersionMatch[1]);
@@ -1923,7 +1923,7 @@ export async function routeTelegramCallback(
       }
       delete parsed.state.label;
       await saveCreateInstanceSession(sessions, update, accountId, parsed);
-      const text = renderCreateRegionText(parsed.options.regions).replace("➕ 创建 Linux 服务器", "🪟 创建 Windows 服务器") + (parsed.state.windows_version === "w11-ltsc-2024" ? "\n\nBot 会自动查找官方 ISO，不需要你输入 ISO URL。" : parsed.state.windows_version === "2k25-cn" ? "\n\nWindows Server 2025 简体中文版会使用官方 Evaluation ISO 路线。" : "");
+      const text = renderCreateRegionText(parsed.options.regions).replace("➕ 创建 Linux 服务器", "🪟 创建 Windows 服务器") + (parsed.state.windows_version === "w11-ltsc-2024" ? "\n\nBot 会自动查找官方 ISO，不需要你输入 ISO URL。" : parsed.state.windows_version === "2k25-cn" ? "\n\nWindows Server 2025 简体中文版会使用官方 Evaluation ISO 路线。" : parsed.state.windows_version === "2k25-en" ? "\n\nWindows Server 2025 English 会使用官方 Evaluation ISO 路线。" : "");
       return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text, reply_markup: renderCreateRegionKeyboard(accountId, parsed.options.regions, 0, `windows:create:back_label:${accountId}`, "⬅️ 上一步：命名") });
     } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
   }
@@ -1946,7 +1946,7 @@ StackScript ID：${status.stackscript_id}
     try {
       const accountId = Number(windowsConfirmMatch[1]);
       const parsed = await getCreateInstanceSession(sessions, update.fromId);
-      const data = await new WindowsInstanceService(env).createWindowsInstance(accountId, { region: String(parsed.state.region), type: String(parsed.state.type), label: typeof parsed.state.label === "string" ? parsed.state.label : undefined, firewall_id: parsed.state.firewall_id === undefined ? null : Number(parsed.state.firewall_id), version: parsed.state.windows_version as any, lang: parsed.state.windows_lang as any, administrator_password: typeof parsed.state.administrator_password === "string" ? parsed.state.administrator_password : undefined, windows_username: typeof parsed.state.windows_username === "string" ? parsed.state.windows_username : undefined }, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      const data = await new WindowsInstanceService(env).createWindowsInstance(accountId, { region: String(parsed.state.region), type: String(parsed.state.type), label: typeof parsed.state.label === "string" ? parsed.state.label : undefined, firewall_id: parsed.state.firewall_id === undefined ? null : Number(parsed.state.firewall_id), version: parsed.state.windows_version as any, lang: parsed.state.windows_lang as any, administrator_password: typeof parsed.state.administrator_password === "string" ? parsed.state.administrator_password : undefined, windows_username: typeof parsed.state.windows_username === "string" ? parsed.state.windows_username : undefined }, { requestId, actor: `telegram:${update.fromId}`, source: "telegram", telegramChatId: String(update.chatId), telegramUserId: String(update.fromId) });
       await sessions.clearCurrentSession(update.fromId);
       return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsCreatedText(data), reply_markup: { inline_keyboard: [[{ text: "🏠 返回主菜单", callback_data: "menu:main" }], [{ text: "↩️ 返回账号服务器", callback_data: `instances:list:account:${data.account.id}` }], [{ text: "🖥 稍后查看服务器详情", callback_data: `instances:detail:${data.account.id}:${data.instance.id}:account_${data.account.id}` }]] } });
     } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }

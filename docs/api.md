@@ -727,11 +727,11 @@ curl -s \
 
 ## Windows Server / Windows 11 创建 API
 
-Windows 创建采用 API-first / Service-first 的私有 StackScript 路线。Telegram 只负责选择账号、版本、语言、Region、Plan、Firewall 和确认；核心逻辑在 `WindowsInstanceService`。Windows Server 2022 为稳定路线，Windows Server 2025 简体中文版和 Windows 11 Enterprise LTSC 2024 为实验路线。
+Windows 创建采用 API-first / Service-first 的私有 StackScript 路线。Telegram 只负责选择账号、版本、语言、Region、Plan、Firewall 和确认；核心逻辑在 `WindowsInstanceService`。Windows Server 2022 为稳定路线，Windows Server 2025 简体中文版 / English 和 Windows 11 Enterprise LTSC 2024 为实验路线。
 
 ### GET /api/v1/windows/versions
 
-返回可创建的 Windows 版本与语言：`2k22`、`2k25-cn`、`w11-ltsc-2024`，语言 `zh-cn` / `en-us`。Windows Server 2025 默认 `zh-cn`；Windows 11 会标记 `requires_iso_resolve=true`、`iso_resolved_automatically=true`。
+返回可创建的 Windows 版本与语言：`2k22`、`2k25-cn`、`2k25-en`、`w11-ltsc-2024`，语言 `zh-cn` / `en-us`。Windows Server 2025 简体中文默认 `zh-cn`，English 默认 `en-us`；Windows 11 会标记 `requires_iso_resolve=true`、`iso_resolved_automatically=true`。
 
 ### GET /api/v1/accounts/:account_id/windows/stackscript
 
@@ -743,13 +743,13 @@ Windows 创建采用 API-first / Service-first 的私有 StackScript 路线。Te
 
 ### GET /api/v1/accounts/:account_id/windows/create-options
 
-支持 query：`version=2k22|2k25-cn|w11-ltsc-2024`、`lang=zh-cn|en-us`。返回符合该版本最低内存/磁盘要求的 core region 与 plan，并返回 `iso_resolve_required` / `iso_cached`。
+支持 query：`version=2k22|2k25-cn|2k25-en|w11-ltsc-2024`、`lang=zh-cn|en-us`。返回符合该版本最低内存/磁盘要求的 core region 与 plan，并返回 `iso_resolve_required` / `iso_cached`。
 
 获取 Windows 创建可选项：Region、满足最低内存/磁盘要求的 Plan、Firewall。当前路线固定为 `Windows Server 2022 Evaluation`，基础镜像为 `linode/ubuntu22.04`。
 
 ### POST /api/v1/accounts/:account_id/windows/instances
 
-请求体支持 `version` / `lang` / `label` / `administrator_password` / `windows_username`。`version=2k25-cn` 时会传入 `INSTALL_WINDOWS_VERSION=2k25-cn`、`WINDOWS_LANG=zh-cn` 和 Windows Server 2025 简体中文镜像名；`version=w11-ltsc-2024` 时，Service 会自动解析官方 ISO 并传入 StackScript：`INSTALL_WINDOWS_VERSION=w11`、`WINDOWS_IMAGE_NAME`、`WINDOWS_LANG`、`W11_ISO_URL`。解析失败时不创建实例。
+请求体支持 `version` / `lang` / `label` / `administrator_password` / `windows_username`。`version=2k25-cn` / `2k25-en` 时会分别传入 `INSTALL_WINDOWS_VERSION=2k25-cn|2k25-en`、`WINDOWS_LANG=zh-cn|en-us` 和 Windows Server 2025 镜像名；`version=w11-ltsc-2024` 时，Service 会自动解析官方 ISO 并传入 StackScript：`INSTALL_WINDOWS_VERSION=w11`、`WINDOWS_IMAGE_NAME`、`WINDOWS_LANG`、`W11_ISO_URL`。解析失败时不创建实例。
 
 创建 Windows Server 2022。请求体示例：
 
@@ -767,3 +767,10 @@ Windows 创建采用 API-first / Service-first 的私有 StackScript 路线。Te
 - 临时 Ubuntu root 密码
 
 响应会一次性返回这些密码；不要写入日志、文档或截图。创建后 StackScript 会把新建 Ubuntu 22.04 实例转换为 Windows Server 2022，安装期间会多次重启，预计 15-30 分钟。Windows 为非官方支持路线，失败时需通过 Linode LISH/控制台查看 `/root/windows-stackscript.log`。
+
+
+## Windows 安装完成回调 API
+
+### POST /api/v1/windows/install-callback
+
+由 Windows 安装完成脚本自动调用，不需要 API Bearer Token，也不提供手动触发入口。请求体包含一次性 `token`、`ip_address`、`rdp_port`、`status`。Service 只保存 token hash，回调成功后状态从 `installing` 改为 `ready`，并通过 Telegram 主动通知管理员。响应不会返回 token 或密码。
