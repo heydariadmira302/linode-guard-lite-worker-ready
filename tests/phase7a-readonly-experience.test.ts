@@ -145,7 +145,7 @@ describe("Phase 7A read-only instance experience and docs", () => {
       expect(body.ok).toBe(true);
       expect(body.data.telegram.payload.text).toContain("Linode Token 无效或已被撤销，请重新生成并更新账号 Token。");
       expect(body.data.telegram.payload.text).toContain("操作失败");
-      expect(keyboard).toEqual(expect.arrayContaining([{ text: "返回主菜单", callback_data: "menu:main" }]));
+      expect(keyboard).toEqual(expect.arrayContaining([{ text: "🖥 服务器管理", callback_data: "menu:instances" }, { text: "🏠 主菜单", callback_data: "menu:main" }]));
     } finally {
       fetchMock.mockRestore();
     }

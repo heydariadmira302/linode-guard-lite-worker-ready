@@ -255,8 +255,8 @@ describe("Phase 3 Telegram webhook and menu", () => {
 
     expect(response.status).toBe(200);
     expect(body.data.sent[0].method).toBe("answerCallbackQuery");
-    expect(body.data.sent[1].method).toBe("editMessageText");
-    expect(body.data.telegram.method).toBe("editMessageText");
-    expect(body.data.telegram.payload.text).toContain("暂不支持的菜单入口");
+    expect(body.data.sent[1].method).toBe("sendMessage");
+    expect(body.data.telegram.method).toBe("sendMessage");
+    expect(body.data.telegram.payload.text).toContain("这个按钮暂时不能继续");
   });
 });

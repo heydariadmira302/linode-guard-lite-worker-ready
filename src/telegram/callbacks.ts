@@ -2230,11 +2230,10 @@ StackScript ID：${status.stackscript_id}
     }
   }
 
-  return client.editMessage({
+  return client.sendMessage({
     chat_id: update.chatId,
-    message_id: update.messageId,
-    text: `暂不支持的菜单入口：${update.data}\n后续阶段会通过聊天框下方的固定按钮逐步接入。`,
-    reply_markup: renderCheckinInlineKeyboard()
+    text: [`⚠️ 这个按钮暂时不能继续`, "", `按钮：${update.data}`, "", "可能原因：旧消息按钮、流程已经过期、或当前版本已经调整了菜单。", "请从下方重新进入对应功能。"].join("\n"),
+    reply_markup: { inline_keyboard: [[{ text: "🖥 服务器管理", callback_data: "menu:instances" }], [{ text: "🏠 主菜单", callback_data: "menu:main" }], [{ text: "❤️ 打卡", callback_data: "admin_presence:checkin" }]] }
   });
 }
 
@@ -2366,10 +2365,9 @@ function renderTelegramCallbackError(
   const appError = error instanceof AppError
     ? error
     : new AppError(ErrorCode.LINODE_API_ERROR, error instanceof Error && error.message ? error.message : "Operation failed", requestId, 502);
-  return client.editMessage({
+  return client.sendMessage({
     chat_id: update.chatId,
-    message_id: update.messageId,
-    text: renderTelegramOperationResult({ title: "操作失败", status: "failed", requestId, errorMessage: formatCallbackErrorMessage(appError), errorCode: appError.code, nextStep: "按提示处理后重试，或查看审计日志定位问题" }),
-    reply_markup: renderCheckinInlineKeyboard()
+    text: renderTelegramOperationResult({ title: "操作失败", status: "failed", requestId, errorMessage: formatCallbackErrorMessage(appError), errorCode: appError.code, nextStep: "按提示处理后重试，或从主菜单重新进入" }),
+    reply_markup: { inline_keyboard: [[{ text: "🖥 服务器管理", callback_data: "menu:instances" }], [{ text: "🏠 主菜单", callback_data: "menu:main" }], [{ text: "❤️ 打卡", callback_data: "admin_presence:checkin" }]] }
   });
 }

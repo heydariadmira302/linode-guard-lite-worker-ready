@@ -39,6 +39,27 @@ describe("Telegram send fallback", () => {
     await expect(sendTelegramResult("realistic-token", editAction)).rejects.toThrow("chat not found");
   });
 
+
+  it("also falls back for stale server detail refresh edits", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, description: "Bad Request: message to edit not found" }), { status: 400 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, result: { message_id: 16002 } }), { status: 200 }));
+
+    const result = await sendTelegramResult("realistic-token", {
+      method: "editMessageText",
+      payload: {
+        chat_id: "123456789",
+        message_id: 15939,
+        text: "服务器详情",
+        reply_markup: { inline_keyboard: [[{ text: "刷新服务器状态", callback_data: "instances:detail:1:101:account_1" }]] }
+      }
+    });
+
+    expect(result).toEqual([{ ok: true, result: { message_id: 16002 } }]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1][0])).toContain("/sendMessage");
+  });
+
   it("adds visual emoji to inline buttons at send time without changing callbacks", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ ok: true, result: { message_id: 16001 } }), { status: 200 }));
 

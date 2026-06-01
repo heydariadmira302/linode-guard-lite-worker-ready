@@ -13,7 +13,7 @@ async function sendTelegramActionWithFallback(botToken: string, action: Telegram
   try {
     return await sendTelegramAction(botToken, action);
   } catch (error) {
-    if (action.method !== "editMessageText" || !isRecoverableEditMessageError(error) || isRefreshDetailAction(action)) throw error;
+    if (action.method !== "editMessageText" || !isRecoverableEditMessageError(error)) throw error;
     return await sendTelegramAction(botToken, {
       method: "sendMessage",
       payload: {
@@ -74,12 +74,6 @@ function beautifyButtonText(text: string): string {
   return text;
 }
 
-function isRefreshDetailAction(action: TelegramClientAction): boolean {
-  if (action.method !== "editMessageText") return false;
-  const markup = action.payload.reply_markup;
-  if (!markup || !("inline_keyboard" in markup)) return false;
-  return markup.inline_keyboard.flat().some((button) => "callback_data" in button && typeof button.callback_data === "string" && button.callback_data.startsWith("instances:detail:"));
-}
 
 function isRecoverableEditMessageError(error: unknown): boolean {
   if (!(error instanceof AppError) || error.code !== ErrorCode.TELEGRAM_API_ERROR) return false;
