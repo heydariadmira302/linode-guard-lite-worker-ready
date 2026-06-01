@@ -727,11 +727,11 @@ curl -s \
 
 ## Windows Server / Windows 11 创建 API
 
-Windows 创建采用 API-first / Service-first 的私有 StackScript 路线。Telegram 只负责选择账号、版本、语言、Region、Plan、Firewall 和确认；核心逻辑在 `WindowsInstanceService`。Windows Server 2022 为稳定路线，Windows 11 Enterprise LTSC 2024 为实验路线。
+Windows 创建采用 API-first / Service-first 的私有 StackScript 路线。Telegram 只负责选择账号、版本、语言、Region、Plan、Firewall 和确认；核心逻辑在 `WindowsInstanceService`。Windows Server 2022 为稳定路线，Windows Server 2025 简体中文版和 Windows 11 Enterprise LTSC 2024 为实验路线。
 
 ### GET /api/v1/windows/versions
 
-返回可创建的 Windows 版本与语言：`2k22`、`w11-ltsc-2024`，语言 `zh-cn` / `en-us`。Windows 11 会标记 `requires_iso_resolve=true`、`iso_resolved_automatically=true`。
+返回可创建的 Windows 版本与语言：`2k22`、`2k25-cn`、`w11-ltsc-2024`，语言 `zh-cn` / `en-us`。Windows Server 2025 默认 `zh-cn`；Windows 11 会标记 `requires_iso_resolve=true`、`iso_resolved_automatically=true`。
 
 ### GET /api/v1/accounts/:account_id/windows/stackscript
 
@@ -743,13 +743,13 @@ Windows 创建采用 API-first / Service-first 的私有 StackScript 路线。Te
 
 ### GET /api/v1/accounts/:account_id/windows/create-options
 
-支持 query：`version=2k22|w11-ltsc-2024`、`lang=zh-cn|en-us`。返回符合该版本最低内存/磁盘要求的 core region 与 plan，并返回 `iso_resolve_required` / `iso_cached`。
+支持 query：`version=2k22|2k25-cn|w11-ltsc-2024`、`lang=zh-cn|en-us`。返回符合该版本最低内存/磁盘要求的 core region 与 plan，并返回 `iso_resolve_required` / `iso_cached`。
 
 获取 Windows 创建可选项：Region、满足最低内存/磁盘要求的 Plan、Firewall。当前路线固定为 `Windows Server 2022 Evaluation`，基础镜像为 `linode/ubuntu22.04`。
 
 ### POST /api/v1/accounts/:account_id/windows/instances
 
-请求体支持 `version` / `lang` / `label` / `administrator_password` / `windows_username`。`version=w11-ltsc-2024` 时，Service 会自动解析官方 ISO 并传入 StackScript：`INSTALL_WINDOWS_VERSION=w11`、`WINDOWS_IMAGE_NAME`、`WINDOWS_LANG`、`W11_ISO_URL`。解析失败时不创建实例。
+请求体支持 `version` / `lang` / `label` / `administrator_password` / `windows_username`。`version=2k25-cn` 时会传入 `INSTALL_WINDOWS_VERSION=2k25-cn`、`WINDOWS_LANG=zh-cn` 和 Windows Server 2025 简体中文镜像名；`version=w11-ltsc-2024` 时，Service 会自动解析官方 ISO 并传入 StackScript：`INSTALL_WINDOWS_VERSION=w11`、`WINDOWS_IMAGE_NAME`、`WINDOWS_LANG`、`W11_ISO_URL`。解析失败时不创建实例。
 
 创建 Windows Server 2022。请求体示例：
 

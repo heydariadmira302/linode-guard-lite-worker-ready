@@ -70,7 +70,7 @@ export class WindowsInstanceService {
   async getCreateOptions(accountId: number, requestId: string, input: { version?: WindowsVersionId; lang?: WindowsLanguageId } = {}): Promise<WindowsCreateOptions> {
     const account = await this.getActiveAccount(accountId, requestId);
     const version = this.versions.getVersion(input.version, requestId);
-    const lang = this.versions.getLanguage(input.lang, requestId);
+    const lang = this.versions.getLanguage(version.id === "2k25-cn" ? "zh-cn" : input.lang, requestId);
     const token = await this.decryptAccountToken(account);
     const client = new LinodeClient(token);
     const [regions, types, firewalls] = await Promise.all([client.listRegions(requestId), client.listTypes(requestId), client.listFirewalls(requestId).catch((error) => {
@@ -90,11 +90,13 @@ export class WindowsInstanceService {
     const tempRootPassword = generateLinuxPassword();
     const token = await this.decryptAccountToken(account);
     const version = this.versions.getVersion(input.version, context.requestId);
-    const lang = this.versions.getLanguage(input.lang, context.requestId);
+    const lang = this.versions.getLanguage(version.id === "2k25-cn" ? "zh-cn" : input.lang, context.requestId);
+    const client = new LinodeClient(token);
+    await this.validateCreateTarget(client, input.region, input.type, version, context.requestId);
     const iso = version.requires_iso_resolve ? await new WindowsIsoResolverService(this.env, this.settings).resolve({ version: version.id, lang: lang.id, requestId: context.requestId }) : null;
     const payload = this.buildCreatePayload(input, stackscriptId, token, adminPassword, windowsUsername, tempRootPassword, context.requestId, version, lang, iso?.iso_url ?? "NOURL");
     try {
-      const instance = await new LinodeClient(token).createInstance(payload, context.requestId);
+      const instance = await client.createInstance(payload, context.requestId);
       await this.recordAudit(context, "windows_instance.create", "instance", String(instance.id || payload.label), "critical", "success", null, { account_id: account.id, region: payload.region, type: payload.type, stackscript_id: stackscriptId, version: version.id, lang: lang.id, iso_resolved: Boolean(iso) });
       return { account: publicAccount, instance, stackscript_id: stackscriptId, windows_version: version.id, windows_version_label: version.label, windows_lang: lang.id, windows_username: windowsUsername, administrator_password: adminPassword, temp_root_password: tempRootPassword };
     } catch (error) {
@@ -102,6 +104,18 @@ export class WindowsInstanceService {
       await this.recordAudit(context, "windows_instance.create", "instance", input.label ?? null, "critical", "failed", code, { account_id: account.id, region: input.region, type: input.type, stackscript_id: stackscriptId, version: input.version ?? "2k22", lang: input.lang ?? "en-us" });
       if (error instanceof AppError) throw error;
       throw new AppError(ErrorCode.LINODE_API_ERROR, "Linode Windows 创建请求失败", context.requestId, 502);
+    }
+  }
+
+  private async validateCreateTarget(client: LinodeClient, regionId: string, typeId: string, version: ReturnType<WindowsVersionService["getVersion"]>, requestId: string): Promise<void> {
+    const [regions, types] = await Promise.all([client.listRegions(requestId), client.listTypes(requestId)]);
+    const region = regions.find((item) => item.id === regionId);
+    if (!region) throw new AppError(ErrorCode.VALIDATION_ERROR, "Windows 创建地区不可用，请重新选择 Region", requestId, 400);
+    if (region.site_type && region.site_type !== "core") throw new AppError(ErrorCode.VALIDATION_ERROR, "Windows 创建只支持 Linode core region，请重新选择地区", requestId, 400);
+    const type = types.find((item) => item.id === typeId);
+    if (!type) throw new AppError(ErrorCode.VALIDATION_ERROR, "Windows 创建套餐不可用，请重新选择 Plan", requestId, 400);
+    if (Number(type.memory ?? 0) < version.min_memory_mb || Number(type.disk ?? 0) < version.min_disk_mb) {
+      throw new AppError(ErrorCode.VALIDATION_ERROR, `该 Plan 不满足 ${version.label} 最低要求：${version.min_memory_mb}MB 内存 / ${version.min_disk_mb}MB 磁盘`, requestId, 400);
     }
   }
 

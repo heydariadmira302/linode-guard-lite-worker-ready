@@ -226,6 +226,7 @@ export function renderWindowsVersionText(): string {
     "步骤 1/6：选择 Windows 版本",
     "",
     "稳定路线：Windows Server 2022 Evaluation。",
+    "新增路线：Windows Server 2025 简体中文版。",
     "实验路线：Windows 11 Enterprise LTSC 2024，Bot 会自动查找官方 ISO，不需要你输入 ISO URL。"
   ].join("\n");
 }
@@ -233,6 +234,7 @@ export function renderWindowsVersionText(): string {
 export function renderWindowsVersionKeyboard(accountId: number): TelegramInlineKeyboardMarkup {
   return { inline_keyboard: [
     [{ text: "🪟 Windows Server 2022", callback_data: `windows:create:version:${accountId}:2k22` }],
+    [{ text: "🇨🇳 Windows Server 2025 简体中文", callback_data: `windows:create:version:${accountId}:2k25-cn` }],
     [{ text: "🧪 Windows 11 LTSC 2024", callback_data: `windows:create:version:${accountId}:w11-ltsc-2024` }],
     [{ text: "⬅️ 上一步：账号", callback_data: "windows:create" }],
     [{ text: "❌ 取消", callback_data: "menu:instances" }]
@@ -332,7 +334,7 @@ export function renderWindowsCredentialModeText(state: Record<string, unknown>):
     "步骤：设置登录凭据",
     "",
     `Windows：${state.windows_version_label ?? "Windows Server 2022 Evaluation"}`,
-    state.windows_version === "w11-ltsc-2024" ? `语言：${state.windows_lang ?? "en-us"}` : null,
+    state.windows_version === "w11-ltsc-2024" || state.windows_version === "2k25-cn" ? `语言：${state.windows_lang ?? "zh-cn"}` : null,
     "",
     "推荐使用自动生成强密码，安全且不容易因为特殊字符转义导致安装后无法登录。",
     "如果选择自己输入，Bot 会尝试删除你发送的密码消息，但 Telegram 聊天里仍可能短暂出现。"
@@ -373,7 +375,7 @@ export function renderWindowsLabelModeText(state: Record<string, unknown>): stri
     "步骤：设置服务器名称",
     "",
     `Windows：${state.windows_version_label ?? "Windows Server 2022 Evaluation"}`,
-    state.windows_version === "w11-ltsc-2024" ? `语言：${state.windows_lang ?? "en-us"}` : null,
+    state.windows_version === "w11-ltsc-2024" || state.windows_version === "2k25-cn" ? `语言：${state.windows_lang ?? "zh-cn"}` : null,
     "",
     "这个名称会作为 Linode 实例名称。",
     "限制：英文、数字、点、下划线、短横线，3-64 位；不支持中文。"
@@ -407,28 +409,30 @@ export function renderWindowsLabelPromptKeyboard(accountId: number): TelegramInl
 
 export function renderWindowsCreateTypeText(state: Record<string, unknown>): string {
   const isW11 = state.windows_version === "w11-ltsc-2024";
+  const is2025 = state.windows_version === "2k25-cn";
   return [
     "🪟 创建 Windows 服务器",
     "━━━━━━━━━━━━",
     isW11 ? "步骤 5/7：选择服务器配置" : "步骤 4/6：选择服务器配置",
     "",
     `Windows：${state.windows_version_label ?? "Windows Server 2022 Evaluation"}`,
-    isW11 ? `语言：${state.windows_lang ?? "en-us"}` : null,
+    isW11 || is2025 ? `语言：${state.windows_lang ?? "zh-cn"}` : null,
     `地区：${state.region_label ?? state.region ?? "未选择"}`,
-    isW11 ? "最低建议：4GB / 80GB，推荐 8GB+" : "最低建议：4GB 内存 / 80GB 磁盘以上",
+    isW11 || is2025 ? "最低建议：4GB / 80GB，推荐 8GB+" : "最低建议：4GB 内存 / 80GB 磁盘以上",
     "格式：CPU / 内存 / 流量 / 月费"
   ].filter(Boolean).join("\n");
 }
 
 export function renderWindowsCreateFirewallText(state: Record<string, unknown>): string {
   const isW11 = state.windows_version === "w11-ltsc-2024";
+  const is2025 = state.windows_version === "2k25-cn";
   return [
     "🪟 创建 Windows 服务器",
     "━━━━━━━━━━━━",
     isW11 ? "步骤 6/7：选择防火墙" : "步骤 5/6：选择防火墙",
     "",
     `Windows：${state.windows_version_label ?? "Windows Server 2022 Evaluation"}`,
-    isW11 ? `语言：${state.windows_lang ?? "en-us"}` : null,
+    isW11 || is2025 ? `语言：${state.windows_lang ?? "zh-cn"}` : null,
     `地区：${state.region_label ?? state.region ?? "未选择"}`,
     `配置：${state.type_label ?? state.type ?? "未选择"}`
   ].filter(Boolean).join("\n");
@@ -436,24 +440,26 @@ export function renderWindowsCreateFirewallText(state: Record<string, unknown>):
 
 export function renderWindowsCreateConfirmText(account: PublicAccount, state: Record<string, unknown>): string {
   const isW11 = state.windows_version === "w11-ltsc-2024";
+  const is2025 = state.windows_version === "2k25-cn";
   return [
     "🪟 创建 Windows 服务器",
     "━━━━━━━━━━━━",
     `账号：#${account.id} ${account.alias}`,
     `名称：${state.label ?? "自动生成"}`,
     `Windows：${state.windows_version_label ?? "Windows Server 2022 Evaluation"}`,
-    isW11 ? `语言：${state.windows_lang ?? "en-us"}` : null,
+    isW11 || is2025 ? `语言：${state.windows_lang ?? "zh-cn"}` : null,
     "基础镜像：Ubuntu 22.04 + 私有 StackScript",
-    isW11 ? "ISO：Bot 会自动查找官方 ISO，不需要你输入 ISO URL" : null,
+    isW11 ? "ISO：Bot 会自动查找官方 ISO，不需要你输入 ISO URL" : is2025 ? "ISO：使用 Microsoft 官方 Windows Server 2025 简体中文 Evaluation 下载链接" : null,
     `地区：${state.region_label ?? state.region}`,
     `配置：${state.type_label ?? state.type}`,
     `防火墙：${state.firewall_label ?? "不使用防火墙"}`,
+    "RDP：安装完成后使用 TCP 3389；如果选择了 Linode Firewall，请确认已放行 3389。",
     `Windows 用户名：${state.windows_username ?? "Administrator"}`,
     `密码：${state.administrator_password ? "用户自定义（只显示一次）" : "自动生成（只显示一次）"}`,
     "",
     "⚠️ 确认后会调用 Linode API 创建收费 Linode。",
-    isW11 ? "⚠️ Windows 11 是非官方实验路线，成功率低于 Windows Server 2022。" : null,
-    isW11 ? "⚠️ 安装预计 20-40 分钟，多次重启属正常。" : "⚠️ StackScript 会把新建 Ubuntu 机器转换为 Windows，安装约 15-30 分钟，中途多次重启属正常。",
+    isW11 ? "⚠️ Windows 11 是非官方实验路线，成功率低于 Windows Server 2022。" : is2025 ? "⚠️ Windows Server 2025 简体中文版为新增实验路线，请先用测试账号验证。" : null,
+    isW11 ? "⚠️ 安装预计 20-40 分钟，多次重启属正常。" : is2025 ? "⚠️ 安装预计 20-35 分钟，多次重启属正常。" : "⚠️ StackScript 会把新建 Ubuntu 机器转换为 Windows，安装约 15-30 分钟，中途多次重启属正常。",
     "⚠️ 安装脚本会临时使用当前 Linode Token 调用 Linode API 配置磁盘/启动项。",
     "🔐 Administrator 密码和临时 Ubuntu root 密码只会在创建成功消息里显示一次，请立即复制保存。"
   ].filter(Boolean).join("\n");
@@ -488,8 +494,8 @@ export function renderWindowsCreatedText(result: { account: PublicAccount; insta
     "⚠️ 再提醒一次：请现在保存密码，这条消息之后不会提供找回入口。",
     "",
     `Windows：${result.windows_version_label ?? "Windows Server 2022 Evaluation"}`,
-    result.windows_version === "w11-ltsc-2024" ? `语言：${result.windows_lang}` : null,
-    result.windows_version === "w11-ltsc-2024" ? "预计安装耗时：20-40 分钟，中途重启属于正常现象。" : "预计安装耗时：15-30 分钟，中途重启属于正常现象。",
+    result.windows_version === "w11-ltsc-2024" || result.windows_version === "2k25-cn" ? `语言：${result.windows_lang}` : null,
+    result.windows_version === "w11-ltsc-2024" ? "预计安装耗时：20-40 分钟，中途重启属于正常现象。" : result.windows_version === "2k25-cn" ? "预计安装耗时：20-35 分钟，中途重启属于正常现象。" : "预计安装耗时：15-30 分钟，中途重启属于正常现象。",
     "如果 30 分钟后仍无法 RDP，需要进 Linode LISH/控制台查看 StackScript 日志。"
   ].join("\n");
 }

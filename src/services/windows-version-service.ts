@@ -1,9 +1,9 @@
 import { AppError } from "../errors/app-error";
 import { ErrorCode } from "../errors/error-codes";
 
-export type WindowsVersionId = "2k22" | "w11-ltsc-2024";
+export type WindowsVersionId = "2k22" | "2k25-cn" | "w11-ltsc-2024";
 export type WindowsLanguageId = "zh-cn" | "en-us";
-export type WindowsStackScriptVersion = "2k22" | "w11";
+export type WindowsStackScriptVersion = "2k22" | "2k25-cn" | "w11";
 export type WindowsStability = "stable" | "experimental";
 
 export interface WindowsVersionDefinition {
@@ -46,6 +46,19 @@ export const WINDOWS_VERSIONS: WindowsVersionDefinition[] = [
     iso_resolved_automatically: false
   },
   {
+    id: "2k25-cn",
+    label: "Windows Server 2025 简体中文版",
+    stackscript_version: "2k25-cn",
+    image_name: "Windows Server 2025 SERVERDATACENTER",
+    min_memory_mb: 4096,
+    min_disk_mb: 81920,
+    recommended_memory_mb: 8192,
+    estimated_minutes: "20-35",
+    stability: "experimental",
+    requires_iso_resolve: false,
+    iso_resolved_automatically: false
+  },
+  {
     id: "w11-ltsc-2024",
     label: "Windows 11 Enterprise LTSC 2024",
     stackscript_version: "w11",
@@ -81,7 +94,7 @@ export class WindowsVersionService {
 
 export function normalizeWindowsVersion(version: unknown): WindowsVersionId {
   const raw = typeof version === "string" && version.trim() ? version.trim().toLowerCase() : "2k22";
-  if (raw === "2k22" || raw === "w11-ltsc-2024") return raw;
+  if (raw === "2k22" || raw === "2k25-cn" || raw === "w11-ltsc-2024") return raw;
   throw new AppError(ErrorCode.VALIDATION_ERROR, "Unsupported Windows version", "req_windows", 400);
 }
 

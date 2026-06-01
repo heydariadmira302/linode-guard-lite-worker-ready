@@ -99,6 +99,7 @@ Telegram 入口「🪟 创建 Windows 服务器」已采用 API-first / Service-
 当前版本：
 
 - Windows Server 2022 Evaluation：稳定路线。
+- Windows Server 2025 简体中文版：新增实验路线，使用 Microsoft 官方 Evaluation ISO，默认 `zh-cn`。
 - Windows 11 Enterprise LTSC 2024：实验路线，Bot 自动解析官方 ISO，用户不需要输入 ISO URL；支持 `zh-cn` / `en-us`。
 
 参考与致谢：kitknox/winode <https://github.com/kitknox/winode>、bin456789/reinstall <https://github.com/bin456789/reinstall>、leitbogioro/Tools <https://github.com/leitbogioro/Tools>。

@@ -547,7 +547,7 @@ callback: menu:diagnostics
 
 ### Windows Server 创建
 
-服务器管理页提供「🪟 创建 Windows 服务器」。当前开放 Windows Server 2022 稳定路线和 Windows 11 Enterprise LTSC 2024 实验路线：
+服务器管理页提供「🪟 创建 Windows 服务器」。当前开放 Windows Server 2022 稳定路线、Windows Server 2025 简体中文版实验路线和 Windows 11 Enterprise LTSC 2024 实验路线：
 
 ```text
 选择账号
@@ -559,7 +559,7 @@ callback: menu:diagnostics
 → 调用 WindowsInstanceService.createWindowsInstance(...)
 ```
 
-Telegram 不直接实现 Windows 创建业务逻辑，只保存会话状态、展示选项、收集确认并调用 service/API。流程为：选择版本 → Win11 选择语言 zh-cn/en-us → 选择凭据（自动生成强密码或自己输入密码）→ 设置 Linode 实例名称（可跳过自动命名）→ Region → Plan → Firewall → 高危确认。Win11 页面明确提示 Bot 会自动查找官方 ISO，不需要用户输入 ISO URL。创建成功后会显示一次性 Windows 登录用户名、Windows 密码和临时 Ubuntu root 密码；默认用户名为 `Administrator`。Server 2022 预计 15-30 分钟，Win11 预计 20-40 分钟，完成后用 RDP 3389 连接。
+Telegram 不直接实现 Windows 创建业务逻辑，只保存会话状态、展示选项、收集确认并调用 service/API。流程为：选择版本 → Win11 选择语言 zh-cn/en-us（Server 2025 固定简体中文 zh-cn） → 选择凭据（自动生成强密码或自己输入密码）→ 设置 Linode 实例名称（可跳过自动命名）→ Region → Plan → Firewall → 高危确认。Win11 页面明确提示 Bot 会自动查找官方 ISO，不需要用户输入 ISO URL。创建成功后会显示一次性 Windows 登录用户名、Windows 密码和临时 Ubuntu root 密码；默认用户名为 `Administrator`。Server 2022 预计 15-30 分钟，Win11 预计 20-40 分钟，完成后用 RDP 3389 连接。
 
 当前不接入 kejilion 的通用 DD 菜单，也不使用公开默认密码。后续如扩展 Windows 11 / Server 2025 / DD 镜像，也必须先落 service/API，并保留高危确认、审计日志和一次性密码展示规则。
 

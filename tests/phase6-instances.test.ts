@@ -265,7 +265,8 @@ describe("Phase 6 Linode instance read-only management", () => {
     const response = await worker.fetch(apiRequest("/api/v1/windows/versions"), env as never);
     const body = await response.json() as { data: { versions: Array<{ id: string; label: string; requires_iso_resolve: boolean }>; languages: Array<{ id: string; windows_locale: string }> } };
     expect(response.status).toBe(200);
-    expect(body.data.versions.map((item) => item.id)).toEqual(["2k22", "w11-ltsc-2024"]);
+    expect(body.data.versions.map((item) => item.id)).toEqual(["2k22", "2k25-cn", "w11-ltsc-2024"]);
+    expect(body.data.versions.find((item) => item.id === "2k25-cn")?.label).toContain("2025");
     expect(body.data.versions.find((item) => item.id === "w11-ltsc-2024")?.requires_iso_resolve).toBe(true);
     expect(body.data.languages.map((item) => ({ id: item.id, windows_locale: item.windows_locale }))).toEqual(expect.arrayContaining([{ id: "zh-cn", windows_locale: "zh-CN" }, { id: "en-us", windows_locale: "en-US" }]));
   });
@@ -288,6 +289,10 @@ describe("Phase 6 Linode instance read-only management", () => {
         expect(payload.script).toContain("<FirstLogonCommands>");
         expect(payload.script).toContain("Allow RDP 3389");
         expect(payload.script).toContain("WINDOWS_REBOOT_OK");
+        expect(payload.script).toContain("2k25-cn");
+        expect(payload.script).toContain("Windows Server 2025 SERVERDATACENTER");
+        expect(payload.script).toContain("linode_api()");
+        expect(payload.script).toContain("autounattend.xml was not copied");
         return new Response(JSON.stringify({ id: 2022, label: payload.label }), { status: 200 });
       }
       if (url.endsWith("/regions")) return new Response(JSON.stringify({ data: [{ id: "jp-osa", label: "Osaka", site_type: "core" }], page: 1, pages: 1 }), { status: 200 });
@@ -334,6 +339,7 @@ describe("Phase 6 Linode instance read-only management", () => {
       expect(startFlow.status).toBe(200);
       const versionBody = await startFlow.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
       expect(versionBody.data.telegram.payload.text).toContain("选择 Windows 版本");
+      expect(versionBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🇨🇳 Windows Server 2025 简体中文", callback_data: "windows:create:version:1:2k25-cn" });
       expect(versionBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🧪 Windows 11 LTSC 2024", callback_data: "windows:create:version:1:w11-ltsc-2024" });
       const credentialFlow = await worker.fetch(telegramRequest(callbackUpdate("windows:create:version:1:2k22")), env as never);
       const credentialBody = await credentialFlow.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
@@ -442,6 +448,59 @@ describe("Phase 6 Linode instance read-only management", () => {
   });
 
 
+  it("creates Windows Server 2025 Simplified Chinese through StackScript route", async () => {
+    const db = new FakeD1Database();
+    await addAccount(db, { id: 1, alias: "default", token: "token-default" });
+    db.settings.set("windows_stackscript_id:1", JSON.stringify(2022));
+    const env = { ...baseEnv, DB: db as unknown as D1Database };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/regions")) return new Response(JSON.stringify({ data: [{ id: "jp-osa", label: "Osaka", site_type: "core" }, { id: "us-iad", label: "IAD", site_type: "distributed" }], page: 1, pages: 1 }), { status: 200 });
+      if (url.endsWith("/linode/types")) return new Response(JSON.stringify({ data: [{ id: "g6-standard-2", label: "Linode 4GB", memory: 4096, disk: 81920, vcpus: 2, transfer: 4000, price: { monthly: 24 } }, { id: "g6-nanode-1", label: "Nanode", memory: 1024, disk: 25600, price: { monthly: 5 } }], page: 1, pages: 1 }), { status: 200 });
+      if (url.endsWith("/networking/firewalls")) return new Response(JSON.stringify({ data: [], page: 1, pages: 1 }), { status: 200 });
+      if (url.endsWith("/linode/stackscripts/2022") && init?.method === "PUT") {
+        const payload = JSON.parse(String(init.body));
+        expect(payload.script).toContain("2k25-cn");
+        expect(payload.script).toContain("Windows Server 2025 Simplified Chinese");
+        expect(payload.script).toContain("Windows Server 2025 SERVERDATACENTER");
+        expect(payload.script).toContain("Force enable Remote Desktop and TCP 3389");
+        expect(payload.script).toContain("net user Administrator /active:yes");
+        return new Response(JSON.stringify({ id: 2022, label: payload.label }), { status: 200 });
+      }
+      if (url.endsWith("/linode/instances") && init?.method === "POST") {
+        const payload = JSON.parse(String(init.body));
+        expect(payload.stackscript_data.INSTALL_WINDOWS_VERSION).toBe("2k25-cn");
+        expect(payload.stackscript_data.WINDOWS_IMAGE_NAME).toBe("Windows Server 2025 SERVERDATACENTER");
+        expect(payload.stackscript_data.WINDOWS_LANG).toBe("zh-cn");
+        return new Response(JSON.stringify({ id: 92525, label: payload.label, status: "provisioning", region: payload.region, type: payload.type, image: payload.image, ipv4: ["192.0.2.25"] }), { status: 200 });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    try {
+      const optionsResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/windows/create-options?version=2k25-cn"), env as never);
+      const optionsBody = await optionsResponse.json() as { data: { version: { id: string }; lang: { id: string }; regions: Array<{ id: string }>; types: Array<{ id: string }> } };
+      expect(optionsResponse.status).toBe(200);
+      expect(optionsBody.data.version.id).toBe("2k25-cn");
+      expect(optionsBody.data.lang.id).toBe("zh-cn");
+      expect(optionsBody.data.regions.map((item) => item.id)).toEqual(["jp-osa"]);
+      expect(optionsBody.data.types.map((item) => item.id)).toEqual(["g6-standard-2"]);
+
+      const createResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/windows/instances", { method: "POST", body: JSON.stringify({ region: "jp-osa", type: "g6-standard-2", version: "2k25-cn", administrator_password: "MyStrongPass9!" }) }), env as never);
+      const createBody = await createResponse.json() as { data: { windows_version: string; windows_lang: string } };
+      expect(createResponse.status).toBe(200);
+      expect(createBody.data.windows_version).toBe("2k25-cn");
+      expect(createBody.data.windows_lang).toBe("zh-cn");
+
+      const flow = await worker.fetch(telegramRequest(callbackUpdate("windows:create:version:1:2k25-cn")), env as never);
+      const flowBody = await flow.json() as { data: { telegram: { payload: { text: string } } } };
+      expect(flowBody.data.telegram.payload.text).toContain("Windows Server 2025 简体中文版");
+      expect(flowBody.data.telegram.payload.text).toContain("zh-cn");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+
   it("shows Linode endpoint details when Windows confirm fails", async () => {
     const db = new FakeD1Database();
     await addAccount(db, { id: 1, alias: "default", token: "token-default" });
@@ -450,6 +509,8 @@ describe("Phase 6 Linode instance read-only management", () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input);
       if (url.endsWith("/linode/stackscripts/2022") && init?.method === "PUT") return new Response(JSON.stringify({ id: 2022, label: "script" }), { status: 200 });
+      if (url.endsWith("/regions")) return new Response(JSON.stringify({ data: [{ id: "jp-osa", label: "Osaka", site_type: "core" }], page: 1, pages: 1 }), { status: 200 });
+      if (url.endsWith("/linode/types")) return new Response(JSON.stringify({ data: [{ id: "g6-standard-2", label: "Linode 4GB", memory: 4096, disk: 81920, vcpus: 2, transfer: 4000, price: { monthly: 24 } }], page: 1, pages: 1 }), { status: 200 });
       if (url.endsWith("/linode/instances") && init?.method === "POST") return new Response(JSON.stringify({ errors: [{ field: "stackscript_data.WINDOWS_LANG", reason: "Unexpected field" }] }), { status: 400 });
       throw new Error(`unexpected fetch ${url}`);
     });

@@ -1844,7 +1844,7 @@ export async function routeTelegramCallback(
   }
 
 
-  const windowsVersionMatch = update.data.match(/^windows:create:version:(\d+):(2k22|w11-ltsc-2024)$/);
+  const windowsVersionMatch = update.data.match(/^windows:create:version:(\d+):(2k22|2k25-cn|w11-ltsc-2024)$/);
   if (windowsVersionMatch && env?.DB && sessions) {
     try {
       const accountId = Number(windowsVersionMatch[1]);
@@ -1852,9 +1852,10 @@ export async function routeTelegramCallback(
       if (version === "w11-ltsc-2024") {
         return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsLanguageText(), reply_markup: renderWindowsLanguageKeyboard(accountId) });
       }
-      const options = await new WindowsInstanceService(env).getCreateOptions(accountId, requestId, { version: "2k22", lang: "en-us" });
-      await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_windows_instance", data: { account_id: accountId, options, state: { windows_version: "2k22", windows_version_label: options.version.label, windows_lang: "en-us" } } });
-      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsCredentialModeText({ windows_version: "2k22", windows_version_label: options.version.label, windows_lang: "en-us" }), reply_markup: renderWindowsCredentialModeKeyboard(accountId) });
+      const lang = version === "2k25-cn" ? "zh-cn" : "en-us";
+      const options = await new WindowsInstanceService(env).getCreateOptions(accountId, requestId, { version: version as any, lang: lang as any });
+      await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_windows_instance", data: { account_id: accountId, options, state: { windows_version: version, windows_version_label: options.version.label, windows_lang: lang } } });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsCredentialModeText({ windows_version: version, windows_version_label: options.version.label, windows_lang: lang }), reply_markup: renderWindowsCredentialModeKeyboard(accountId) });
     } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
   }
 

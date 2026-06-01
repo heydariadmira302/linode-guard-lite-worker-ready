@@ -28,6 +28,7 @@ Telegram 选择参数
 MVP：
 
 - Windows Server 2022 Evaluation：稳定路线。
+- Windows Server 2025 简体中文版：新增实验路线。
 - Windows 11 Enterprise LTSC 2024：实验路线。
 - 语言：`zh-cn`、`en-us`。
 - 用户无需输入 ISO URL。

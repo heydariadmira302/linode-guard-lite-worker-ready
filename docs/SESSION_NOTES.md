@@ -552,3 +552,10 @@ npm test
 - RDP 补强命令从 `&&` 链改成 `& ... & exit /b 0`，避免某个防火墙组名在不同语言环境失败时中断 Windows setup。
 
 - 进一步收口 Win11 setup 失败面：Win11 unattend 根节点补 `wcm/xsi` namespace；RDP 补强从 `specialize RunSynchronous` 挪到 `oobeSystem FirstLogonCommands`，specialize 阶段只保留更基础配置，避免 RDP 命令失败导致 Windows 安装主流程中断。
+
+## 2026-06-01 Windows Server 2025 简体中文版与 Win11 创建加固
+
+- 新增 Windows 版本 `2k25-cn`：Windows Server 2025 简体中文版，Telegram 版本选择页可直接选择，默认语言 `zh-cn`。
+- `WindowsInstanceService` 创建前新增 service 层硬校验：Region 必须是 core，Plan 必须满足当前 Windows 版本最低内存/磁盘要求，避免绕过 create-options 创建不合规实例。
+- StackScript 模板启用 `2k25-cn` 分支，使用官方 Windows Server 2025 zh-CN Evaluation ISO，并复用 2k22 VirtIO 注入路线；增加 Linode API helper 和安装介质/autounattend 复制校验，失败时明确中断。
+- 更新 Phase 6 Windows 测试覆盖版本 API、Telegram 版本按钮、Server 2025 payload、StackScript 关键内容和创建前校验。
