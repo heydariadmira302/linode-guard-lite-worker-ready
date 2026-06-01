@@ -43,6 +43,10 @@ import {
   renderCreatedInstanceText,
   renderWindowsCreatedText,
   renderWindowsCredentialModeKeyboard,
+  renderWindowsUsernameModeKeyboard,
+  renderWindowsUsernameModeText,
+  renderWindowsUsernamePromptKeyboard,
+  renderWindowsUsernamePromptText,
   renderWindowsCredentialModeText,
   renderWindowsPasswordPromptKeyboard,
   renderWindowsPasswordPromptText,
@@ -1901,7 +1905,7 @@ export async function routeTelegramCallback(
       const parsed = await getCreateInstanceSession(sessions, update.fromId);
       delete parsed.state.label;
       await saveCreateInstanceSession(sessions, update, accountId, parsed);
-      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsLabelModeText(parsed.state), reply_markup: renderWindowsLabelModeKeyboard(accountId) });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsUsernameModeText(parsed.state), reply_markup: renderWindowsUsernameModeKeyboard(accountId) });
     } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
   }
 
@@ -1916,12 +1920,39 @@ export async function routeTelegramCallback(
         return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsPasswordPromptText(), reply_markup: renderWindowsPasswordPromptKeyboard(accountId) });
       }
       delete parsed.state.administrator_password;
+      await saveCreateInstanceSession(sessions, update, accountId, parsed);
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsUsernameModeText(parsed.state), reply_markup: renderWindowsUsernameModeKeyboard(accountId) });
+    } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
+  }
+
+
+
+  const windowsBackUsernameMatch = update.data.match(/^windows:create:back_username:(\d+)$/);
+  if (windowsBackUsernameMatch && env?.DB && sessions) {
+    try {
+      const accountId = Number(windowsBackUsernameMatch[1]);
+      const parsed = await getCreateInstanceSession(sessions, update.fromId);
+      delete parsed.state.windows_username;
+      await saveCreateInstanceSession(sessions, update, accountId, parsed);
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsUsernameModeText(parsed.state), reply_markup: renderWindowsUsernameModeKeyboard(accountId) });
+    } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
+  }
+
+  const windowsUserMatch = update.data.match(/^windows:create:user:(\d+):(administrator|custom)$/);
+  if (windowsUserMatch && env?.DB && sessions) {
+    try {
+      const accountId = Number(windowsUserMatch[1]);
+      const mode = windowsUserMatch[2];
+      const parsed = await getCreateInstanceSession(sessions, update.fromId);
+      if (mode === "custom") {
+        await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_windows_username", data: { account_id: accountId, options: parsed.options, state: parsed.state } });
+        return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsUsernamePromptText(), reply_markup: renderWindowsUsernamePromptKeyboard(accountId) });
+      }
       parsed.state.windows_username = "Administrator";
       await saveCreateInstanceSession(sessions, update, accountId, parsed);
       return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsLabelModeText(parsed.state), reply_markup: renderWindowsLabelModeKeyboard(accountId) });
     } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
   }
-
 
   const windowsLabelMatch = update.data.match(/^windows:create:label:(\d+):(auto|custom)$/);
   if (windowsLabelMatch && env?.DB && sessions) {
@@ -1950,6 +1981,22 @@ export async function routeTelegramCallback(
 账号：#${status.account.id} ${status.account.alias}
 StackScript ID：${status.stackscript_id}
 版本：${status.version_label}`, reply_markup: { inline_keyboard: [[{ text: "继续创建 Windows", callback_data: `windows:create:account:${accountId}` }], [{ text: "↩️ 返回服务器管理", callback_data: "menu:instances" }]] } });
+    } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
+  }
+
+
+  const windowsFixRdpFirewallMatch = update.data.match(/^windows:create:fix_rdp_firewall:(\d+)$/);
+  if (windowsFixRdpFirewallMatch && env?.DB && sessions) {
+    try {
+      const accountId = Number(windowsFixRdpFirewallMatch[1]);
+      const parsed = await getCreateInstanceSession(sessions, update.fromId);
+      const firewallId = Number(parsed.state.firewall_id);
+      if (!Number.isInteger(firewallId) || firewallId <= 0) throw new AppError(ErrorCode.VALIDATION_ERROR, "请先选择一个 Linode Firewall", requestId, 400);
+      const status = await new WindowsInstanceService(env).fixRdpFirewall(accountId, firewallId, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      parsed.state.rdp_firewall_ok = status.ok;
+      parsed.state.rdp_firewall_message = status.message;
+      await saveCreateInstanceSession(sessions, update, accountId, parsed);
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: `${renderWindowsCreateConfirmText(parsed.options.account, parsed.state)}\n\n${status.ok ? "✅ 已一键放行 TCP 3389。" : "⚠️ 防火墙修复后仍未检测到 3389，请手动检查。"}`, reply_markup: renderWindowsCreateConfirmKeyboard(accountId, parsed.state) });
     } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
   }
 
@@ -2052,12 +2099,19 @@ StackScript ID：${status.stackscript_id}
       const selected = parsed.options.firewalls.find((item: any) => String(item.id) === firewall);
       parsed.state.firewall_id = Number(firewall);
       parsed.state.firewall_label = selected?.label ?? firewall;
+      if (parsed.options.stackscript && env?.DB) {
+        const status = await new WindowsInstanceService(env).getRdpFirewallStatus(accountId, Number(firewall), requestId);
+        parsed.state.rdp_firewall_ok = status.ok;
+        parsed.state.rdp_firewall_message = status.message;
+      }
     } else {
       delete parsed.state.firewall_id;
       parsed.state.firewall_label = "不使用防火墙";
+      parsed.state.rdp_firewall_ok = true;
+      parsed.state.rdp_firewall_message = "未使用 Linode Firewall";
     }
     await saveCreateInstanceSession(sessions, update, accountId, parsed);
-    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: parsed.options.stackscript ? renderWindowsCreateConfirmText(parsed.options.account, parsed.state) : renderCreateConfirmText(parsed.options.account, parsed.state), reply_markup: parsed.options.stackscript ? renderWindowsCreateConfirmKeyboard(accountId) : renderCreateConfirmKeyboard(accountId) });
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: parsed.options.stackscript ? renderWindowsCreateConfirmText(parsed.options.account, parsed.state) : renderCreateConfirmText(parsed.options.account, parsed.state), reply_markup: parsed.options.stackscript ? renderWindowsCreateConfirmKeyboard(accountId, parsed.state) : renderCreateConfirmKeyboard(accountId) });
   }
 
   const createBackTypeMatch = update.data.match(/^instances:create:back_type:(\d+)$/);

@@ -2,7 +2,7 @@ import windowsStackScript from "./windows-stackscript-template";
 import { WindowsIsoResolverService } from "./windows-iso-resolver-service";
 import { WindowsInstallMonitorService } from "./windows-install-monitor-service";
 import { WindowsInstallRepository } from "../storage/windows-install-repository";
-import { describeRdpFirewallStatus } from "./windows-firewall-service";
+import { addRdpFirewallRule, describeRdpFirewallStatus } from "./windows-firewall-service";
 import { WindowsVersionService, type WindowsLanguageId, type WindowsVersionId } from "./windows-version-service";
 import { LinodeClient, type LinodeFirewall, type LinodeInstance, type LinodeRegion, type LinodeType } from "../clients/linode-client";
 import { decryptLinodeToken } from "../crypto/token-crypto";
@@ -99,6 +99,7 @@ export class WindowsInstanceService {
     const client = new LinodeClient(token);
     await this.validateCreateTarget(client, input.region, input.type, version, context.requestId);
     const firewallStatus = await this.validateRdpFirewall(client, input.firewall_id, context.requestId);
+    if (input.firewall_id !== undefined && input.firewall_id !== null && !firewallStatus.ok) throw new AppError(ErrorCode.VALIDATION_ERROR, `${firewallStatus.message}，请先一键修复或选择不使用防火墙`, context.requestId, 400);
     const iso = version.requires_iso_resolve ? await new WindowsIsoResolverService(this.env, this.settings).resolve({ version: version.id, lang: lang.id, requestId: context.requestId }) : null;
     const installMonitor = this.installs ? new WindowsInstallMonitorService(this.env, this.installs) : null;
     const preliminaryLabel = this.resolveLabel(input, context.requestId);
@@ -115,6 +116,26 @@ export class WindowsInstanceService {
       if (error instanceof AppError) throw error;
       throw new AppError(ErrorCode.LINODE_API_ERROR, "Linode Windows 创建请求失败", context.requestId, 502);
     }
+  }
+
+  async getRdpFirewallStatus(accountId: number, firewallId: number, requestId: string): Promise<{ ok: boolean; message: string }> {
+    const account = await this.getActiveAccount(accountId, requestId);
+    const token = await this.decryptAccountToken(account);
+    const firewall = await new LinodeClient(token).getFirewall(firewallId, requestId);
+    return describeRdpFirewallStatus(firewall);
+  }
+
+  async fixRdpFirewall(accountId: number, firewallId: number, context: WindowsInstanceServiceContext): Promise<{ ok: boolean; message: string }> {
+    const account = await this.getActiveAccount(accountId, context.requestId);
+    const token = await this.decryptAccountToken(account);
+    const client = new LinodeClient(token);
+    const firewall = await client.getFirewall(firewallId, context.requestId);
+    if (describeRdpFirewallStatus(firewall).ok) return describeRdpFirewallStatus(firewall);
+    const rules = addRdpFirewallRule(firewall);
+    const updated = await client.updateFirewallRules(firewallId, rules, context.requestId);
+    const status = describeRdpFirewallStatus(updated);
+    await this.recordAudit(context, "windows.firewall_fix_rdp", "firewall", String(firewallId), "high", status.ok ? "success" : "failed", status.ok ? null : ErrorCode.LINODE_API_ERROR, { account_id: account.id, firewall_id: firewallId, opened_port: 3389 });
+    return status;
   }
 
   private async validateRdpFirewall(client: LinodeClient, firewallId: number | null | undefined, requestId: string): Promise<{ ok: boolean; message: string }> {
@@ -145,7 +166,7 @@ export class WindowsInstanceService {
     if (!region || !type) throw new AppError(ErrorCode.VALIDATION_ERROR, "region/type are required", requestId, 400);
     const label = resolvedLabel ?? this.resolveLabel(input, requestId);
     if (!/^[A-Za-z0-9._-]{3,64}$/.test(label)) throw new AppError(ErrorCode.VALIDATION_ERROR, "Invalid instance label", requestId, 400);
-    const stackscriptData = { TOKEN: linodeToken, WINDOWS_PASSWORD: adminPassword, INSTALL_WINDOWS_VERSION: version.stackscript_version, WINDOWS_IMAGE_NAME: version.image_name, WINDOWS_LANG: lang.id, AUTOLOGIN: "true", W11_ISO_URL: isoUrl, INSTALL_CALLBACK_URL: await this.getWindowsInstallCallbackUrl(), INSTALL_CALLBACK_TOKEN: installCallbackToken };
+    const stackscriptData = { TOKEN: linodeToken, WINDOWS_PASSWORD: adminPassword, WINDOWS_USERNAME: windowsUsername, INSTALL_WINDOWS_VERSION: version.stackscript_version, WINDOWS_IMAGE_NAME: version.image_name, WINDOWS_LANG: lang.id, AUTOLOGIN: "true", W11_ISO_URL: isoUrl, INSTALL_CALLBACK_URL: await this.getWindowsInstallCallbackUrl(), INSTALL_CALLBACK_TOKEN: installCallbackToken };
     if (JSON.stringify(stackscriptData).length > 65535) throw new AppError(ErrorCode.VALIDATION_ERROR, "StackScript data is too large", requestId, 400);
     const payload: any = { region, type, image: WINDOWS_STACKSCRIPT_IMAGE, label, root_pass: tempRootPassword, backups_enabled: false, tags: ["linode-guard-lite", "windows-stackscript", version.id], stackscript_id: stackscriptId, stackscript_data: stackscriptData };
     if (input.firewall_id !== undefined && input.firewall_id !== null) {
@@ -247,8 +268,10 @@ export function validateWindowsPassword(password: string, requestId = "req_windo
 
 export function validateWindowsUsername(username: string, requestId = "req_windows"): string {
   const value = typeof username === "string" && username.trim() ? username.trim() : "Administrator";
-  if (value !== "Administrator") throw new AppError(ErrorCode.VALIDATION_ERROR, "Windows username customization is not supported yet", requestId, 400);
-  return "Administrator";
+  if (value === "Administrator") return value;
+  if (!/^[A-Za-z][A-Za-z0-9_-]{2,19}$/.test(value)) throw new AppError(ErrorCode.VALIDATION_ERROR, "Windows username must start with a letter and be 3-20 chars", requestId, 400);
+  if (/^(admin|administrator|guest|defaultaccount|wdagutilityaccount)$/i.test(value)) throw new AppError(ErrorCode.VALIDATION_ERROR, "Windows username is reserved", requestId, 400);
+  return value;
 }
 
 function generateWindowsPassword(): string { return generatePassword(24); }

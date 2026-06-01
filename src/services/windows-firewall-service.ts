@@ -27,3 +27,23 @@ function portsInclude(raw: string, port: number): boolean {
     return Number.isFinite(start) && Number.isFinite(end) && port >= start && port <= end;
   });
 }
+
+
+export function addRdpFirewallRule(firewall: LinodeFirewall): NonNullable<LinodeFirewall["rules"]> {
+  const rules = firewall.rules ?? {};
+  if (firewallAllowsRdp(firewall)) return rules;
+  const inbound = [...(rules.inbound ?? [])];
+  inbound.push({
+    action: "ACCEPT",
+    protocol: "TCP",
+    ports: "3389",
+    addresses: { ipv4: ["0.0.0.0/0"], ipv6: ["::/0"] },
+    description: "Allow Windows RDP 3389 (added by Linode Guard Lite)"
+  });
+  return {
+    inbound,
+    inbound_policy: rules.inbound_policy ?? "DROP",
+    outbound: rules.outbound ?? [],
+    outbound_policy: rules.outbound_policy ?? "ACCEPT"
+  };
+}

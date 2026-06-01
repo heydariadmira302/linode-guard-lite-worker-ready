@@ -11,11 +11,11 @@ import { continueAddAccountFlow } from "./account-flow";
 import { AccountService } from "../services/account-service";
 import { AuditService } from "../services/audit-service";
 import { InstanceService } from "../services/instance-service";
-import { validateWindowsPassword } from "../services/windows-instance-service";
+import { validateWindowsPassword, validateWindowsUsername } from "../services/windows-instance-service";
 import { AuditRepository } from "../storage/audit-repository";
 import { renderCheckinInlineKeyboard, renderMainReplyKeyboard } from "./keyboards";
 import { renderAccountActionResultText, renderAccountDetailKeyboard, renderAccountsMenuKeyboard, renderAccountsMenuText, renderDiagnosticsMenuKeyboard, renderDiagnosticsMenuText, renderHelpText, renderMainMenuKeyboard, renderMainMenuText, renderMoreMenuKeyboard, renderMoreMenuText, renderMyIdKeyboard, renderMyIdText, renderPrivacyMenuKeyboard, renderPrivacyMenuText, renderSettingsMenuKeyboard, renderSettingsMenuText } from "./menus";
-import { renderAllInstancesText, renderCreateRegionKeyboard, renderCreateRegionText, renderInstancesListKeyboard, renderWindowsLabelModeKeyboard, renderWindowsLabelModeText } from "./instance-renderer";
+import { renderAllInstancesText, renderCreateRegionKeyboard, renderCreateRegionText, renderInstancesListKeyboard, renderWindowsLabelModeKeyboard, renderWindowsLabelModeText, renderWindowsUsernameModeKeyboard, renderWindowsUsernameModeText } from "./instance-renderer";
 import { GroupService } from "../services/group-service";
 import { renderGroupsMenuKeyboard, renderGroupsMenuText } from "./group-renderer";
 import { renderSetupWizardText } from "./setup-renderer";
@@ -239,9 +239,8 @@ async function continueWindowsPasswordFlow(
   const actions: TelegramClientAction[] = [client.deleteMessage(update.chatId, update.messageId) as TelegramClientAction];
   try {
     state.administrator_password = validateWindowsPassword(update.text, requestId);
-    state.windows_username = "Administrator";
     await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_windows_instance", data: { account_id: accountId, options, state } });
-    actions.push(client.sendMessage({ chat_id: update.chatId, text: `${renderWindowsLabelModeText(state)}\n\n✅ 已接收自定义密码。后续成功页仍会只显示一次，请核对并保存。`, reply_markup: renderWindowsLabelModeKeyboard(accountId) }) as TelegramClientAction);
+    actions.push(client.sendMessage({ chat_id: update.chatId, text: `${renderWindowsUsernameModeText(state)}\n\n✅ 已接收自定义密码。后续成功页仍会只显示一次，请核对并保存。`, reply_markup: renderWindowsUsernameModeKeyboard(accountId) }) as TelegramClientAction);
     return actions;
   } catch {
     actions.push(client.sendMessage({ chat_id: update.chatId, text: "密码不符合要求：10-64 位，包含大小写字母、数字、符号，不能有空格/中文/< > & 引号，也不能太弱。请重新发送，或发送 /cancel 取消。", reply_markup: renderCheckinInlineKeyboard() }) as TelegramClientAction);
@@ -249,6 +248,29 @@ async function continueWindowsPasswordFlow(
   }
 }
 
+
+
+async function continueWindowsUsernameFlow(
+  update: Extract<ParsedTelegramUpdate, { kind: "message" }>,
+  client: TelegramClient,
+  sessions: Pick<BotSessionService, "clearCurrentSession" | "getCurrentSession" | "setCurrentSession">,
+  _env: Env,
+  requestId: string
+): Promise<TelegramClientResult | null> {
+  const session = await sessions.getCurrentSession(update.fromId);
+  if (!session || session.state !== "creating_windows_username") return null;
+  const parsed = parseSessionData(session.data_json);
+  const accountId = Number(parsed.account_id);
+  const state = parsed.state && typeof parsed.state === "object" ? parsed.state as Record<string, unknown> : {};
+  const options = parsed.options ?? {};
+  try {
+    state.windows_username = validateWindowsUsername(update.text, requestId);
+    await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_windows_instance", data: { account_id: accountId, options, state } });
+    return client.sendMessage({ chat_id: update.chatId, text: `${renderWindowsLabelModeText(state)}\n\n✅ Windows 用户名：${state.windows_username}`, reply_markup: renderWindowsLabelModeKeyboard(accountId) });
+  } catch {
+    return client.sendMessage({ chat_id: update.chatId, text: "用户名不符合要求：英文开头，3-20 位，只能包含英文、数字、下划线、短横线，且不能使用系统保留名。请重新发送，或发送 /cancel 取消。", reply_markup: renderCheckinInlineKeyboard() });
+  }
+}
 
 async function continueWindowsLabelFlow(
   update: Extract<ParsedTelegramUpdate, { kind: "message" }>,

@@ -456,7 +456,8 @@ describe("Phase 6 Linode instance read-only management", () => {
       const passwordFlow = await worker.fetch(telegramRequest(textUpdate("MyStrongPass9!")), env as never);
       const passwordBody = await passwordFlow.json() as { data: { telegram: { payload?: { text: string }; method?: string }[] | { payload: { text: string } } } };
       expect(JSON.stringify(passwordBody)).toContain("已接收自定义密码");
-      expect(JSON.stringify(passwordBody)).toContain("设置服务器名称");
+      expect(JSON.stringify(passwordBody)).toContain("设置登录用户名");
+      await worker.fetch(telegramRequest(callbackUpdate("windows:create:user:1:administrator")), env as never);
       const labelFlow = await worker.fetch(telegramRequest(callbackUpdate("windows:create:label:1:custom")), env as never);
       const labelPrompt = await labelFlow.json() as { data: { telegram: { payload: { text: string } } } };
       expect(labelPrompt.data.telegram.payload.text).toContain("输入 Linode 服务器名称");

@@ -66,10 +66,11 @@ export interface LinodeImage {
   deprecated?: boolean;
 }
 
+export interface LinodeFirewallRule { action?: string; protocol?: string; ports?: string; addresses?: { ipv4?: string[]; ipv6?: string[] }; description?: string }
 export interface LinodeFirewall {
   id: number;
   label: string;
-  rules?: { inbound?: Array<{ action?: string; protocol?: string; ports?: string; addresses?: { ipv4?: string[]; ipv6?: string[] } }> };
+  rules?: { inbound?: LinodeFirewallRule[]; inbound_policy?: string; outbound?: LinodeFirewallRule[]; outbound_policy?: string };
 }
 
 export interface CreateLinodeInstanceInput {
@@ -163,6 +164,12 @@ export class LinodeClient {
     const response = await this.request(`/networking/firewalls/${firewallId}`, requestId);
     const body = await response.json().catch(() => ({})) as Record<string, unknown>;
     return toLinodeFirewall(body);
+  }
+
+  async updateFirewallRules(firewallId: number, rules: NonNullable<LinodeFirewall["rules"]>, requestId: string): Promise<LinodeFirewall> {
+    const response = await this.request(`/networking/firewalls/${firewallId}/rules`, requestId, "PUT", { rules });
+    const body = await response.json().catch(() => ({})) as Record<string, unknown>;
+    return toLinodeFirewall({ id: firewallId, label: String(body.label ?? firewallId), rules: body.rules ?? rules });
   }
 
   async createInstance(input: CreateLinodeInstanceInput, requestId: string): Promise<LinodeInstance> {

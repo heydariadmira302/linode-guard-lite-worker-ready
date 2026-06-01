@@ -331,6 +331,44 @@ export function renderCreateConfirmKeyboard(accountId: number): TelegramInlineKe
 
 
 
+export function renderWindowsUsernameModeText(state: Record<string, unknown>): string {
+  return [
+    "🪟 创建 Windows 服务器",
+    "━━━━━━━━━━━━",
+    "步骤：设置登录用户名",
+    "",
+    `Windows：${state.windows_version_label ?? "Windows Server 2022 Evaluation"}`,
+    state.windows_version === "w11-ltsc-2024" || state.windows_version === "2k25-cn" || state.windows_version === "2k25-en" ? `语言：${state.windows_lang ?? (state.windows_version === "2k25-en" ? "en-us" : "zh-cn")}` : null,
+    "",
+    "推荐继续使用 Administrator，兼容性最好。",
+    "如果自定义用户名，会额外创建一个管理员用户，同时保留 Administrator 兜底。",
+    "用户名限制：英文开头，3-20 位，只能包含英文、数字、下划线、短横线。"
+  ].filter(Boolean).join("\n");
+}
+
+export function renderWindowsUsernameModeKeyboard(accountId: number): TelegramInlineKeyboardMarkup {
+  return { inline_keyboard: [
+    [{ text: "👤 使用 Administrator（推荐）", callback_data: `windows:create:user:${accountId}:administrator` }],
+    [{ text: "✍️ 自定义用户名", callback_data: `windows:create:user:${accountId}:custom` }],
+    [{ text: "⬅️ 上一步：用户名", callback_data: `windows:create:back_username:${accountId}` }],
+    [{ text: "❌ 取消", callback_data: "menu:instances" }]
+  ] };
+}
+
+export function renderWindowsUsernamePromptText(): string {
+  return [
+    "✍️ 输入 Windows 登录用户名",
+    "━━━━━━━━━━━━",
+    "要求：英文开头，3-20 位，只能包含英文、数字、下划线、短横线。",
+    "不要使用 Administrator、Admin、Guest、DefaultAccount 等系统保留名。",
+    "例子：haoshu、rdp_user、win-admin"
+  ].join("\n");
+}
+
+export function renderWindowsUsernamePromptKeyboard(accountId: number): TelegramInlineKeyboardMarkup {
+  return { inline_keyboard: [[{ text: "👤 改用 Administrator", callback_data: `windows:create:user:${accountId}:administrator` }], [{ text: "❌ 取消", callback_data: "menu:instances" }]] };
+}
+
 export function renderWindowsCredentialModeText(state: Record<string, unknown>): string {
   return [
     "🪟 创建 Windows 服务器",
@@ -391,7 +429,7 @@ export function renderWindowsLabelModeKeyboard(accountId: number): TelegramInlin
   return { inline_keyboard: [
     [{ text: "🏷 自定义服务器名称", callback_data: `windows:create:label:${accountId}:custom` }],
     [{ text: "⏭ 跳过，自动命名", callback_data: `windows:create:label:${accountId}:auto` }],
-    [{ text: "⬅️ 上一步：密码", callback_data: `windows:create:back_credential:${accountId}` }],
+    [{ text: "⬅️ 上一步：用户名", callback_data: `windows:create:back_username:${accountId}` }],
     [{ text: "❌ 取消", callback_data: "menu:instances" }]
   ] };
 }
@@ -459,7 +497,8 @@ export function renderWindowsCreateConfirmText(account: PublicAccount, state: Re
     `地区：${state.region_label ?? state.region}`,
     `配置：${state.type_label ?? state.type}`,
     `防火墙：${state.firewall_label ?? "不使用防火墙"}`,
-    state.firewall_id ? "RDP：将尝试检查所选 Linode Firewall 是否放行 TCP 3389；未放行时可能无法远程桌面。" : "RDP：未使用 Linode Firewall，Windows 内部仍会放行 TCP 3389。",
+    state.firewall_id ? `RDP 防火墙：${state.rdp_firewall_message ?? "将检查 TCP 3389 入站规则"}` : "RDP：未使用 Linode Firewall，Windows 内部仍会放行 TCP 3389。",
+    state.firewall_id && state.rdp_firewall_ok === false ? "⚠️ 当前 Firewall 未放行 3389，建议先点击一键修复后再创建。" : null,
     `Windows 用户名：${state.windows_username ?? "Administrator"}`,
     `密码：${state.administrator_password ? "用户自定义（只显示一次）" : "自动生成（只显示一次）"}`,
     "",
@@ -471,8 +510,13 @@ export function renderWindowsCreateConfirmText(account: PublicAccount, state: Re
   ].filter(Boolean).join("\n");
 }
 
-export function renderWindowsCreateConfirmKeyboard(accountId: number): TelegramInlineKeyboardMarkup {
-  return { inline_keyboard: [[{ text: "✅ 确认创建 Windows", callback_data: `windows:create:confirm:${accountId}`, style: "success" }], [{ text: "⬅️ 上一步：防火墙", callback_data: `instances:create:back_firewall:${accountId}` }], [{ text: "❌ 取消", callback_data: "menu:instances" }]] };
+export function renderWindowsCreateConfirmKeyboard(accountId: number, state: Record<string, unknown> = {}): TelegramInlineKeyboardMarkup {
+  const rows: TelegramInlineKeyboardButton[][] = [];
+  if (state.firewall_id && state.rdp_firewall_ok === false) rows.push([{ text: "🛠 一键放行 RDP 3389", callback_data: `windows:create:fix_rdp_firewall:${accountId}` }]);
+  rows.push([{ text: "✅ 确认创建 Windows", callback_data: `windows:create:confirm:${accountId}`, style: "success" }]);
+  rows.push([{ text: "⬅️ 上一步：防火墙", callback_data: `instances:create:back_firewall:${accountId}` }]);
+  rows.push([{ text: "❌ 取消", callback_data: "menu:instances" }]);
+  return { inline_keyboard: rows };
 }
 
 export function renderWindowsCreatedText(result: { account: PublicAccount; instance: LinodeInstance; windows_version_label?: string; windows_version?: string; windows_lang?: string; windows_username?: string; administrator_password: string; temp_root_password: string }): string {
