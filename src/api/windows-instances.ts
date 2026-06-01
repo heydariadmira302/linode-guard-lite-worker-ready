@@ -47,7 +47,8 @@ export async function handleCreateWindowsInstance(request: Request, env: Env, re
     version: typeof body.version === "string" ? body.version as WindowsVersionId : undefined,
     lang: typeof body.lang === "string" ? body.lang as WindowsLanguageId : undefined,
     administrator_password: typeof body.administrator_password === "string" ? body.administrator_password : undefined,
-    windows_username: typeof body.windows_username === "string" ? body.windows_username : undefined
+    windows_username: typeof body.windows_username === "string" ? body.windows_username : undefined,
+    keep_administrator_fallback: typeof body.keep_administrator_fallback === "boolean" ? body.keep_administrator_fallback : undefined
   }, { requestId, actor: "api:default", source: "api" });
   return createJsonResponse({ ok: true, data }, { requestId });
 }

@@ -26,7 +26,7 @@ export const WINDOWS_STACKSCRIPT_MIN_DISK_MB = 81920;
 export interface WindowsInstanceServiceContext { requestId: string; actor: string; source: string; telegramChatId?: string; telegramUserId?: string }
 export interface WindowsStackScriptStatus { account: PublicAccount; stackscript_id: number | null; configured: boolean; version: string; version_label: string; base_image: string }
 export interface WindowsCreateOptions { account: PublicAccount; stackscript: WindowsStackScriptStatus; regions: LinodeRegion[]; types: LinodeType[]; firewalls: LinodeFirewall[]; version: ReturnType<WindowsVersionService["getVersion"]>; lang: ReturnType<WindowsVersionService["getLanguage"]>; iso_resolve_required: boolean; iso_cached: boolean | null }
-export interface CreateWindowsInstanceInput { region: string; type: string; firewall_id?: number | null; label?: string; version?: WindowsVersionId; lang?: WindowsLanguageId; administrator_password?: string; windows_username?: string }
+export interface CreateWindowsInstanceInput { region: string; type: string; firewall_id?: number | null; label?: string; version?: WindowsVersionId; lang?: WindowsLanguageId; administrator_password?: string; windows_username?: string; keep_administrator_fallback?: boolean }
 export interface CreateWindowsInstanceResult { account: PublicAccount; instance: LinodeInstance; stackscript_id: number; windows_version: string; windows_version_label: string; windows_lang: string; windows_username: string; administrator_password: string; temp_root_password: string }
 
 export class WindowsInstanceService {
@@ -92,6 +92,7 @@ export class WindowsInstanceService {
     const stackscriptId = await this.ensureCurrentStackScript(account, context);
     const adminPassword = input.administrator_password ? validateWindowsPassword(input.administrator_password, context.requestId) : generateWindowsPassword();
     const windowsUsername = validateWindowsUsername(input.windows_username ?? "Administrator", context.requestId);
+    const keepAdministratorFallback = input.keep_administrator_fallback !== false || windowsUsername === "Administrator";
     const tempRootPassword = generateLinuxPassword();
     const token = await this.decryptAccountToken(account);
     const version = this.versions.getVersion(input.version, context.requestId);
@@ -104,7 +105,7 @@ export class WindowsInstanceService {
     const installMonitor = this.installs ? new WindowsInstallMonitorService(this.env, this.installs) : null;
     const preliminaryLabel = this.resolveLabel(input, context.requestId);
     const install = installMonitor ? await installMonitor.createInstallRecord({ accountId: account.id, instanceLabel: preliminaryLabel, telegramChatId: context.telegramChatId ?? null, telegramUserId: context.telegramUserId ?? null, metadata: { version: version.id, lang: lang.id, firewall: firewallStatus } }) : null;
-    const payload = await this.buildCreatePayload(input, stackscriptId, token, adminPassword, windowsUsername, tempRootPassword, context.requestId, version, lang, iso?.iso_url ?? "NOURL", install?.callbackToken ?? "", preliminaryLabel);
+    const payload = await this.buildCreatePayload(input, stackscriptId, token, adminPassword, windowsUsername, keepAdministratorFallback, tempRootPassword, context.requestId, version, lang, iso?.iso_url ?? "NOURL", install?.callbackToken ?? "", preliminaryLabel);
     try {
       const instance = await client.createInstance(payload, context.requestId);
       if (this.installs && install) await this.installs.attachInstance(install.record.id, Number(instance.id), Array.isArray((instance as any).ipv4) ? (instance as any).ipv4[0] : null, { version: version.id, lang: lang.id, label: payload.label });
@@ -160,13 +161,13 @@ export class WindowsInstanceService {
     return { label: WINDOWS_STACKSCRIPT_LABEL, description: "Windows Server 2022 deployment for Linode Guard Lite. API-first private StackScript route.", script: windowsStackScript, images: [WINDOWS_STACKSCRIPT_IMAGE], is_public: false, rev_note: "Linode Guard Lite Windows Server 2022 route" };
   }
 
-  private async buildCreatePayload(input: CreateWindowsInstanceInput, stackscriptId: number, linodeToken: string, adminPassword: string, windowsUsername: string, tempRootPassword: string, requestId: string, version: ReturnType<WindowsVersionService["getVersion"]>, lang: ReturnType<WindowsVersionService["getLanguage"]>, isoUrl: string, installCallbackToken: string, resolvedLabel?: string) {
+  private async buildCreatePayload(input: CreateWindowsInstanceInput, stackscriptId: number, linodeToken: string, adminPassword: string, windowsUsername: string, keepAdministratorFallback: boolean, tempRootPassword: string, requestId: string, version: ReturnType<WindowsVersionService["getVersion"]>, lang: ReturnType<WindowsVersionService["getLanguage"]>, isoUrl: string, installCallbackToken: string, resolvedLabel?: string) {
     const region = typeof input.region === "string" ? input.region.trim() : "";
     const type = typeof input.type === "string" ? input.type.trim() : "";
     if (!region || !type) throw new AppError(ErrorCode.VALIDATION_ERROR, "region/type are required", requestId, 400);
     const label = resolvedLabel ?? this.resolveLabel(input, requestId);
     if (!/^[A-Za-z0-9._-]{3,64}$/.test(label)) throw new AppError(ErrorCode.VALIDATION_ERROR, "Invalid instance label", requestId, 400);
-    const stackscriptData = { TOKEN: linodeToken, WINDOWS_PASSWORD: adminPassword, WINDOWS_USERNAME: windowsUsername, INSTALL_WINDOWS_VERSION: version.stackscript_version, WINDOWS_IMAGE_NAME: version.image_name, WINDOWS_LANG: lang.id, AUTOLOGIN: "true", W11_ISO_URL: isoUrl, INSTALL_CALLBACK_URL: await this.getWindowsInstallCallbackUrl(), INSTALL_CALLBACK_TOKEN: installCallbackToken };
+    const stackscriptData = { TOKEN: linodeToken, WINDOWS_PASSWORD: adminPassword, WINDOWS_USERNAME: windowsUsername, KEEP_ADMINISTRATOR_FALLBACK: keepAdministratorFallback ? "true" : "false", INSTALL_WINDOWS_VERSION: version.stackscript_version, WINDOWS_IMAGE_NAME: version.image_name, WINDOWS_LANG: lang.id, AUTOLOGIN: "true", W11_ISO_URL: isoUrl, INSTALL_CALLBACK_URL: await this.getWindowsInstallCallbackUrl(), INSTALL_CALLBACK_TOKEN: installCallbackToken };
     if (JSON.stringify(stackscriptData).length > 65535) throw new AppError(ErrorCode.VALIDATION_ERROR, "StackScript data is too large", requestId, 400);
     const payload: any = { region, type, image: WINDOWS_STACKSCRIPT_IMAGE, label, root_pass: tempRootPassword, backups_enabled: false, tags: ["linode-guard-lite", "windows-stackscript", version.id], stackscript_id: stackscriptId, stackscript_data: stackscriptData };
     if (input.firewall_id !== undefined && input.firewall_id !== null) {

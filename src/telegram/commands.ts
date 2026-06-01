@@ -15,7 +15,7 @@ import { validateWindowsPassword, validateWindowsUsername } from "../services/wi
 import { AuditRepository } from "../storage/audit-repository";
 import { renderCheckinInlineKeyboard, renderMainReplyKeyboard } from "./keyboards";
 import { renderAccountActionResultText, renderAccountDetailKeyboard, renderAccountsMenuKeyboard, renderAccountsMenuText, renderDiagnosticsMenuKeyboard, renderDiagnosticsMenuText, renderHelpText, renderMainMenuKeyboard, renderMainMenuText, renderMoreMenuKeyboard, renderMoreMenuText, renderMyIdKeyboard, renderMyIdText, renderPrivacyMenuKeyboard, renderPrivacyMenuText, renderSettingsMenuKeyboard, renderSettingsMenuText } from "./menus";
-import { renderAllInstancesText, renderCreateRegionKeyboard, renderCreateRegionText, renderInstancesListKeyboard, renderWindowsLabelModeKeyboard, renderWindowsLabelModeText, renderWindowsUsernameModeKeyboard, renderWindowsUsernameModeText } from "./instance-renderer";
+import { renderAllInstancesText, renderCreateRegionKeyboard, renderCreateRegionText, renderInstancesListKeyboard, renderWindowsAdminFallbackKeyboard, renderWindowsAdminFallbackText, renderWindowsLabelModeKeyboard, renderWindowsLabelModeText, renderWindowsUsernameModeKeyboard, renderWindowsUsernameModeText } from "./instance-renderer";
 import { GroupService } from "../services/group-service";
 import { renderGroupsMenuKeyboard, renderGroupsMenuText } from "./group-renderer";
 import { renderSetupWizardText } from "./setup-renderer";
@@ -266,7 +266,7 @@ async function continueWindowsUsernameFlow(
   try {
     state.windows_username = validateWindowsUsername(update.text, requestId);
     await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_windows_instance", data: { account_id: accountId, options, state } });
-    return client.sendMessage({ chat_id: update.chatId, text: `${renderWindowsLabelModeText(state)}\n\n✅ Windows 用户名：${state.windows_username}`, reply_markup: renderWindowsLabelModeKeyboard(accountId) });
+    return client.sendMessage({ chat_id: update.chatId, text: `${renderWindowsAdminFallbackText(state)}\n\n✅ Windows 用户名：${state.windows_username}`, reply_markup: renderWindowsAdminFallbackKeyboard(accountId) });
   } catch {
     return client.sendMessage({ chat_id: update.chatId, text: "用户名不符合要求：英文开头，3-20 位，只能包含英文、数字、下划线、短横线，且不能使用系统保留名。请重新发送，或发送 /cancel 取消。", reply_markup: renderCheckinInlineKeyboard() });
   }

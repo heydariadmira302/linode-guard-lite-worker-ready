@@ -45,6 +45,8 @@ import {
   renderWindowsCredentialModeKeyboard,
   renderWindowsUsernameModeKeyboard,
   renderWindowsUsernameModeText,
+  renderWindowsAdminFallbackKeyboard,
+  renderWindowsAdminFallbackText,
   renderWindowsUsernamePromptKeyboard,
   renderWindowsUsernamePromptText,
   renderWindowsCredentialModeText,
@@ -1950,6 +1952,17 @@ export async function routeTelegramCallback(
       }
       parsed.state.windows_username = "Administrator";
       await saveCreateInstanceSession(sessions, update, accountId, parsed);
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsAdminFallbackText(parsed.state), reply_markup: renderWindowsAdminFallbackKeyboard(accountId) });
+    } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
+  }
+
+  const windowsFallbackMatch = update.data.match(/^windows:create:fallback:(\d+):(keep|disable)$/);
+  if (windowsFallbackMatch && env?.DB && sessions) {
+    try {
+      const accountId = Number(windowsFallbackMatch[1]);
+      const parsed = await getCreateInstanceSession(sessions, update.fromId);
+      parsed.state.keep_administrator_fallback = windowsFallbackMatch[2] === "keep";
+      await saveCreateInstanceSession(sessions, update, accountId, parsed);
       return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsLabelModeText(parsed.state), reply_markup: renderWindowsLabelModeKeyboard(accountId) });
     } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
   }
@@ -2005,7 +2018,7 @@ StackScript ID：${status.stackscript_id}
     try {
       const accountId = Number(windowsConfirmMatch[1]);
       const parsed = await getCreateInstanceSession(sessions, update.fromId);
-      const data = await new WindowsInstanceService(env).createWindowsInstance(accountId, { region: String(parsed.state.region), type: String(parsed.state.type), label: typeof parsed.state.label === "string" ? parsed.state.label : undefined, firewall_id: parsed.state.firewall_id === undefined ? null : Number(parsed.state.firewall_id), version: parsed.state.windows_version as any, lang: parsed.state.windows_lang as any, administrator_password: typeof parsed.state.administrator_password === "string" ? parsed.state.administrator_password : undefined, windows_username: typeof parsed.state.windows_username === "string" ? parsed.state.windows_username : undefined }, { requestId, actor: `telegram:${update.fromId}`, source: "telegram", telegramChatId: String(update.chatId), telegramUserId: String(update.fromId) });
+      const data = await new WindowsInstanceService(env).createWindowsInstance(accountId, { region: String(parsed.state.region), type: String(parsed.state.type), label: typeof parsed.state.label === "string" ? parsed.state.label : undefined, firewall_id: parsed.state.firewall_id === undefined ? null : Number(parsed.state.firewall_id), version: parsed.state.windows_version as any, lang: parsed.state.windows_lang as any, administrator_password: typeof parsed.state.administrator_password === "string" ? parsed.state.administrator_password : undefined, windows_username: typeof parsed.state.windows_username === "string" ? parsed.state.windows_username : undefined, keep_administrator_fallback: typeof parsed.state.keep_administrator_fallback === "boolean" ? parsed.state.keep_administrator_fallback : undefined }, { requestId, actor: `telegram:${update.fromId}`, source: "telegram", telegramChatId: String(update.chatId), telegramUserId: String(update.fromId) });
       await sessions.clearCurrentSession(update.fromId);
       return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsCreatedText(data), reply_markup: { inline_keyboard: [[{ text: "🏠 返回主菜单", callback_data: "menu:main" }], [{ text: "↩️ 返回账号服务器", callback_data: `instances:list:account:${data.account.id}` }], [{ text: "🖥 稍后查看服务器详情", callback_data: `instances:detail:${data.account.id}:${data.instance.id}:account_${data.account.id}` }]] } });
     } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }

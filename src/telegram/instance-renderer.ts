@@ -411,6 +411,30 @@ export function renderWindowsPasswordPromptKeyboard(accountId: number): Telegram
 }
 
 
+
+export function renderWindowsAdminFallbackText(state: Record<string, unknown>): string {
+  return [
+    "🪟 创建 Windows 服务器",
+    "━━━━━━━━━━━━",
+    "步骤：Administrator 兜底账号",
+    "",
+    `Windows 用户名：${state.windows_username ?? "Administrator"}`,
+    state.windows_username && state.windows_username !== "Administrator" ? `Administrator 兜底：${state.keep_administrator_fallback === false ? "不保留" : "保留，同密码"}` : null,
+    "",
+    "建议保留 Administrator 兜底：如果自定义用户创建失败，仍可用 Administrator 登录。",
+    "如果你选择不保留，系统会尝试禁用 Administrator，只保留你自定义的管理员用户。"
+  ].join("\n");
+}
+
+export function renderWindowsAdminFallbackKeyboard(accountId: number): TelegramInlineKeyboardMarkup {
+  return { inline_keyboard: [
+    [{ text: "✅ 保留 Administrator 兜底（推荐）", callback_data: `windows:create:fallback:${accountId}:keep` }],
+    [{ text: "🚫 不保留，只用自定义用户名", callback_data: `windows:create:fallback:${accountId}:disable` }],
+    [{ text: "⬅️ 上一步：用户名", callback_data: `windows:create:back_username:${accountId}` }],
+    [{ text: "❌ 取消", callback_data: "menu:instances" }]
+  ] };
+}
+
 export function renderWindowsLabelModeText(state: Record<string, unknown>): string {
   return [
     "🪟 创建 Windows 服务器",
@@ -500,6 +524,7 @@ export function renderWindowsCreateConfirmText(account: PublicAccount, state: Re
     state.firewall_id ? `RDP 防火墙：${state.rdp_firewall_message ?? "将检查 TCP 3389 入站规则"}` : "RDP：未使用 Linode Firewall，Windows 内部仍会放行 TCP 3389。",
     state.firewall_id && state.rdp_firewall_ok === false ? "⚠️ 当前 Firewall 未放行 3389，建议先点击一键修复后再创建。" : null,
     `Windows 用户名：${state.windows_username ?? "Administrator"}`,
+    state.windows_username && state.windows_username !== "Administrator" ? `Administrator 兜底：${state.keep_administrator_fallback === false ? "不保留" : "保留，同密码"}` : null,
     `密码：${state.administrator_password ? "用户自定义（只显示一次）" : "自动生成（只显示一次）"}`,
     "",
     "⚠️ 确认后会调用 Linode API 创建收费 Linode。",
