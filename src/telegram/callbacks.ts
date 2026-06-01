@@ -1854,7 +1854,7 @@ export async function routeTelegramCallback(
       const lang = version === "2k25-cn" ? "zh-cn" : "en-us";
       const options = await new WindowsInstanceService(env).getCreateOptions(accountId, requestId, { version: version as any, lang: lang as any });
       await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_windows_instance", data: { account_id: accountId, options, state: { windows_version: version, windows_version_label: options.version.label, windows_lang: lang } } });
-      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsCredentialModeText({ windows_version: version, windows_version_label: options.version.label, windows_lang: lang }), reply_markup: renderWindowsCredentialModeKeyboard(accountId) });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsCredentialModeText({ windows_version: version, windows_version_label: options.version.label, windows_lang: lang }), reply_markup: renderWindowsCredentialModeKeyboard(accountId, version) });
     } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
   }
 
@@ -1865,10 +1865,33 @@ export async function routeTelegramCallback(
       const lang = windowsLangMatch[2] as "zh-cn" | "en-us";
       const options = await new WindowsInstanceService(env).getCreateOptions(accountId, requestId, { version: "w11-ltsc-2024", lang });
       await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_windows_instance", data: { account_id: accountId, options, state: { windows_version: "w11-ltsc-2024", windows_version_label: options.version.label, windows_lang: lang } } });
-      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsCredentialModeText({ windows_version: "w11-ltsc-2024", windows_version_label: options.version.label, windows_lang: lang }), reply_markup: renderWindowsCredentialModeKeyboard(accountId) });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsCredentialModeText({ windows_version: "w11-ltsc-2024", windows_version_label: options.version.label, windows_lang: lang }), reply_markup: renderWindowsCredentialModeKeyboard(accountId, "w11-ltsc-2024") });
     } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
   }
 
+
+  const windowsBackCredentialMatch = update.data.match(/^windows:create:back_credential:(\d+)$/);
+  if (windowsBackCredentialMatch && env?.DB && sessions) {
+    try {
+      const accountId = Number(windowsBackCredentialMatch[1]);
+      const parsed = await getCreateInstanceSession(sessions, update.fromId);
+      delete parsed.state.administrator_password;
+      delete parsed.state.windows_username;
+      await saveCreateInstanceSession(sessions, update, accountId, parsed);
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsCredentialModeText(parsed.state), reply_markup: renderWindowsCredentialModeKeyboard(accountId, String(parsed.state.windows_version ?? "")) });
+    } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
+  }
+
+  const windowsBackLabelMatch = update.data.match(/^windows:create:back_label:(\d+)$/);
+  if (windowsBackLabelMatch && env?.DB && sessions) {
+    try {
+      const accountId = Number(windowsBackLabelMatch[1]);
+      const parsed = await getCreateInstanceSession(sessions, update.fromId);
+      delete parsed.state.label;
+      await saveCreateInstanceSession(sessions, update, accountId, parsed);
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsLabelModeText(parsed.state), reply_markup: renderWindowsLabelModeKeyboard(accountId) });
+    } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
+  }
 
   const windowsCredMatch = update.data.match(/^windows:create:cred:(\d+):(auto|custom)$/);
   if (windowsCredMatch && env?.DB && sessions) {
@@ -1900,8 +1923,8 @@ export async function routeTelegramCallback(
       }
       delete parsed.state.label;
       await saveCreateInstanceSession(sessions, update, accountId, parsed);
-      const text = renderCreateRegionText(parsed.options.regions).replace("➕ 创建 Linux 服务器", "🪟 创建 Windows 服务器") + (parsed.state.windows_version === "w11-ltsc-2024" ? "\n\nBot 会自动查找官方 ISO，不需要你输入 ISO URL。" : "");
-      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text, reply_markup: renderCreateRegionKeyboard(accountId, parsed.options.regions) });
+      const text = renderCreateRegionText(parsed.options.regions).replace("➕ 创建 Linux 服务器", "🪟 创建 Windows 服务器") + (parsed.state.windows_version === "w11-ltsc-2024" ? "\n\nBot 会自动查找官方 ISO，不需要你输入 ISO URL。" : parsed.state.windows_version === "2k25-cn" ? "\n\nWindows Server 2025 简体中文版会使用官方 Evaluation ISO 路线。" : "");
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text, reply_markup: renderCreateRegionKeyboard(accountId, parsed.options.regions, 0, `windows:create:back_label:${accountId}`, "⬅️ 上一步：命名") });
     } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
   }
 
@@ -1953,7 +1976,10 @@ StackScript ID：${status.stackscript_id}
   const createRegionPageMatch = update.data.match(/^instances:create:region_page:(\d+):(\d+)$/);
   if (createRegionPageMatch && sessions) {
     const parsed = await getCreateInstanceSession(sessions, update.fromId);
-    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderCreateRegionText(parsed.options.regions, Number(createRegionPageMatch[2])), reply_markup: renderCreateRegionKeyboard(Number(createRegionPageMatch[1]), parsed.options.regions, Number(createRegionPageMatch[2])) });
+    const accountId = Number(createRegionPageMatch[1]);
+    const isWindows = Boolean(parsed.options.stackscript);
+    const page = Number(createRegionPageMatch[2]);
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: (isWindows ? renderCreateRegionText(parsed.options.regions, page).replace("➕ 创建 Linux 服务器", "🪟 创建 Windows 服务器") : renderCreateRegionText(parsed.options.regions, page)), reply_markup: renderCreateRegionKeyboard(accountId, parsed.options.regions, page, isWindows ? `windows:create:back_label:${accountId}` : "menu:instances", isWindows ? "⬅️ 上一步：命名" : "❌ 取消") });
   }
 
   const createRegionMatch = update.data.match(/^instances:create:region:(\d+):(.+)$/);
@@ -1983,7 +2009,7 @@ StackScript ID：${status.stackscript_id}
     parsed.state.type = type;
     parsed.state.type_label = selected?.label ?? type;
     await saveCreateInstanceSession(sessions, update, accountId, parsed);
-    if (parsed.options.stackscript) return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsCreateFirewallText(parsed.state), reply_markup: renderCreateFirewallKeyboard(accountId, parsed.options.firewalls) });
+    if (parsed.options.stackscript) return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsCreateFirewallText(parsed.state), reply_markup: renderCreateFirewallKeyboard(accountId, parsed.options.firewalls, `instances:create:back_type:${accountId}`, "⬅️ 上一步：配置") });
     return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderCreateImageText(parsed.options.images, parsed.state), reply_markup: renderCreateImageKeyboard(accountId, parsed.options.images) });
   }
 
@@ -2037,7 +2063,8 @@ StackScript ID：${status.stackscript_id}
   const createBackFirewallMatch = update.data.match(/^instances:create:back_firewall:(\d+)$/);
   if (createBackFirewallMatch && sessions) {
     const parsed = await getCreateInstanceSession(sessions, update.fromId);
-    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: parsed.options.stackscript ? renderWindowsCreateFirewallText(parsed.state) : renderCreateFirewallText(parsed.state), reply_markup: renderCreateFirewallKeyboard(Number(createBackFirewallMatch[1]), parsed.options.firewalls) });
+    const accountId = Number(createBackFirewallMatch[1]);
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: parsed.options.stackscript ? renderWindowsCreateFirewallText(parsed.state) : renderCreateFirewallText(parsed.state), reply_markup: renderCreateFirewallKeyboard(accountId, parsed.options.firewalls, parsed.options.stackscript ? `instances:create:back_type:${accountId}` : undefined, parsed.options.stackscript ? "⬅️ 上一步：配置" : undefined) });
   }
 
   const createConfirmMatch = update.data.match(/^instances:create:confirm:(\d+)$/);

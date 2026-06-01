@@ -267,11 +267,12 @@ export function renderCreateRegionText(regions: CreateInstanceChoice[], page = 0
   return ["➕ 创建 Linux 服务器", "━━━━━━━━━━━━", "步骤 1/4：选择地区", "", "按钮为短名，本页完整名称：", ...items.map((item, idx) => `${idx + 1}. ${item.label}｜${item.id}`)].join("\n");
 }
 
-export function renderCreateRegionKeyboard(accountId: number, regions: CreateInstanceChoice[], page = 0): TelegramInlineKeyboardMarkup {
+export function renderCreateRegionKeyboard(accountId: number, regions: CreateInstanceChoice[], page = 0, backCallback = "menu:instances", backText = "❌ 取消"): TelegramInlineKeyboardMarkup {
   const filtered = filterRegions(regions);
   const items = pageItems(filtered, page, 12);
   const rows = chunkButtons(items.map((item, idx) => ({ text: `${idx + 1}. ${shortText(item.label, 18)}`, callback_data: `instances:create:region:${accountId}:${item.id}` })), 2);
   addPagination(rows, `instances:create:region_page:${accountId}`, page, filtered.length, 12);
+  rows.push([{ text: backText, callback_data: backCallback }]);
   rows.push([{ text: "❌ 取消", callback_data: "menu:instances" }]);
   return { inline_keyboard: rows };
 }
@@ -285,7 +286,7 @@ export function renderCreateTypeKeyboard(accountId: number, types: CreateInstanc
   const items = pageItems(filtered, page, 8);
   const rows = items.map((item) => [{ text: formatTypeButton(item), callback_data: `instances:create:type:${accountId}:${item.id}` }]);
   addPagination(rows, `instances:create:type_page:${accountId}`, page, filtered.length, 8);
-  rows.push([{ text: "⬅️ 上一步：地区", callback_data: `instances:create:account:${accountId}` }]);
+  rows.push([{ text: "⬅️ 上一步：地区", callback_data: `instances:create:back_region:${accountId}` }]);
   rows.push([{ text: "❌ 取消", callback_data: "menu:instances" }]);
   return { inline_keyboard: rows };
 }
@@ -309,10 +310,10 @@ export function renderCreateFirewallText(state: Record<string, unknown>): string
   return ["➕ 创建 Linux 服务器", "━━━━━━━━━━━━", "步骤 4/4：选择防火墙", "", `地区：${state.region_label ?? state.region ?? "未选择"}`, `套餐：${state.type_label ?? state.type ?? "未选择"}`, `系统：${state.image_label ?? state.image ?? "未选择"}`].join("\n");
 }
 
-export function renderCreateFirewallKeyboard(accountId: number, firewalls: CreateInstanceChoice[]): TelegramInlineKeyboardMarkup {
+export function renderCreateFirewallKeyboard(accountId: number, firewalls: CreateInstanceChoice[], backCallback?: string, backText?: string): TelegramInlineKeyboardMarkup {
   const rows: TelegramInlineKeyboardButton[][] = [[{ text: "不使用防火墙", callback_data: `instances:create:firewall:${accountId}:none` }]];
   rows.push(...chunkButtons(firewalls.slice(0, 20).map((item) => ({ text: shortText(item.label, 32), callback_data: `instances:create:firewall:${accountId}:${item.id}` })), 1));
-  rows.push([{ text: "⬅️ 上一步：系统", callback_data: `instances:create:back_image:${accountId}` }]);
+  rows.push([{ text: backText ?? "⬅️ 上一步：系统", callback_data: backCallback ?? `instances:create:back_image:${accountId}` }]);
   rows.push([{ text: "❌ 取消", callback_data: "menu:instances" }]);
   return { inline_keyboard: rows };
 }
@@ -342,10 +343,11 @@ export function renderWindowsCredentialModeText(state: Record<string, unknown>):
   ].filter(Boolean).join("\n");
 }
 
-export function renderWindowsCredentialModeKeyboard(accountId: number): TelegramInlineKeyboardMarkup {
+export function renderWindowsCredentialModeKeyboard(accountId: number, version?: string): TelegramInlineKeyboardMarkup {
   return { inline_keyboard: [
     [{ text: "🔐 自动生成强密码（推荐）", callback_data: `windows:create:cred:${accountId}:auto` }],
     [{ text: "✍️ 自己输入密码", callback_data: `windows:create:cred:${accountId}:custom` }],
+    [{ text: "⬅️ 上一步：版本", callback_data: version === "w11-ltsc-2024" ? `windows:create:version:${accountId}:w11-ltsc-2024` : `windows:create:account:${accountId}` }],
     [{ text: "❌ 取消", callback_data: "menu:instances" }]
   ] };
 }
@@ -387,6 +389,7 @@ export function renderWindowsLabelModeKeyboard(accountId: number): TelegramInlin
   return { inline_keyboard: [
     [{ text: "🏷 自定义服务器名称", callback_data: `windows:create:label:${accountId}:custom` }],
     [{ text: "⏭ 跳过，自动命名", callback_data: `windows:create:label:${accountId}:auto` }],
+    [{ text: "⬅️ 上一步：密码", callback_data: `windows:create:back_credential:${accountId}` }],
     [{ text: "❌ 取消", callback_data: "menu:instances" }]
   ] };
 }
@@ -405,7 +408,7 @@ export function renderWindowsLabelPromptText(): string {
 }
 
 export function renderWindowsLabelPromptKeyboard(accountId: number): TelegramInlineKeyboardMarkup {
-  return { inline_keyboard: [[{ text: "⏭ 跳过，自动命名", callback_data: `windows:create:label:${accountId}:auto` }], [{ text: "❌ 取消", callback_data: "menu:instances" }]] };
+  return { inline_keyboard: [[{ text: "⏭ 跳过，自动命名", callback_data: `windows:create:label:${accountId}:auto` }], [{ text: "⬅️ 上一步：密码", callback_data: `windows:create:back_credential:${accountId}` }], [{ text: "❌ 取消", callback_data: "menu:instances" }]] };
 }
 
 export function renderWindowsCreateTypeText(state: Record<string, unknown>): string {

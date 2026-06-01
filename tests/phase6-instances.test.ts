@@ -346,11 +346,21 @@ describe("Phase 6 Linode instance read-only management", () => {
       expect(credentialBody.data.telegram.payload.text).toContain("设置登录凭据");
       expect(credentialBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🔐 自动生成强密码（推荐）", callback_data: "windows:create:cred:1:auto" });
       await worker.fetch(telegramRequest(callbackUpdate("windows:create:cred:1:auto")), env as never);
+      const regionFlow = await worker.fetch(telegramRequest(callbackUpdate("windows:create:label:1:auto")), env as never);
+      const regionBody = await regionFlow.json() as { data: { telegram: { payload: { reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+      expect(regionBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "⬅️ 上一步：命名", callback_data: "windows:create:back_label:1" });
       await worker.fetch(telegramRequest(callbackUpdate("instances:create:region:1:jp-osa")), env as never);
       const typeFlow = await worker.fetch(telegramRequest(callbackUpdate("instances:create:type:1:g6-dedicated-2")), env as never);
       const typeBody = await typeFlow.json() as { data?: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } }; error?: unknown };
       expect(typeBody.data!.telegram.payload.text).toContain("选择防火墙");
       expect(typeBody.data!.telegram.payload.text).not.toContain("选择系统");
+      expect(typeBody.data!.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "⬅️ 上一步：配置", callback_data: "instances:create:back_type:1" });
+
+      const backTypeFlow = await worker.fetch(telegramRequest(callbackUpdate("instances:create:back_type:1")), env as never);
+      const backTypeBody = await backTypeFlow.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+      expect(backTypeBody.data.telegram.payload.text).toContain("选择服务器配置");
+      expect(backTypeBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "⬅️ 上一步：地区", callback_data: "instances:create:back_region:1" });
+      await worker.fetch(telegramRequest(callbackUpdate("instances:create:type:1:g6-dedicated-2")), env as never);
       const confirmFlow = await worker.fetch(telegramRequest(callbackUpdate("instances:create:firewall:1:none")), env as never);
       const confirmBody = await confirmFlow.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
       expect(confirmBody.data.telegram.payload.text).toContain("StackScript 会把新建 Ubuntu 机器转换为 Windows");
