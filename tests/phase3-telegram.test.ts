@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 import { BotSessionsRepository } from "../src/storage/bot-sessions-repository";
+import { BotSessionService } from "../src/services/bot-session-service";
 import { parseTelegramUpdate } from "../src/telegram/update-parser";
 
 const env = {
@@ -180,6 +181,24 @@ describe("Phase 3 Telegram webhook and menu", () => {
     const setupResponse = await worker.fetch(telegramRequest(messageUpdate("/setup")), env as never);
     const setupBody = await setupResponse.json() as { ok: boolean; data: { telegram: { payload: { text: string } } } };
     expect(setupBody.data.telegram.payload.text).toContain("Linode Guard Lite Setup Wizard");
+  });
+
+
+  it("keeps server creation sessions alive long enough to resume after interruptions", async () => {
+    const fakeDb = new FakeD1Database();
+    const testEnv = { ...env, DB: fakeDb as unknown as D1Database };
+    const repository = new BotSessionsRepository(testEnv.DB);
+    await new BotSessionService(repository).setCurrentSession({
+      telegramUserId: "123456789",
+      chatId: "123456789",
+      state: "creating_windows_instance",
+      data: { account_id: 1 }
+    });
+
+    const session = await repository.getByUserId("123456789");
+    expect(session).not.toBeNull();
+    const ttlMs = Date.parse(session!.expires_at) - Date.now();
+    expect(ttlMs).toBeGreaterThan(100 * 60 * 1000);
   });
 
   it("clears bot session on /cancel", async () => {

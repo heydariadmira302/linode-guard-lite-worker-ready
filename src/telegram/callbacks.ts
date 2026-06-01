@@ -2215,6 +2215,10 @@ StackScript ID：${status.stackscript_id}
 async function getCreateInstanceSession(sessions: Pick<BotSessionService, "getCurrentSession" | "setCurrentSession" | "clearCurrentSession">, userId: string): Promise<{ accountId: number; options: any; state: Record<string, unknown> }> {
   const session = await sessions.getCurrentSession(userId);
   if (!session || !["creating_instance", "creating_windows_instance", "creating_windows_password", "creating_windows_label"].includes(session.state)) throw new AppError(ErrorCode.VALIDATION_ERROR, "创建服务器会话已过期，请重新开始。", "req_telegram", 400);
+  if (Date.parse(session.expires_at) <= Date.now()) {
+    await sessions.clearCurrentSession(userId);
+    throw new AppError(ErrorCode.VALIDATION_ERROR, "创建服务器会话已过期，请重新开始。", "req_telegram", 400);
+  }
   const parsed = parseCallbackSessionData(session.data_json);
   return { accountId: Number(parsed.account_id), options: parsed.options ?? {}, state: (parsed.state && typeof parsed.state === "object" ? parsed.state : {}) as Record<string, unknown> };
 }
