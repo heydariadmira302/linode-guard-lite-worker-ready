@@ -126,7 +126,8 @@ export function renderInstancesListKeyboard(results: AccountInstancesResult[], c
     inline_keyboard: [
       ...detailButtons,
       [{ text: "🔄 刷新", callback_data: refreshCallbackForContext(context, accountId, groupId) }, { text: "🔎 筛选", callback_data: "instances:filter" }],
-      [context === "status_running" || context === "status_offline" ? { text: "↩️ 返回筛选", callback_data: "instances:filter" } : backButton]
+      [context === "status_running" || context === "status_offline" ? { text: "↩️ 返回筛选", callback_data: "instances:filter" } : backButton],
+      [{ text: "🏠 返回服务器管理", callback_data: "menu:instances" }]
     ]
   };
 }

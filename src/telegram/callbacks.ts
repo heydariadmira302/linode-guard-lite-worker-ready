@@ -404,9 +404,8 @@ export async function routeTelegramCallback(
   }
 
   if (update.data === "menu:instances") {
-    return client.editMessage({
+    return client.sendMessage({
       chat_id: update.chatId,
-      message_id: update.messageId,
       text: renderInstancesMenuText(),
       reply_markup: renderInstancesMenuKeyboard()
     });
