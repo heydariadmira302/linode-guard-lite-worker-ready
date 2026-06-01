@@ -14,7 +14,8 @@ export const REQUIRED_TABLES = [
   "job_runs",
   "bot_managed_instances",
   "bot_sessions",
-  "telegram_messages"
+  "telegram_messages",
+  "windows_installs"
 ] as const;
 
 export type RequiredTable = typeof REQUIRED_TABLES[number];

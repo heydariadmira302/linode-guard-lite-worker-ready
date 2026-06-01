@@ -16,6 +16,7 @@ export const DEFAULT_JOBS = [
   "login_timeout",
   "checkin_monitor",
   "schedule_power",
+  "windows_install_timeout",
   "message_cleanup",
   "audit_log_cleanup",
   "security_event_cleanup"

@@ -69,6 +69,7 @@ export interface LinodeImage {
 export interface LinodeFirewall {
   id: number;
   label: string;
+  rules?: { inbound?: Array<{ action?: string; protocol?: string; ports?: string; addresses?: { ipv4?: string[]; ipv6?: string[] } }> };
 }
 
 export interface CreateLinodeInstanceInput {
@@ -156,6 +157,12 @@ export class LinodeClient {
   async listFirewalls(requestId: string): Promise<LinodeFirewall[]> {
     const items = await this.listAllPages("/networking/firewalls", requestId);
     return items.map(toLinodeFirewall);
+  }
+
+  async getFirewall(firewallId: number, requestId: string): Promise<LinodeFirewall> {
+    const response = await this.request(`/networking/firewalls/${firewallId}`, requestId);
+    const body = await response.json().catch(() => ({})) as Record<string, unknown>;
+    return toLinodeFirewall(body);
   }
 
   async createInstance(input: CreateLinodeInstanceInput, requestId: string): Promise<LinodeInstance> {
@@ -372,7 +379,8 @@ function toLinodeImage(raw: Record<string, unknown>): LinodeImage {
 function toLinodeFirewall(raw: Record<string, unknown>): LinodeFirewall {
   return {
     id: Number(raw.id),
-    label: String(raw.label ?? raw.id ?? "")
+    label: String(raw.label ?? raw.id ?? ""),
+    rules: raw.rules as LinodeFirewall["rules"]
   };
 }
 

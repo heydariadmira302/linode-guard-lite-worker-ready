@@ -2,6 +2,7 @@ import windowsStackScript from "./windows-stackscript-template";
 import { WindowsIsoResolverService } from "./windows-iso-resolver-service";
 import { WindowsInstallMonitorService } from "./windows-install-monitor-service";
 import { WindowsInstallRepository } from "../storage/windows-install-repository";
+import { describeRdpFirewallStatus } from "./windows-firewall-service";
 import { WindowsVersionService, type WindowsLanguageId, type WindowsVersionId } from "./windows-version-service";
 import { LinodeClient, type LinodeFirewall, type LinodeInstance, type LinodeRegion, type LinodeType } from "../clients/linode-client";
 import { decryptLinodeToken } from "../crypto/token-crypto";
@@ -97,10 +98,11 @@ export class WindowsInstanceService {
     const lang = this.versions.getLanguage(version.id === "2k25-cn" ? "zh-cn" : version.id === "2k25-en" ? "en-us" : input.lang, context.requestId);
     const client = new LinodeClient(token);
     await this.validateCreateTarget(client, input.region, input.type, version, context.requestId);
+    const firewallStatus = await this.validateRdpFirewall(client, input.firewall_id, context.requestId);
     const iso = version.requires_iso_resolve ? await new WindowsIsoResolverService(this.env, this.settings).resolve({ version: version.id, lang: lang.id, requestId: context.requestId }) : null;
     const installMonitor = this.installs ? new WindowsInstallMonitorService(this.env, this.installs) : null;
     const preliminaryLabel = this.resolveLabel(input, context.requestId);
-    const install = installMonitor ? await installMonitor.createInstallRecord({ accountId: account.id, instanceLabel: preliminaryLabel, telegramChatId: context.telegramChatId ?? null, telegramUserId: context.telegramUserId ?? null, metadata: { version: version.id, lang: lang.id } }) : null;
+    const install = installMonitor ? await installMonitor.createInstallRecord({ accountId: account.id, instanceLabel: preliminaryLabel, telegramChatId: context.telegramChatId ?? null, telegramUserId: context.telegramUserId ?? null, metadata: { version: version.id, lang: lang.id, firewall: firewallStatus } }) : null;
     const payload = await this.buildCreatePayload(input, stackscriptId, token, adminPassword, windowsUsername, tempRootPassword, context.requestId, version, lang, iso?.iso_url ?? "NOURL", install?.callbackToken ?? "", preliminaryLabel);
     try {
       const instance = await client.createInstance(payload, context.requestId);
@@ -113,6 +115,12 @@ export class WindowsInstanceService {
       if (error instanceof AppError) throw error;
       throw new AppError(ErrorCode.LINODE_API_ERROR, "Linode Windows 创建请求失败", context.requestId, 502);
     }
+  }
+
+  private async validateRdpFirewall(client: LinodeClient, firewallId: number | null | undefined, requestId: string): Promise<{ ok: boolean; message: string }> {
+    if (firewallId === undefined || firewallId === null) return describeRdpFirewallStatus(null);
+    const firewall = await client.getFirewall(Number(firewallId), requestId);
+    return describeRdpFirewallStatus(firewall);
   }
 
   private async validateCreateTarget(client: LinodeClient, regionId: string, typeId: string, version: ReturnType<WindowsVersionService["getVersion"]>, requestId: string): Promise<void> {

@@ -31,7 +31,8 @@ const requiredTables = [
   "job_runs",
   "bot_managed_instances",
   "bot_sessions",
-  "telegram_messages"
+  "telegram_messages",
+  "windows_installs"
 ];
 
 class FakePreparedStatement {
@@ -294,7 +295,7 @@ describe("Phase 4 setup wizard and diagnostics", () => {
     expect(body.data.settings.existing).toContain("security_settings");
     expect(body.data.settings.created).toContain("app_settings");
     expect(await new SettingsRepository(env.DB).get("security_settings")).toEqual({ enabled: false, custom: "keep-me" });
-    expect(await new JobsRepository(env.DB).list()).toHaveLength(7);
+    expect(await new JobsRepository(env.DB).list()).toHaveLength(8);
     expect(body.data.jobs.created).toEqual(expect.arrayContaining([
       "login_monitor",
       "login_timeout",
@@ -319,7 +320,7 @@ describe("Phase 4 setup wizard and diagnostics", () => {
     expect(body.ok).toBe(true);
     expect(body.data.status).toBe("ok");
     expect(body.data.missing).toEqual([]);
-    expect(body.data.jobs).toHaveLength(7);
+    expect(body.data.jobs).toHaveLength(8);
     expect(body.data.jobs).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: "login_monitor", exists: true, enabled: true }),
       expect.objectContaining({ name: "security_event_cleanup", exists: true, enabled: true })

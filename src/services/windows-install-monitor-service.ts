@@ -38,6 +38,40 @@ export class WindowsInstallMonitorService {
     return { record, notified };
   }
 
+
+  async notifyStaleInstalls(now = new Date(), olderThanMinutes = 45): Promise<{ checked: number; notified: number }> {
+    const olderThan = new Date(now.getTime() - olderThanMinutes * 60 * 1000).toISOString();
+    const stale = await this.repository.findStaleInstalling(olderThan, 20);
+    let notified = 0;
+    for (const record of stale) {
+      if (record.notified_at) continue;
+      const ok = await this.notifyTimeout(record, olderThanMinutes);
+      if (ok) {
+        await this.repository.markFailed(record.id, { reason: "install_callback_timeout", older_than_minutes: olderThanMinutes });
+        await this.repository.markNotified(record.id);
+        notified += 1;
+      }
+    }
+    return { checked: stale.length, notified };
+  }
+
+  private async notifyTimeout(record: WindowsInstallRecord, olderThanMinutes: number): Promise<boolean> {
+    const chatId = record.telegram_chat_id || this.env.SUPER_ADMIN_TELEGRAM_ID;
+    if (!chatId || !this.env.TELEGRAM_BOT_TOKEN) return false;
+    const text = [
+      "⏱ Windows 安装可能已接近完成，但还没收到完成回调",
+      "",
+      `服务器：${record.instance_label}`,
+      record.instance_id ? `实例 ID：${record.instance_id}` : null,
+      record.ip_address ? `RDP：${record.ip_address}:3389` : null,
+      "",
+      `已超过约 ${olderThanMinutes} 分钟。你可以尝试 RDP 登录，或进入 LISH Console 检查安装状态。`,
+      "如果 RDP 连不上，请确认 Linode Firewall 已放行 TCP 3389。"
+    ].filter(Boolean).join("\n");
+    const result = await sendTelegramAction(this.env.TELEGRAM_BOT_TOKEN, { method: "sendMessage", payload: { chat_id: chatId, text, reply_markup: { inline_keyboard: [[{ text: "📡 Windows 安装状态", callback_data: "windows:install_status" }], [{ text: "🖥 服务器管理", callback_data: "menu:instances" }]] } } } as any);
+    return Boolean((result as { ok?: boolean } | undefined)?.ok);
+  }
+
   private async notifyReady(record: WindowsInstallRecord): Promise<boolean> {
     const chatId = record.telegram_chat_id || this.env.SUPER_ADMIN_TELEGRAM_ID;
     if (!chatId || !this.env.TELEGRAM_BOT_TOKEN) return false;

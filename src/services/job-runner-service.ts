@@ -6,6 +6,7 @@ import { ErrorCode } from "../errors/error-codes";
 import { AppError } from "../errors/app-error";
 import { AuditService } from "./audit-service";
 import { ScheduleService } from "./schedule-service";
+import { WindowsInstallMonitorService } from "./windows-install-monitor-service";
 import { BatchService } from "./batch-service";
 import { BotSessionsRepository } from "../storage/bot-sessions-repository";
 import { SecurityEventsRepository } from "../storage/events-repository";
@@ -78,6 +79,7 @@ export class JobRunnerService {
     }
     if (jobName === "checkin_monitor") return await this.runCheckinMonitor(now);
     if (jobName === "login_monitor") return await this.runLoginMonitor();
+    if (jobName === "windows_install_timeout") return await new WindowsInstallMonitorService(this.env).notifyStaleInstalls(now, 45);
     if (jobName === "message_cleanup") return await this.runMessageCleanup(now);
     if (jobName === "audit_log_cleanup") return await this.runAuditLogCleanup(now);
     if (jobName === "security_event_cleanup") return await this.runSecurityEventCleanup(now);

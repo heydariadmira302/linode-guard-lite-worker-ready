@@ -52,6 +52,20 @@ export class WindowsInstallRepository {
       .first<WindowsInstallRecord>();
   }
 
+  async listByAccount(accountId: number, limit = 20): Promise<WindowsInstallRecord[]> {
+    const result = await this.db.prepare(`SELECT * FROM windows_installs WHERE account_id = ? ORDER BY id DESC LIMIT ?`).bind(accountId, limit).all<WindowsInstallRecord>();
+    return result.results ?? [];
+  }
+
+  async findStaleInstalling(olderThanIso: string, limit = 20): Promise<WindowsInstallRecord[]> {
+    const result = await this.db.prepare(`SELECT * FROM windows_installs WHERE status = 'installing' AND created_at <= ? ORDER BY created_at ASC LIMIT ?`).bind(olderThanIso, limit).all<WindowsInstallRecord>();
+    return result.results ?? [];
+  }
+
+  async markFailed(id: number, metadata?: Record<string, unknown>): Promise<void> {
+    await this.db.prepare(`UPDATE windows_installs SET status = 'failed', updated_at = ?, metadata_json = COALESCE(?, metadata_json) WHERE id = ?`).bind(new Date().toISOString(), metadata ? JSON.stringify(metadata) : null, id).run();
+  }
+
   async markNotified(id: number): Promise<void> {
     await this.db.prepare(`UPDATE windows_installs SET notified_at = ?, updated_at = ? WHERE id = ?`).bind(new Date().toISOString(), new Date().toISOString(), id).run();
   }

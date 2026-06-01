@@ -20,6 +20,7 @@ export function renderInstancesMenuKeyboard(): TelegramInlineKeyboardMarkup {
       [{ text: "🖥 查看全部服务器", callback_data: "instances:list:all" }],
       [{ text: "➕ 创建 Linux 服务器", callback_data: "instances:create" }],
       [{ text: "🪟 创建 Windows 服务器", callback_data: "windows:create" }],
+      [{ text: "📡 Windows 安装状态", callback_data: "windows:install_status" }],
       [{ text: "🔎 筛选", callback_data: "instances:filter" }, { text: "⚡ 批量操作", callback_data: "menu:batch" }],
       [{ text: "🏠 返回主菜单", callback_data: "menu:main" }]
     ]
@@ -458,7 +459,7 @@ export function renderWindowsCreateConfirmText(account: PublicAccount, state: Re
     `地区：${state.region_label ?? state.region}`,
     `配置：${state.type_label ?? state.type}`,
     `防火墙：${state.firewall_label ?? "不使用防火墙"}`,
-    "RDP：安装完成后使用 TCP 3389；如果选择了 Linode Firewall，请确认已放行 3389。",
+    state.firewall_id ? "RDP：将尝试检查所选 Linode Firewall 是否放行 TCP 3389；未放行时可能无法远程桌面。" : "RDP：未使用 Linode Firewall，Windows 内部仍会放行 TCP 3389。",
     `Windows 用户名：${state.windows_username ?? "Administrator"}`,
     `密码：${state.administrator_password ? "用户自定义（只显示一次）" : "自动生成（只显示一次）"}`,
     "",
