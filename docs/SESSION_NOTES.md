@@ -581,3 +581,11 @@ npm test
 - 当 3389 真正可连时，Bot 主动发送新消息：`✅ Windows 已可远程登录`，包含服务器名、实例 ID、RDP 地址、Windows 用户名和从创建到 RDP 可用的总耗时。
 - 新增 D1 迁移 `migrations/0007_windows_rdp_readiness.sql`，记录 `rdp_ready_at`、`rdp_notified_at`、检测次数和最后一次检测错误。
 - 验证通过：`npm run typecheck`；`npm test`（25 个测试文件，134 个测试全部通过）；`npm run build:upload`。
+
+## 2026-06-02 Windows RDP 每分钟探测
+
+- 用户确认：Windows 服务器创建后应每分钟探测一次 RDP 可用性，而不是 5 分钟一次。
+- 新部署默认 `windows_install_timeout` job interval 从 300 秒改为 60 秒。
+- 新增迁移 `migrations/0008_windows_rdp_monitor_interval.sql`，用于把旧 D1 中已存在的 `windows_install_timeout` job 更新为 60 秒。
+- 新增 release blocker 测试，防止 RDP readiness job interval 被误改回 5 分钟。
+- 验证通过：`npm run typecheck`；`npm test`（25 个测试文件，135 个测试全部通过）；`npm run build:upload`。

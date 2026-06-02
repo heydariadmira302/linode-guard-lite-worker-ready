@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 import { computeNextRunAt } from "../src/services/schedule-service";
@@ -122,5 +123,15 @@ describe("Phase 17 release blocker fixes", () => {
     expect(telegram).not.toContain("不实现 Cron 自动执行");
     expect(telegram).not.toContain("不实现 Job Runner 真正执行");
     expect(telegram).not.toContain("指定单台服务器");
+  });
+});
+
+describe("Windows RDP readiness scheduler", () => {
+  it("polls Windows RDP readiness every minute", () => {
+    const initialMigration = readFileSync("migrations/0006_windows_installs.sql", "utf8");
+    const intervalMigration = readFileSync("migrations/0008_windows_rdp_monitor_interval.sql", "utf8");
+    expect(initialMigration).toContain("'windows_install_timeout', 'windows_install_monitor', 1, 60");
+    expect(intervalMigration).toContain("interval_seconds = 60");
+    expect(intervalMigration).toContain("windows_install_timeout");
   });
 });
