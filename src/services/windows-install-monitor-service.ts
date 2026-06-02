@@ -3,6 +3,7 @@ import { ErrorCode } from "../errors/error-codes";
 import { AppError } from "../errors/app-error";
 import { WindowsInstallRepository, type WindowsInstallRecord } from "../storage/windows-install-repository";
 import { sendTelegramAction } from "../telegram/action-sender";
+import { probeTcpPort, type TcpProbeResult } from "./tcp-probe-service";
 
 export interface WindowsInstallCallbackInput {
   token: string;
@@ -14,7 +15,7 @@ export interface WindowsInstallCallbackInput {
 
 export class WindowsInstallMonitorService {
   private readonly repository: WindowsInstallRepository;
-  constructor(private readonly env: Env, repository?: WindowsInstallRepository) {
+  constructor(private readonly env: Env, repository?: WindowsInstallRepository, private readonly tcpProbe: (host: string, port: number, timeoutMs?: number) => Promise<TcpProbeResult> = probeTcpPort) {
     if (!env.DB && !repository) throw new AppError(ErrorCode.CONFIG_MISSING, "Missing D1 binding DB", "req_windows_install", 500);
     this.repository = repository ?? new WindowsInstallRepository(env.DB as D1Database);
   }
@@ -33,7 +34,7 @@ export class WindowsInstallMonitorService {
     if (!existing) throw new AppError(ErrorCode.UNAUTHORIZED, "Invalid or already used Windows install callback token", requestId, 401);
     const record = await this.repository.markReady(existing.id, { ipAddress: normalizeIp(input.ip_address) ?? null, metadata: { status: input.status ?? "ready", message: input.message ?? null, rdp_port: input.rdp_port ?? 3389 } });
     if (!record) throw new AppError(ErrorCode.JOB_FAILED, "Failed to update Windows install status", requestId, 500);
-    const notified = await this.notifyReady(record);
+    const notified = await this.notifyInstallCallback(record);
     if (notified) await this.repository.markNotified(record.id);
     return { record, notified };
   }
@@ -72,22 +73,65 @@ export class WindowsInstallMonitorService {
     return Boolean((result as { ok?: boolean } | undefined)?.ok);
   }
 
-  private async notifyReady(record: WindowsInstallRecord): Promise<boolean> {
+  async checkRdpReadiness(_now = new Date(), limit = 20): Promise<{ checked: number; ready: number; notified: number }> {
+    const pending = await this.repository.findRdpPending(limit);
+    let ready = 0;
+    let notified = 0;
+    for (const record of pending) {
+      const ip = record.ip_address;
+      if (!ip) continue;
+      const probe = await this.tcpProbe(ip, 3389, 3000);
+      if (!probe.ok) {
+        await this.repository.markRdpCheck(record.id, probe.error ?? "rdp_not_ready");
+        continue;
+      }
+      const updated = await this.repository.markRdpReady(record.id);
+      await this.repository.markRdpCheck(record.id, null);
+      if (!updated) continue;
+      ready += 1;
+      if (!updated.rdp_notified_at && await this.notifyRdpReady(updated)) {
+        await this.repository.markRdpNotified(updated.id);
+        notified += 1;
+      }
+    }
+    return { checked: pending.length, ready, notified };
+  }
+
+  private async notifyInstallCallback(record: WindowsInstallRecord): Promise<boolean> {
     const chatId = record.telegram_chat_id || this.env.SUPER_ADMIN_TELEGRAM_ID;
     if (!chatId || !this.env.TELEGRAM_BOT_TOKEN) return false;
     const ip = record.ip_address || "请在 Linode 控制台查看公网 IPv4";
     const text = [
-      "✅ Windows 安装完成，可以尝试远程桌面登录了",
+      "✅ Windows 已进入系统，开始检测 RDP 可用性",
       "",
       `服务器：${record.instance_label}`,
       record.instance_id ? `实例 ID：${record.instance_id}` : null,
       `RDP：${ip}:3389`,
-      "用户名：Administrator",
+      `用户名：${getWindowsUsername(record)}`,
       "",
       "密码不会重复发送，请使用创建成功页里的一次性密码。",
-      "如果暂时连不上，请再等 1-2 分钟，并确认 Linode Firewall 已放行 TCP 3389。"
+      "Bot 会继续检测 3389，真正可远程登录后会再发一条成功通知。"
     ].filter(Boolean).join("\n");
-    const result = await sendTelegramAction(this.env.TELEGRAM_BOT_TOKEN, { method: "sendMessage", payload: { chat_id: chatId, text, reply_markup: { inline_keyboard: [[{ text: "🖥 服务器管理", callback_data: "menu:instances" }]] } } } as any);
+    const result = await sendTelegramAction(this.env.TELEGRAM_BOT_TOKEN, { method: "sendMessage", payload: { chat_id: chatId, text, reply_markup: { inline_keyboard: [[{ text: "📡 Windows 安装状态", callback_data: "windows:install_status" }], [{ text: "🖥 服务器管理", callback_data: "menu:instances" }]] } } } as any);
+    return Boolean((result as { ok?: boolean } | undefined)?.ok);
+  }
+
+  private async notifyRdpReady(record: WindowsInstallRecord): Promise<boolean> {
+    const chatId = record.telegram_chat_id || this.env.SUPER_ADMIN_TELEGRAM_ID;
+    if (!chatId || !this.env.TELEGRAM_BOT_TOKEN) return false;
+    const ip = record.ip_address || "请在 Linode 控制台查看公网 IPv4";
+    const text = [
+      "✅ Windows 已可远程登录",
+      "",
+      `服务器：${record.instance_label}`,
+      record.instance_id ? `实例 ID：${record.instance_id}` : null,
+      `RDP：${ip}:3389`,
+      `用户名：${getWindowsUsername(record)}`,
+      `耗时：${formatDuration(record.created_at, record.rdp_ready_at ?? new Date().toISOString())}`,
+      "",
+      "密码不会重复发送，请使用创建成功页里的一次性密码。"
+    ].filter(Boolean).join("\n");
+    const result = await sendTelegramAction(this.env.TELEGRAM_BOT_TOKEN, { method: "sendMessage", payload: { chat_id: chatId, text, reply_markup: { inline_keyboard: [[{ text: "📡 Windows 安装状态", callback_data: "windows:install_status" }], [{ text: "🖥 服务器管理", callback_data: "menu:instances" }]] } } } as any);
     return Boolean((result as { ok?: boolean } | undefined)?.ok);
   }
 }
@@ -106,4 +150,26 @@ export async function hashInstallCallbackToken(token: string): Promise<string> {
 function normalizeIp(value?: string): string | undefined {
   const ip = String(value ?? "").trim();
   return ip.length > 0 && ip.length <= 64 ? ip : undefined;
+}
+
+function getWindowsUsername(record: WindowsInstallRecord): string {
+  try {
+    const metadata = record.metadata_json ? JSON.parse(record.metadata_json) as Record<string, unknown> : null;
+    const username = typeof metadata?.windows_username === "string" && metadata.windows_username.trim() ? metadata.windows_username.trim() : "Administrator";
+    return username.slice(0, 64);
+  } catch {
+    return "Administrator";
+  }
+}
+
+function formatDuration(startIso: string, endIso: string): string {
+  const start = Date.parse(startIso);
+  const end = Date.parse(endIso);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return "未知";
+  const totalMinutes = Math.max(1, Math.round((end - start) / 60000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours <= 0) return `${minutes} 分钟`;
+  if (minutes === 0) return `${hours} 小时`;
+  return `${hours} 小时 ${minutes} 分钟`;
 }

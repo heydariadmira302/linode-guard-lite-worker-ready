@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
-import { hashInstallCallbackToken } from "../src/services/windows-install-monitor-service";
+import { hashInstallCallbackToken, WindowsInstallMonitorService } from "../src/services/windows-install-monitor-service";
 
 const baseEnv = {
   API_AUTH_TOKEN: "secret-api-token",
@@ -19,13 +19,17 @@ class FakePreparedStatement {
   private values: unknown[] = [];
   bind(...values: unknown[]) { this.values = values; return this; }
   first<T = unknown>() { return Promise.resolve(this.db.first<T>(this.sql, this.values)); }
-  all<T = unknown>() { return Promise.resolve({ results: [], success: true, meta: {} }); }
+  all<T = unknown>() { return Promise.resolve(this.db.all<T>(this.sql, this.values)); }
   run() { return Promise.resolve(this.db.run(this.sql, this.values)); }
 }
 
 class FakeD1Database {
   windowsInstalls: Record<string, any>[] = [];
   prepare(sql: string) { return new FakePreparedStatement(this, sql); }
+  all<T>(sql: string, _values: unknown[]) {
+    if (sql.includes("status = 'ready'") && sql.includes("rdp_ready_at IS NULL")) return { results: this.windowsInstalls.filter((row) => row.status === "ready" && row.ip_address && !row.rdp_ready_at) as T[], success: true, meta: {} };
+    return { results: [] as T[], success: true, meta: {} };
+  }
   first<T>(sql: string, values: unknown[]): T | null {
     if (sql.includes("FROM windows_installs")) return (this.windowsInstalls.find((row) => row.callback_token_hash === String(values[0]) && (row.status === "installing" || row.status === "failed") && !row.callback_received_at) as T | undefined) ?? null;
     if (sql.includes("UPDATE windows_installs SET status = 'ready'")) {
@@ -38,12 +42,28 @@ class FakeD1Database {
       row.metadata_json = values[3] ?? row.metadata_json;
       return row as T;
     }
+    if (sql.includes("UPDATE windows_installs SET rdp_ready_at")) {
+      const row = this.windowsInstalls.find((item) => Number(item.id) === Number(values[2]));
+      if (!row) return null;
+      row.rdp_ready_at = String(values[0]);
+      row.updated_at = String(values[1]);
+      row.last_rdp_check_error = null;
+      return row as T;
+    }
     return null;
   }
   run(sql: string, values: unknown[]) {
     if (sql.includes("UPDATE windows_installs SET notified_at")) {
       const row = this.windowsInstalls.find((item) => Number(item.id) === Number(values[2]));
       if (row) row.notified_at = String(values[0]);
+    }
+    if (sql.includes("UPDATE windows_installs SET rdp_notified_at")) {
+      const row = this.windowsInstalls.find((item) => Number(item.id) === Number(values[2]));
+      if (row) row.rdp_notified_at = String(values[0]);
+    }
+    if (sql.includes("UPDATE windows_installs SET rdp_check_attempts")) {
+      const row = this.windowsInstalls.find((item) => Number(item.id) === Number(values[2]));
+      if (row) { row.rdp_check_attempts = Number(row.rdp_check_attempts ?? 0) + 1; row.last_rdp_check_error = values[0]; }
     }
     return { success: true, changes: 1, meta: {} };
   }
@@ -71,7 +91,9 @@ describe("Windows install callback notification", () => {
       expect(db.windowsInstalls[0].notified_at).toBeTruthy();
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(String(fetchMock.mock.calls[0][0])).toContain("/sendMessage");
-      expect(String(fetchMock.mock.calls[0][1]?.body)).toContain("Windows 安装完成");
+      expect(String(fetchMock.mock.calls[0][1]?.body)).toContain("Windows 已进入系统");
+      expect(String(fetchMock.mock.calls[0][1]?.body)).toContain("开始检测 RDP");
+      expect(String(fetchMock.mock.calls[0][1]?.body)).not.toContain("Windows 已可远程登录");
       expect(String(fetchMock.mock.calls[0][1]?.body)).not.toContain(token);
     } finally {
       fetchMock.mockRestore();
@@ -92,7 +114,30 @@ describe("Windows install callback notification", () => {
       expect(db.windowsInstalls[0].status).toBe("ready");
       expect(db.windowsInstalls[0].callback_received_at).toBeTruthy();
       expect(fetchMock).toHaveBeenCalledTimes(1);
-      expect(String(fetchMock.mock.calls[0][1]?.body)).toContain("Windows 安装完成");
+      expect(String(fetchMock.mock.calls[0][1]?.body)).toContain("Windows 已进入系统");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+
+  it("sends final RDP ready notification only after TCP 3389 is reachable", async () => {
+    const db = new FakeD1Database();
+    db.windowsInstalls.push({ id: 3, account_id: 1, instance_id: 98494238, instance_label: "test2025", ip_address: "172.104.117.244", status: "ready", callback_token_hash: "hash", telegram_chat_id: "123456789", telegram_user_id: "123456789", notified_at: "2026-06-02T07:55:52.316Z", callback_received_at: "2026-06-02T07:55:52.316Z", rdp_ready_at: null, rdp_notified_at: null, rdp_check_attempts: 0, last_rdp_check_error: null, created_at: "2026-06-02T07:06:03.062Z", updated_at: "2026-06-02T07:55:52.316Z", metadata_json: JSON.stringify({ windows_username: "test" }) });
+    const env = { ...baseEnv, DB: db as unknown as D1Database };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ ok: true, result: { message_id: 102 } }), { status: 200 }));
+    try {
+      const service = new WindowsInstallMonitorService(env as never, undefined, async () => ({ ok: true }));
+      const result = await service.checkRdpReadiness(new Date("2026-06-02T07:56:30.000Z"));
+      expect(result).toEqual({ checked: 1, ready: 1, notified: 1 });
+      expect(db.windowsInstalls[0].rdp_ready_at).toBeTruthy();
+      expect(db.windowsInstalls[0].rdp_notified_at).toBeTruthy();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const body = String(fetchMock.mock.calls[0][1]?.body);
+      expect(body).toContain("Windows 已可远程登录");
+      expect(body).toContain("172.104.117.244:3389");
+      expect(body).toContain("用户名：test");
+      expect(body).toContain("耗时");
     } finally {
       fetchMock.mockRestore();
     }

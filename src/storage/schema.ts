@@ -270,6 +270,10 @@ CREATE TABLE IF NOT EXISTS windows_installs (
   telegram_user_id TEXT,
   notified_at TEXT,
   callback_received_at TEXT,
+  rdp_ready_at TEXT,
+  rdp_notified_at TEXT,
+  rdp_check_attempts INTEGER NOT NULL DEFAULT 0,
+  last_rdp_check_error TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   metadata_json TEXT,
@@ -278,5 +282,6 @@ CREATE TABLE IF NOT EXISTS windows_installs (
 CREATE INDEX IF NOT EXISTS idx_windows_installs_status ON windows_installs(status);
 CREATE INDEX IF NOT EXISTS idx_windows_installs_instance ON windows_installs(account_id, instance_id);
 CREATE INDEX IF NOT EXISTS idx_windows_installs_token_hash ON windows_installs(callback_token_hash);
+CREATE INDEX IF NOT EXISTS idx_windows_installs_rdp_ready ON windows_installs(status, rdp_ready_at, rdp_notified_at);
 
 `;

@@ -572,3 +572,12 @@ npm test
 - 创建 Windows 实例时生成一次性安装完成 callback token，只保存 hash；StackScript data 增加 `INSTALL_CALLBACK_URL` / `INSTALL_CALLBACK_TOKEN`。`PUBLIC_BASE_URL` 配置后会生成 `/api/v1/windows/install-callback` 完整地址。
 - StackScript 在 Windows 首次登录命令里启用 RDP 后调用回调接口；回调成功后 Bot 主动发送“Windows 安装完成，可以尝试远程桌面登录”，不重复发送密码。
 - 新增 `tests/phase22-windows-install-callback.test.ts`，完整验证回调 token、状态更新、Telegram 通知和 token 不泄露。验证通过：`npm run typecheck`、`npm test`（25 files / 132 tests）、`npm run build:upload`。
+
+## 2026-06-02 Windows RDP 可用通知
+
+- 回滚错误提交 `04cb961`：撤销抢跑的 Windows Server 2025 语言流程改动和普通开机/关机/重启 API 受理通知，保留自定义用户名安装修复 `c35e6b0`。
+- Windows 安装完成回调通知文案调整：回调只表示 Windows 已进入系统并开始检测 RDP，不再宣称“可远程登录”。
+- 新增 RDP readiness monitor：`windows_install_timeout` Job 现在同时检测 `status=ready` 且未标记 RDP 可用的 Windows 安装记录，使用 TCP 探测公网 IPv4 的 3389 端口。
+- 当 3389 真正可连时，Bot 主动发送新消息：`✅ Windows 已可远程登录`，包含服务器名、实例 ID、RDP 地址、Windows 用户名和从创建到 RDP 可用的总耗时。
+- 新增 D1 迁移 `migrations/0007_windows_rdp_readiness.sql`，记录 `rdp_ready_at`、`rdp_notified_at`、检测次数和最后一次检测错误。
+- 验证通过：`npm run typecheck`；`npm test`（25 个测试文件，134 个测试全部通过）；`npm run build:upload`。

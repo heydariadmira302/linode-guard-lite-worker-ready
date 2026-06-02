@@ -10,6 +10,10 @@ export interface WindowsInstallRecord {
   telegram_user_id: string | null;
   notified_at: string | null;
   callback_received_at: string | null;
+  rdp_ready_at: string | null;
+  rdp_notified_at: string | null;
+  rdp_check_attempts: number | null;
+  last_rdp_check_error: string | null;
   created_at: string;
   updated_at: string;
   metadata_json: string | null;
@@ -72,5 +76,23 @@ export class WindowsInstallRepository {
 
   async markNotified(id: number): Promise<void> {
     await this.db.prepare(`UPDATE windows_installs SET notified_at = ?, updated_at = ? WHERE id = ?`).bind(new Date().toISOString(), new Date().toISOString(), id).run();
+  }
+
+  async findRdpPending(limit = 20): Promise<WindowsInstallRecord[]> {
+    const result = await this.db.prepare(`SELECT * FROM windows_installs WHERE status = 'ready' AND ip_address IS NOT NULL AND rdp_ready_at IS NULL ORDER BY callback_received_at ASC, created_at ASC LIMIT ?`).bind(limit).all<WindowsInstallRecord>();
+    return result.results ?? [];
+  }
+
+  async markRdpCheck(id: number, error?: string | null): Promise<void> {
+    await this.db.prepare(`UPDATE windows_installs SET rdp_check_attempts = COALESCE(rdp_check_attempts, 0) + 1, last_rdp_check_error = ?, updated_at = ? WHERE id = ?`).bind(error ? error.slice(0, 240) : null, new Date().toISOString(), id).run();
+  }
+
+  async markRdpReady(id: number): Promise<WindowsInstallRecord | null> {
+    const now = new Date().toISOString();
+    return await this.db.prepare(`UPDATE windows_installs SET rdp_ready_at = ?, updated_at = ?, last_rdp_check_error = NULL WHERE id = ? RETURNING *`).bind(now, now, id).first<WindowsInstallRecord>();
+  }
+
+  async markRdpNotified(id: number): Promise<void> {
+    await this.db.prepare(`UPDATE windows_installs SET rdp_notified_at = ?, updated_at = ? WHERE id = ?`).bind(new Date().toISOString(), new Date().toISOString(), id).run();
   }
 }

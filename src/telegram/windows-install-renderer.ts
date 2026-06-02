@@ -11,6 +11,8 @@ export function renderWindowsInstallStatusText(records: WindowsInstallRecord[]):
       record.instance_id ? `实例 ID：${record.instance_id}` : "实例 ID：创建后同步中",
       record.ip_address ? `RDP：${record.ip_address}:3389` : "RDP：等待公网 IPv4",
       record.callback_received_at ? `完成回调：${record.callback_received_at}` : `创建时间：${record.created_at}`,
+      record.rdp_ready_at ? `RDP 可用：${record.rdp_ready_at}` : record.status === "ready" ? `RDP 检测：等待连通${record.rdp_check_attempts ? `（已检测 ${record.rdp_check_attempts} 次）` : ""}` : "",
+      record.rdp_ready_at ? `总耗时：${formatDuration(record.created_at, record.rdp_ready_at)}` : "",
       formatNotificationLine(record),
       ""
     );
@@ -23,14 +25,27 @@ export function renderWindowsInstallStatusKeyboard(): TelegramInlineKeyboardMark
 }
 
 function formatInstallStatus(status: string): string {
-  if (status === "ready") return "✅ 已完成，可尝试 RDP";
+  if (status === "ready") return "✅ 已进入系统，等待/检测 RDP";
   if (status === "failed") return "⚠️ 超时提醒已发送，仍等待完成回调";
   return "⏳ 安装中";
 }
 
 function formatNotificationLine(record: WindowsInstallRecord): string {
   if (!record.notified_at) return "通知状态：未通知";
-  if (record.status === "ready") return `完成通知：${record.notified_at}`;
+  if (record.rdp_notified_at) return `RDP 可用通知：${record.rdp_notified_at}`;
+  if (record.status === "ready") return `完成回调通知：${record.notified_at}`;
   if (record.status === "failed") return `超时提醒：${record.notified_at}`;
   return `通知时间：${record.notified_at}`;
+}
+
+function formatDuration(startIso: string, endIso: string): string {
+  const start = Date.parse(startIso);
+  const end = Date.parse(endIso);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return "未知";
+  const totalMinutes = Math.max(1, Math.round((end - start) / 60000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours <= 0) return `${minutes} 分钟`;
+  if (minutes === 0) return `${hours} 小时`;
+  return `${hours} 小时 ${minutes} 分钟`;
 }

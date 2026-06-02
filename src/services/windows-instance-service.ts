@@ -104,11 +104,11 @@ export class WindowsInstanceService {
     const iso = version.requires_iso_resolve ? await new WindowsIsoResolverService(this.env, this.settings).resolve({ version: version.id, lang: lang.id, requestId: context.requestId }) : null;
     const installMonitor = this.installs ? new WindowsInstallMonitorService(this.env, this.installs) : null;
     const preliminaryLabel = this.resolveLabel(input, context.requestId);
-    const install = installMonitor ? await installMonitor.createInstallRecord({ accountId: account.id, instanceLabel: preliminaryLabel, telegramChatId: context.telegramChatId ?? null, telegramUserId: context.telegramUserId ?? null, metadata: { version: version.id, lang: lang.id, firewall: firewallStatus } }) : null;
+    const install = installMonitor ? await installMonitor.createInstallRecord({ accountId: account.id, instanceLabel: preliminaryLabel, telegramChatId: context.telegramChatId ?? null, telegramUserId: context.telegramUserId ?? null, metadata: { version: version.id, lang: lang.id, windows_username: windowsUsername, firewall: firewallStatus } }) : null;
     const payload = await this.buildCreatePayload(input, stackscriptId, token, adminPassword, windowsUsername, keepAdministratorFallback, tempRootPassword, context.requestId, version, lang, iso?.iso_url ?? "NOURL", install?.callbackToken ?? "", preliminaryLabel);
     try {
       const instance = await client.createInstance(payload, context.requestId);
-      if (this.installs && install) await this.installs.attachInstance(install.record.id, Number(instance.id), Array.isArray((instance as any).ipv4) ? (instance as any).ipv4[0] : null, { version: version.id, lang: lang.id, label: payload.label });
+      if (this.installs && install) await this.installs.attachInstance(install.record.id, Number(instance.id), Array.isArray((instance as any).ipv4) ? (instance as any).ipv4[0] : null, { version: version.id, lang: lang.id, label: payload.label, windows_username: windowsUsername });
       await this.recordAudit(context, "windows_instance.create", "instance", String(instance.id || payload.label), "critical", "success", null, { account_id: account.id, region: payload.region, type: payload.type, stackscript_id: stackscriptId, version: version.id, lang: lang.id, iso_resolved: Boolean(iso) });
       return { account: publicAccount, instance, stackscript_id: stackscriptId, windows_version: version.id, windows_version_label: version.label, windows_lang: lang.id, windows_username: windowsUsername, administrator_password: adminPassword, temp_root_password: tempRootPassword };
     } catch (error) {

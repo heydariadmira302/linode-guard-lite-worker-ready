@@ -79,7 +79,12 @@ export class JobRunnerService {
     }
     if (jobName === "checkin_monitor") return await this.runCheckinMonitor(now);
     if (jobName === "login_monitor") return await this.runLoginMonitor();
-    if (jobName === "windows_install_timeout") return await new WindowsInstallMonitorService(this.env).notifyStaleInstalls(now, 45);
+    if (jobName === "windows_install_timeout") {
+      const monitor = new WindowsInstallMonitorService(this.env);
+      const timeout = await monitor.notifyStaleInstalls(now, 45);
+      const rdp = await monitor.checkRdpReadiness(now, 20);
+      return { timeout, rdp };
+    }
     if (jobName === "message_cleanup") return await this.runMessageCleanup(now);
     if (jobName === "audit_log_cleanup") return await this.runAuditLogCleanup(now);
     if (jobName === "security_event_cleanup") return await this.runSecurityEventCleanup(now);
