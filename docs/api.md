@@ -749,7 +749,7 @@ Windows 创建采用 API-first / Service-first 的私有 StackScript 路线。Te
 
 ### POST /api/v1/accounts/:account_id/windows/instances
 
-请求体支持 `version` / `lang` / `label` / `administrator_password` / `windows_username`。`version=2k25-cn` / `2k25-en` 时会分别传入 `INSTALL_WINDOWS_VERSION=2k25-cn|2k25-en`、`WINDOWS_LANG=zh-cn|en-us` 和 Windows Server 2025 镜像名；`version=2k25-cn-dd` / `w11-cn-dd` 时会传入对应 `INSTALL_WINDOWS_VERSION`、`WINDOWS_LANG=zh-cn` 和 `DD_IMAGE_URL`。默认参考 `https://dl.lamp.sh/vhd/zh-cn_win2025.xz` / `https://dl.lamp.sh/vhd/zh-cn_windows11_22h2.xz`，部署者可用 Worker 环境变量 `WINDOWS_2025_CN_DD_IMAGE_URL` / `WINDOWS_11_CN_DD_IMAGE_URL` 覆盖，覆盖值必须为 HTTPS；`version=w11-ltsc-2024` 时，Service 会自动解析官方 ISO 并传入 StackScript：`INSTALL_WINDOWS_VERSION=w11`、`WINDOWS_IMAGE_NAME`、`WINDOWS_LANG`、`W11_ISO_URL`。解析失败或 DD URL 非 HTTPS 时不创建实例。
+请求体支持 `version` / `lang` / `label` / `administrator_password` / `windows_username`。`version=2k25-cn` / `2k25-en` 时会分别传入 `INSTALL_WINDOWS_VERSION=2k25-cn|2k25-en`、`WINDOWS_LANG=zh-cn|en-us` 和 Windows Server 2025 镜像名；`version=2k25-cn-dd` / `w11-cn-dd` 时会传入对应 `INSTALL_WINDOWS_VERSION`、`WINDOWS_LANG=zh-cn` 和 `DD_IMAGE_URL`。默认使用内置镜像 `https://dl.lamp.sh/vhd/zh-cn_win2025.xz` / `https://dl.lamp.sh/vhd/zh-cn_windows11_22h2.xz`；`version=w11-ltsc-2024` 时，Service 会自动解析官方 ISO 并传入 StackScript：`INSTALL_WINDOWS_VERSION=w11`、`WINDOWS_IMAGE_NAME`、`WINDOWS_LANG`、`W11_ISO_URL`。解析失败时不创建实例。
 
 创建 Windows Server 2022。请求体示例：
 

@@ -190,11 +190,9 @@ export class WindowsInstanceService {
       "2k25-cn-dd": "https://dl.lamp.sh/vhd/zh-cn_win2025.xz",
       "w11-cn-dd": "https://dl.lamp.sh/vhd/zh-cn_windows11_22h2.xz"
     };
-    const envKey = versionId === "2k25-cn-dd" ? "WINDOWS_2025_CN_DD_IMAGE_URL" : versionId === "w11-cn-dd" ? "WINDOWS_11_CN_DD_IMAGE_URL" : null;
-    if (!envKey) return "";
-    const override = typeof this.env[envKey] === "string" ? this.env[envKey]?.trim() : "";
-    const url = override || defaults[versionId] || "";
-    if (!/^https:\/\//i.test(url)) throw new AppError(ErrorCode.CONFIG_MISSING, `${envKey} must be an https URL`, requestId, 500);
+    const url = defaults[versionId] || "";
+    if (!url) return "";
+    if (!/^https:\/\//i.test(url)) throw new AppError(ErrorCode.CONFIG_MISSING, `Built-in DD image URL for ${versionId} must be an https URL`, requestId, 500);
     return url;
   }
 
