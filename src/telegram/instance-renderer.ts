@@ -228,7 +228,7 @@ export function renderWindowsVersionText(): string {
     "步骤 1/6：选择 Windows 版本",
     "",
     "稳定路线：Windows Server 2022 Evaluation。",
-    "新增路线：Windows Server 2025 简体中文版 / English。",
+    "新增路线：Windows Server 2025，可在下一步选择简体中文 / English。",
     "实验路线：Windows 11 Enterprise LTSC 2024，Bot 会自动查找官方 ISO，不需要你输入 ISO URL。"
   ].join("\n");
 }
@@ -236,29 +236,29 @@ export function renderWindowsVersionText(): string {
 export function renderWindowsVersionKeyboard(accountId: number): TelegramInlineKeyboardMarkup {
   return { inline_keyboard: [
     [{ text: "🪟 Windows Server 2022", callback_data: `windows:create:version:${accountId}:2k22` }],
-    [{ text: "🇨🇳 Windows Server 2025 简体中文", callback_data: `windows:create:version:${accountId}:2k25-cn` }],
-    [{ text: "🇺🇸 Windows Server 2025 English", callback_data: `windows:create:version:${accountId}:2k25-en` }],
+    [{ text: "🪟 Windows Server 2025", callback_data: `windows:create:version:${accountId}:2k25` }],
     [{ text: "🧪 Windows 11 LTSC 2024", callback_data: `windows:create:version:${accountId}:w11-ltsc-2024` }],
     [{ text: "⬅️ 上一步：账号", callback_data: "windows:create" }],
     [{ text: "❌ 取消", callback_data: "menu:instances" }]
   ] };
 }
 
-export function renderWindowsLanguageText(): string {
+export function renderWindowsLanguageText(version = "w11-ltsc-2024"): string {
+  const is2025 = version === "2k25";
   return [
     "🪟 创建 Windows 服务器",
     "━━━━━━━━━━━━",
-    "步骤 2/6：选择 Windows 11 语言",
+    `步骤 2/6：选择 ${is2025 ? "Windows Server 2025" : "Windows 11"} 语言`,
     "",
-    "Bot 会自动查找官方 Windows 11 ISO，不需要你输入 ISO URL。",
-    "解析失败时会提示稍后重试，不会创建收费 Linode。"
+    is2025 ? "Windows Server 2025 会使用 Microsoft 官方 Evaluation ISO。" : "Bot 会自动查找官方 Windows 11 ISO，不需要你输入 ISO URL。",
+    is2025 ? "选择语言后继续设置密码、用户名、地区和套餐。" : "解析失败时会提示稍后重试，不会创建收费 Linode。"
   ].join("\n");
 }
 
-export function renderWindowsLanguageKeyboard(accountId: number): TelegramInlineKeyboardMarkup {
+export function renderWindowsLanguageKeyboard(accountId: number, version = "w11-ltsc-2024"): TelegramInlineKeyboardMarkup {
   return { inline_keyboard: [
-    [{ text: "🇨🇳 简体中文 zh-cn", callback_data: `windows:create:lang:${accountId}:zh-cn` }],
-    [{ text: "🇺🇸 English en-us", callback_data: `windows:create:lang:${accountId}:en-us` }],
+    [{ text: "🇨🇳 简体中文 zh-cn", callback_data: `windows:create:lang:${accountId}:${version}:zh-cn` }],
+    [{ text: "🇺🇸 English en-us", callback_data: `windows:create:lang:${accountId}:${version}:en-us` }],
     [{ text: "⬅️ 上一步：版本", callback_data: `windows:create:account:${accountId}` }],
     [{ text: "❌ 取消", callback_data: "menu:instances" }]
   ] };
@@ -338,7 +338,7 @@ export function renderWindowsUsernameModeText(state: Record<string, unknown>): s
     "步骤：设置登录用户名",
     "",
     `Windows：${state.windows_version_label ?? "Windows Server 2022 Evaluation"}`,
-    state.windows_version === "w11-ltsc-2024" || state.windows_version === "2k25-cn" || state.windows_version === "2k25-en" ? `语言：${state.windows_lang ?? (state.windows_version === "2k25-en" ? "en-us" : "zh-cn")}` : null,
+    state.windows_version === "w11-ltsc-2024" || state.windows_version === "2k25" || state.windows_version === "2k25-cn" || state.windows_version === "2k25-en" ? `语言：${state.windows_lang ?? (state.windows_version === "2k25-en" ? "en-us" : "zh-cn")}` : null,
     "",
     "推荐继续使用 Administrator，兼容性最好。",
     "如果自定义用户名，会额外创建一个管理员用户，同时保留 Administrator 兜底。",
@@ -376,7 +376,7 @@ export function renderWindowsCredentialModeText(state: Record<string, unknown>):
     "步骤：设置登录凭据",
     "",
     `Windows：${state.windows_version_label ?? "Windows Server 2022 Evaluation"}`,
-    state.windows_version === "w11-ltsc-2024" || state.windows_version === "2k25-cn" || state.windows_version === "2k25-en" ? `语言：${state.windows_lang ?? (state.windows_version === "2k25-en" ? "en-us" : "zh-cn")}` : null,
+    state.windows_version === "w11-ltsc-2024" || state.windows_version === "2k25" || state.windows_version === "2k25-cn" || state.windows_version === "2k25-en" ? `语言：${state.windows_lang ?? (state.windows_version === "2k25-en" ? "en-us" : "zh-cn")}` : null,
     "",
     "推荐使用自动生成强密码，安全且不容易因为特殊字符转义导致安装后无法登录。",
     "如果选择自己输入，Bot 会尝试删除你发送的密码消息，但 Telegram 聊天里仍可能短暂出现。"
@@ -442,7 +442,7 @@ export function renderWindowsLabelModeText(state: Record<string, unknown>): stri
     "步骤：设置服务器名称",
     "",
     `Windows：${state.windows_version_label ?? "Windows Server 2022 Evaluation"}`,
-    state.windows_version === "w11-ltsc-2024" || state.windows_version === "2k25-cn" || state.windows_version === "2k25-en" ? `语言：${state.windows_lang ?? (state.windows_version === "2k25-en" ? "en-us" : "zh-cn")}` : null,
+    state.windows_version === "w11-ltsc-2024" || state.windows_version === "2k25" || state.windows_version === "2k25-cn" || state.windows_version === "2k25-en" ? `语言：${state.windows_lang ?? (state.windows_version === "2k25-en" ? "en-us" : "zh-cn")}` : null,
     "",
     "这个名称会作为 Linode 实例名称。",
     "限制：英文、数字、点、下划线、短横线，3-64 位；不支持中文。"
@@ -477,7 +477,7 @@ export function renderWindowsLabelPromptKeyboard(accountId: number): TelegramInl
 
 export function renderWindowsCreateTypeText(state: Record<string, unknown>): string {
   const isW11 = state.windows_version === "w11-ltsc-2024";
-  const is2025 = state.windows_version === "2k25-cn" || state.windows_version === "2k25-en";
+  const is2025 = state.windows_version === "2k25" || state.windows_version === "2k25-cn" || state.windows_version === "2k25-en";
   return [
     "🪟 创建 Windows 服务器",
     "━━━━━━━━━━━━",
@@ -493,7 +493,7 @@ export function renderWindowsCreateTypeText(state: Record<string, unknown>): str
 
 export function renderWindowsCreateFirewallText(state: Record<string, unknown>): string {
   const isW11 = state.windows_version === "w11-ltsc-2024";
-  const is2025 = state.windows_version === "2k25-cn" || state.windows_version === "2k25-en";
+  const is2025 = state.windows_version === "2k25" || state.windows_version === "2k25-cn" || state.windows_version === "2k25-en";
   return [
     "🪟 创建 Windows 服务器",
     "━━━━━━━━━━━━",
@@ -508,7 +508,7 @@ export function renderWindowsCreateFirewallText(state: Record<string, unknown>):
 
 export function renderWindowsCreateConfirmText(account: PublicAccount, state: Record<string, unknown>): string {
   const isW11 = state.windows_version === "w11-ltsc-2024";
-  const is2025 = state.windows_version === "2k25-cn" || state.windows_version === "2k25-en";
+  const is2025 = state.windows_version === "2k25" || state.windows_version === "2k25-cn" || state.windows_version === "2k25-en";
   return [
     "🪟 创建 Windows 服务器",
     "━━━━━━━━━━━━",
@@ -569,8 +569,8 @@ export function renderWindowsCreatedText(result: { account: PublicAccount; insta
     "⚠️ 再提醒一次：请现在保存密码，这条消息之后不会提供找回入口。",
     "",
     `Windows：${result.windows_version_label ?? "Windows Server 2022 Evaluation"}`,
-    result.windows_version === "w11-ltsc-2024" || result.windows_version === "2k25-cn" || result.windows_version === "2k25-en" ? `语言：${result.windows_lang}` : null,
-    result.windows_version === "w11-ltsc-2024" ? "预计安装耗时：20-40 分钟，中途重启属于正常现象。" : (result.windows_version === "2k25-cn" || result.windows_version === "2k25-en") ? "预计安装耗时：20-35 分钟，中途重启属于正常现象。" : "预计安装耗时：15-30 分钟，中途重启属于正常现象。",
+    result.windows_version === "w11-ltsc-2024" || result.windows_version === "2k25" || result.windows_version === "2k25-cn" || result.windows_version === "2k25-en" ? `语言：${result.windows_lang}` : null,
+    result.windows_version === "w11-ltsc-2024" ? "预计安装耗时：20-40 分钟，中途重启属于正常现象。" : (result.windows_version === "2k25" || result.windows_version === "2k25-cn" || result.windows_version === "2k25-en") ? "预计安装耗时：20-35 分钟，中途重启属于正常现象。" : "预计安装耗时：15-30 分钟，中途重启属于正常现象。",
     "如果 30 分钟后仍无法 RDP，需要进 Linode LISH/控制台查看 StackScript 日志。"
   ].join("\n");
 }

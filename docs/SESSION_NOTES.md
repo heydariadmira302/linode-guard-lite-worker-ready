@@ -572,3 +572,10 @@ npm test
 - 创建 Windows 实例时生成一次性安装完成 callback token，只保存 hash；StackScript data 增加 `INSTALL_CALLBACK_URL` / `INSTALL_CALLBACK_TOKEN`。`PUBLIC_BASE_URL` 配置后会生成 `/api/v1/windows/install-callback` 完整地址。
 - StackScript 在 Windows 首次登录命令里启用 RDP 后调用回调接口；回调成功后 Bot 主动发送“Windows 安装完成，可以尝试远程桌面登录”，不重复发送密码。
 - 新增 `tests/phase22-windows-install-callback.test.ts`，完整验证回调 token、状态更新、Telegram 通知和 token 不泄露。验证通过：`npm run typecheck`、`npm test`（25 files / 132 tests）、`npm run build:upload`。
+
+## 2026-06-02 Windows Server 2025 语言选择与操作通知体验
+
+- Telegram Windows 创建流程调整：Windows Server 2025 不再拆成「简体中文 / English」两个版本按钮；改为先选择「Windows Server 2025」，再像 Windows 11 一样选择语言 `zh-cn` / `en-us`。
+- API 保持旧 `2k25-cn` / `2k25-en` 输入兼容，内部归一到 `2k25`；创建时根据语言继续传递 StackScript 分支 `2k25-cn` / `2k25-en`，避免中文/英文 ISO 路线混淆。
+- 单台服务器开机 / 关机 / 重启 Telegram 操作结果改为主动发送新消息通知，不再要求用户回到原页面查找结果。当前通知表达的是 Linode API 已接受或失败；最终运行状态仍以刷新服务器详情为准。
+- 验证通过：`npm run typecheck`；`npm test`（25 个测试文件，133 个测试全部通过）；`npm run build:upload`。

@@ -1861,13 +1861,13 @@ export async function routeTelegramCallback(
   }
 
 
-  const windowsVersionMatch = update.data.match(/^windows:create:version:(\d+):(2k22|2k25-cn|2k25-en|w11-ltsc-2024)$/);
+  const windowsVersionMatch = update.data.match(/^windows:create:version:(\d+):(2k22|2k25|2k25-cn|2k25-en|w11-ltsc-2024)$/);
   if (windowsVersionMatch && env?.DB && sessions) {
     try {
       const accountId = Number(windowsVersionMatch[1]);
       const version = windowsVersionMatch[2];
-      if (version === "w11-ltsc-2024") {
-        return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsLanguageText(), reply_markup: renderWindowsLanguageKeyboard(accountId) });
+      if (version === "w11-ltsc-2024" || version === "2k25") {
+        return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsLanguageText(version), reply_markup: renderWindowsLanguageKeyboard(accountId, version) });
       }
       const lang = version === "2k25-cn" ? "zh-cn" : "en-us";
       const options = await new WindowsInstanceService(env).getCreateOptions(accountId, requestId, { version: version as any, lang: lang as any });
@@ -1876,14 +1876,15 @@ export async function routeTelegramCallback(
     } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
   }
 
-  const windowsLangMatch = update.data.match(/^windows:create:lang:(\d+):(zh-cn|en-us)$/);
+  const windowsLangMatch = update.data.match(/^windows:create:lang:(\d+):(?:(2k25|w11-ltsc-2024):)?(zh-cn|en-us)$/);
   if (windowsLangMatch && env?.DB && sessions) {
     try {
       const accountId = Number(windowsLangMatch[1]);
-      const lang = windowsLangMatch[2] as "zh-cn" | "en-us";
-      const options = await new WindowsInstanceService(env).getCreateOptions(accountId, requestId, { version: "w11-ltsc-2024", lang });
-      await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_windows_instance", data: { account_id: accountId, options, state: { windows_version: "w11-ltsc-2024", windows_version_label: options.version.label, windows_lang: lang } } });
-      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsCredentialModeText({ windows_version: "w11-ltsc-2024", windows_version_label: options.version.label, windows_lang: lang }), reply_markup: renderWindowsCredentialModeKeyboard(accountId, "w11-ltsc-2024") });
+      const version = (windowsLangMatch[2] ?? "w11-ltsc-2024") as "2k25" | "w11-ltsc-2024";
+      const lang = windowsLangMatch[3] as "zh-cn" | "en-us";
+      const options = await new WindowsInstanceService(env).getCreateOptions(accountId, requestId, { version, lang });
+      await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_windows_instance", data: { account_id: accountId, options, state: { windows_version: version, windows_version_label: options.version.label, windows_lang: lang } } });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsCredentialModeText({ windows_version: version, windows_version_label: options.version.label, windows_lang: lang }), reply_markup: renderWindowsCredentialModeKeyboard(accountId, version) });
     } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
   }
 
@@ -2163,12 +2164,8 @@ StackScript ID：${status.stackscript_id}
   if (bootMatch && env) {
     try {
       const data = await new InstanceService(env).bootInstance(Number(bootMatch[1]), Number(bootMatch[2]), { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
-      return client.editMessage({
-        chat_id: update.chatId,
-        message_id: update.messageId,
-        text: renderInstanceOperationSuccessText("boot", data.account, data.instance_id, requestId),
-        reply_markup: renderInstanceOperationResultKeyboard(data.account.id, data.instance_id, bootMatch[3])
-      });
+      const text = renderInstanceOperationSuccessText("boot", data.account, data.instance_id, requestId);
+      return client.sendMessage({ chat_id: update.chatId, text, reply_markup: renderInstanceOperationResultKeyboard(data.account.id, data.instance_id, bootMatch[3]) });
     } catch (error) {
       return renderTelegramCallbackError(update, client, error, requestId);
     }
@@ -2196,12 +2193,8 @@ StackScript ID：${status.stackscript_id}
       const cooldown = await acquireDangerousActionCooldown(env, update.fromId, `instance:shutdown:${shutdownMatch[1]}:${shutdownMatch[2]}`, requestId, "shutdown");
       if (!cooldown.acquired) return renderTelegramCooldownMessage(update, client, cooldown);
       const data = await new InstanceService(env).shutdownInstance(Number(shutdownMatch[1]), Number(shutdownMatch[2]), { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
-      return client.editMessage({
-        chat_id: update.chatId,
-        message_id: update.messageId,
-        text: renderInstanceOperationSuccessText("shutdown", data.account, data.instance_id, requestId),
-        reply_markup: renderInstanceOperationResultKeyboard(data.account.id, data.instance_id, shutdownMatch[3])
-      });
+      const text = renderInstanceOperationSuccessText("shutdown", data.account, data.instance_id, requestId);
+      return client.sendMessage({ chat_id: update.chatId, text, reply_markup: renderInstanceOperationResultKeyboard(data.account.id, data.instance_id, shutdownMatch[3]) });
     } catch (error) {
       if (isProtectedInstanceError(error)) {
         const suffix = shutdownMatch[3] ? `:${shutdownMatch[3]}` : "";
@@ -2233,12 +2226,8 @@ StackScript ID：${status.stackscript_id}
       const cooldown = await acquireDangerousActionCooldown(env, update.fromId, `instance:reboot:${rebootMatch[1]}:${rebootMatch[2]}`, requestId, "reboot");
       if (!cooldown.acquired) return renderTelegramCooldownMessage(update, client, cooldown);
       const data = await new InstanceService(env).rebootInstance(Number(rebootMatch[1]), Number(rebootMatch[2]), { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
-      return client.editMessage({
-        chat_id: update.chatId,
-        message_id: update.messageId,
-        text: renderInstanceOperationSuccessText("reboot", data.account, data.instance_id, requestId),
-        reply_markup: renderInstanceOperationResultKeyboard(data.account.id, data.instance_id, rebootMatch[3])
-      });
+      const text = renderInstanceOperationSuccessText("reboot", data.account, data.instance_id, requestId);
+      return client.sendMessage({ chat_id: update.chatId, text, reply_markup: renderInstanceOperationResultKeyboard(data.account.id, data.instance_id, rebootMatch[3]) });
     } catch (error) {
       return renderTelegramCallbackError(update, client, error, requestId);
     }

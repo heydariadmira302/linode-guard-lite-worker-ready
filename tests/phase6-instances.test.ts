@@ -279,9 +279,8 @@ describe("Phase 6 Linode instance read-only management", () => {
     const response = await worker.fetch(apiRequest("/api/v1/windows/versions"), env as never);
     const body = await response.json() as { data: { versions: Array<{ id: string; label: string; requires_iso_resolve: boolean }>; languages: Array<{ id: string; windows_locale: string }> } };
     expect(response.status).toBe(200);
-    expect(body.data.versions.map((item) => item.id)).toEqual(["2k22", "2k25-cn", "2k25-en", "w11-ltsc-2024"]);
-    expect(body.data.versions.find((item) => item.id === "2k25-cn")?.label).toContain("2025");
-    expect(body.data.versions.find((item) => item.id === "2k25-en")?.label).toContain("English");
+    expect(body.data.versions.map((item) => item.id)).toEqual(["2k22", "2k25", "w11-ltsc-2024"]);
+    expect(body.data.versions.find((item) => item.id === "2k25")?.label).toContain("2025");
     expect(body.data.versions.find((item) => item.id === "w11-ltsc-2024")?.requires_iso_resolve).toBe(true);
     expect(body.data.languages.map((item) => ({ id: item.id, windows_locale: item.windows_locale }))).toEqual(expect.arrayContaining([{ id: "zh-cn", windows_locale: "zh-CN" }, { id: "en-us", windows_locale: "en-US" }]));
   });
@@ -357,8 +356,7 @@ describe("Phase 6 Linode instance read-only management", () => {
       expect(startFlow.status).toBe(200);
       const versionBody = await startFlow.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
       expect(versionBody.data.telegram.payload.text).toContain("选择 Windows 版本");
-      expect(versionBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🇨🇳 Windows Server 2025 简体中文", callback_data: "windows:create:version:1:2k25-cn" });
-      expect(versionBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🇺🇸 Windows Server 2025 English", callback_data: "windows:create:version:1:2k25-en" });
+      expect(versionBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🪟 Windows Server 2025", callback_data: "windows:create:version:1:2k25" });
       expect(versionBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🧪 Windows 11 LTSC 2024", callback_data: "windows:create:version:1:w11-ltsc-2024" });
       const credentialFlow = await worker.fetch(telegramRequest(callbackUpdate("windows:create:version:1:2k22")), env as never);
       const credentialBody = await credentialFlow.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
@@ -451,7 +449,7 @@ describe("Phase 6 Linode instance read-only management", () => {
       const versionFlow = await worker.fetch(telegramRequest(callbackUpdate("windows:create:version:1:w11-ltsc-2024")), env as never);
       const versionBody = await versionFlow.json() as { data: { telegram: { payload: { text: string } } } };
       expect(versionBody.data.telegram.payload.text).toContain("不需要你输入 ISO URL");
-      const credFlow = await worker.fetch(telegramRequest(callbackUpdate("windows:create:lang:1:zh-cn")), env as never);
+      const credFlow = await worker.fetch(telegramRequest(callbackUpdate("windows:create:lang:1:w11-ltsc-2024:zh-cn")), env as never);
       const credBody = await credFlow.json() as { data: { telegram: { payload: { text: string } } } };
       expect(credBody.data.telegram.payload.text).toContain("设置登录凭据");
       await worker.fetch(telegramRequest(callbackUpdate("windows:create:cred:1:custom")), env as never);
@@ -513,24 +511,25 @@ describe("Phase 6 Linode instance read-only management", () => {
       throw new Error(`unexpected fetch ${url}`);
     });
     try {
-      const optionsResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/windows/create-options?version=2k25-cn"), env as never);
+      const optionsResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/windows/create-options?version=2k25&lang=zh-cn"), env as never);
       const optionsBody = await optionsResponse.json() as { data: { version: { id: string }; lang: { id: string }; regions: Array<{ id: string }>; types: Array<{ id: string }> } };
       expect(optionsResponse.status).toBe(200);
-      expect(optionsBody.data.version.id).toBe("2k25-cn");
+      expect(optionsBody.data.version.id).toBe("2k25");
       expect(optionsBody.data.lang.id).toBe("zh-cn");
       expect(optionsBody.data.regions.map((item) => item.id)).toEqual(["jp-osa"]);
       expect(optionsBody.data.types.map((item) => item.id)).toEqual(["g6-standard-2"]);
 
-      const createResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/windows/instances", { method: "POST", body: JSON.stringify({ region: "jp-osa", type: "g6-standard-2", version: "2k25-cn", administrator_password: "MyStrongPass9!" }) }), env as never);
+      const createResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/windows/instances", { method: "POST", body: JSON.stringify({ region: "jp-osa", type: "g6-standard-2", version: "2k25", lang: "zh-cn", administrator_password: "MyStrongPass9!" }) }), env as never);
       const createBody = await createResponse.json() as { data: { windows_version: string; windows_lang: string } };
       expect(createResponse.status).toBe(200);
-      expect(createBody.data.windows_version).toBe("2k25-cn");
+      expect(createBody.data.windows_version).toBe("2k25");
       expect(createBody.data.windows_lang).toBe("zh-cn");
 
-      const flow = await worker.fetch(telegramRequest(callbackUpdate("windows:create:version:1:2k25-cn")), env as never);
-      const flowBody = await flow.json() as { data: { telegram: { payload: { text: string } } } };
-      expect(flowBody.data.telegram.payload.text).toContain("Windows Server 2025 简体中文版");
-      expect(flowBody.data.telegram.payload.text).toContain("zh-cn");
+      const flow = await worker.fetch(telegramRequest(callbackUpdate("windows:create:version:1:2k25")), env as never);
+      const flowBody = await flow.json() as { data: { telegram: { payload: any } } };
+      expect(flowBody.data.telegram.payload.text).toContain("Windows Server 2025");
+      expect(flowBody.data.telegram.payload.text).toContain("选择 Windows Server 2025 语言");
+      expect(flowBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🇨🇳 简体中文 zh-cn", callback_data: "windows:create:lang:1:2k25:zh-cn" });
     } finally {
       fetchMock.mockRestore();
     }
@@ -564,21 +563,22 @@ describe("Phase 6 Linode instance read-only management", () => {
       throw new Error(`unexpected fetch ${url}`);
     });
     try {
-      const optionsResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/windows/create-options?version=2k25-en"), env as never);
+      const optionsResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/windows/create-options?version=2k25&lang=en-us"), env as never);
       const optionsBody = await optionsResponse.json() as { data: { version: { id: string }; lang: { id: string } } };
       expect(optionsResponse.status).toBe(200);
-      expect(optionsBody.data.version.id).toBe("2k25-en");
+      expect(optionsBody.data.version.id).toBe("2k25");
       expect(optionsBody.data.lang.id).toBe("en-us");
 
-      const createResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/windows/instances", { method: "POST", body: JSON.stringify({ region: "jp-osa", type: "g6-standard-2", version: "2k25-en", administrator_password: "MyStrongPass9!" }) }), env as never);
+      const createResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/windows/instances", { method: "POST", body: JSON.stringify({ region: "jp-osa", type: "g6-standard-2", version: "2k25", lang: "en-us", administrator_password: "MyStrongPass9!" }) }), env as never);
       const createBody = await createResponse.json() as { data: { windows_version: string; windows_lang: string } };
       expect(createResponse.status).toBe(200);
-      expect(createBody.data.windows_version).toBe("2k25-en");
+      expect(createBody.data.windows_version).toBe("2k25");
       expect(createBody.data.windows_lang).toBe("en-us");
 
-      const flow = await worker.fetch(telegramRequest(callbackUpdate("windows:create:version:1:2k25-en")), env as never);
-      const flowBody = await flow.json() as { data: { telegram: { payload: { text: string } } } };
-      expect(flowBody.data.telegram.payload.text).toContain("Windows Server 2025 English");
+      const flow = await worker.fetch(telegramRequest(callbackUpdate("windows:create:lang:1:2k25:en-us")), env as never);
+      const flowBody = await flow.json() as { data: { telegram: { payload: any } } };
+      expect(flowBody.data.telegram.payload.text).toContain("设置登录凭据");
+      expect(flowBody.data.telegram.payload.text).toContain("en-us");
       expect(flowBody.data.telegram.payload.text).toContain("en-us");
     } finally {
       fetchMock.mockRestore();
