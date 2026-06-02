@@ -11,6 +11,7 @@ export interface Env {
   LOGIN_EVENT_RETENTION_DAYS?: string;
   CF_VERSION_METADATA?: WorkerVersionMetadata;
   PUBLIC_BASE_URL?: string;
+  WINDOWS_2025_CN_DD_IMAGE_URL?: string;
 }
 
 function hasValue(value: unknown): value is string {
