@@ -1861,7 +1861,7 @@ export async function routeTelegramCallback(
   }
 
 
-  const windowsVersionMatch = update.data.match(/^windows:create:version:(\d+):(2k22|2k25-cn|2k25-cn-dd|2k25-en|w11-ltsc-2024)$/);
+  const windowsVersionMatch = update.data.match(/^windows:create:version:(\d+):(2k22|2k25-cn|2k25-cn-dd|2k25-en|w11-ltsc-2024|w11-cn-dd)$/);
   if (windowsVersionMatch && env?.DB && sessions) {
     try {
       const accountId = Number(windowsVersionMatch[1]);

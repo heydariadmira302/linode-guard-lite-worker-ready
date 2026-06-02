@@ -279,7 +279,7 @@ describe("Phase 6 Linode instance read-only management", () => {
     const response = await worker.fetch(apiRequest("/api/v1/windows/versions"), env as never);
     const body = await response.json() as { data: { versions: Array<{ id: string; label: string; requires_iso_resolve: boolean }>; languages: Array<{ id: string; windows_locale: string }> } };
     expect(response.status).toBe(200);
-    expect(body.data.versions.map((item) => item.id)).toEqual(["2k22", "2k25-cn", "2k25-cn-dd", "2k25-en", "w11-ltsc-2024"]);
+    expect(body.data.versions.map((item) => item.id)).toEqual(["2k22", "2k25-cn", "2k25-cn-dd", "2k25-en", "w11-cn-dd", "w11-ltsc-2024"]);
     expect(body.data.versions.find((item) => item.id === "2k25-cn")?.label).toContain("2025");
     expect(body.data.versions.find((item) => item.id === "2k25-cn-dd")?.label).toContain("DD");
     expect(body.data.versions.find((item) => item.id === "2k25-en")?.label).toContain("English");
@@ -362,6 +362,7 @@ describe("Phase 6 Linode instance read-only management", () => {
       expect(versionBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "⚡ Windows Server 2025 中文 DD 快速安装", callback_data: "windows:create:version:1:2k25-cn-dd" });
       expect(versionBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🇺🇸 Windows Server 2025 English", callback_data: "windows:create:version:1:2k25-en" });
       expect(versionBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🧪 Windows 11 LTSC 2024", callback_data: "windows:create:version:1:w11-ltsc-2024" });
+      expect(versionBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "⚡ Windows 11 中文 DD 快速安装", callback_data: "windows:create:version:1:w11-cn-dd" });
       const credentialFlow = await worker.fetch(telegramRequest(callbackUpdate("windows:create:version:1:2k22")), env as never);
       const credentialBody = await credentialFlow.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
       expect(credentialBody.data.telegram.payload.text).toContain("设置登录凭据");
@@ -543,8 +544,8 @@ describe("Phase 6 Linode instance read-only management", () => {
     const db = new FakeD1Database();
     await addAccount(db, { id: 1, alias: "default", token: "token-default" });
     db.settings.set("windows_stackscript_id:1", JSON.stringify(2022));
-    const ddUrl = "https://example.com/windows-server-2025-zh-cn.raw.xz";
-    const env = { ...baseEnv, DB: db as unknown as D1Database, WINDOWS_2025_CN_DD_IMAGE_URL: ddUrl };
+    const ddUrl = "https://dl.lamp.sh/vhd/zh-cn_win2025.xz";
+    const env = { ...baseEnv, DB: db as unknown as D1Database };
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input);
       if (url.endsWith("/regions")) return new Response(JSON.stringify({ data: [{ id: "jp-osa", label: "Osaka", site_type: "core" }], page: 1, pages: 1 }), { status: 200 });
@@ -591,24 +592,37 @@ describe("Phase 6 Linode instance read-only management", () => {
     }
   });
 
-  it("rejects Windows Server 2025 DD fast install when DD image URL is not configured", async () => {
+  it("creates Windows 11 Simplified Chinese DD fast install with built-in image URL", async () => {
     const db = new FakeD1Database();
     await addAccount(db, { id: 1, alias: "default", token: "token-default" });
     db.settings.set("windows_stackscript_id:1", JSON.stringify(2022));
     const env = { ...baseEnv, DB: db as unknown as D1Database };
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input);
-      if (url.endsWith("/linode/stackscripts/2022") && init?.method === "PUT") return new Response(JSON.stringify({ id: 2022, label: "stack" }), { status: 200 });
       if (url.endsWith("/regions")) return new Response(JSON.stringify({ data: [{ id: "jp-osa", label: "Osaka", site_type: "core" }], page: 1, pages: 1 }), { status: 200 });
       if (url.endsWith("/linode/types")) return new Response(JSON.stringify({ data: [{ id: "g6-standard-2", label: "Linode 4GB", memory: 4096, disk: 81920, price: { monthly: 24 } }], page: 1, pages: 1 }), { status: 200 });
       if (url.endsWith("/networking/firewalls")) return new Response(JSON.stringify({ data: [], page: 1, pages: 1 }), { status: 200 });
+      if (url.endsWith("/linode/stackscripts/2022") && init?.method === "PUT") {
+        const payload = JSON.parse(String(init.body));
+        expect(payload.script).toContain("w11-cn-dd");
+        expect(payload.script).toContain("DD fast install mode started for Windows 11");
+        return new Response(JSON.stringify({ id: 2022, label: payload.label }), { status: 200 });
+      }
+      if (url.endsWith("/linode/instances") && init?.method === "POST") {
+        const payload = JSON.parse(String(init.body));
+        expect(payload.stackscript_data.INSTALL_WINDOWS_VERSION).toBe("w11-cn-dd");
+        expect(payload.stackscript_data.WINDOWS_LANG).toBe("zh-cn");
+        expect(payload.stackscript_data.DD_IMAGE_URL).toBe("https://dl.lamp.sh/vhd/zh-cn_windows11_22h2.xz");
+        return new Response(JSON.stringify({ id: 92528, label: payload.label, status: "provisioning", region: payload.region, type: payload.type, image: payload.image, ipv4: ["192.0.2.28"] }), { status: 200 });
+      }
       throw new Error(`unexpected fetch ${url}`);
     });
     try {
-      const response = await worker.fetch(apiRequest("/api/v1/accounts/1/windows/instances", { method: "POST", body: JSON.stringify({ region: "jp-osa", type: "g6-standard-2", version: "2k25-cn-dd", administrator_password: "MyStrongPass9!" }) }), env as never);
-      const body = await response.json() as { error: { message: string } };
-      expect(response.status).toBe(500);
-      expect(body.error.message).toContain("WINDOWS_2025_CN_DD_IMAGE_URL");
+      const response = await worker.fetch(apiRequest("/api/v1/accounts/1/windows/instances", { method: "POST", body: JSON.stringify({ region: "jp-osa", type: "g6-standard-2", version: "w11-cn-dd", administrator_password: "MyStrongPass9!" }) }), env as never);
+      const body = await response.json() as { data: { windows_version: string; windows_lang: string } };
+      expect(response.status).toBe(200);
+      expect(body.data.windows_version).toBe("w11-cn-dd");
+      expect(body.data.windows_lang).toBe("zh-cn");
     } finally {
       fetchMock.mockRestore();
     }

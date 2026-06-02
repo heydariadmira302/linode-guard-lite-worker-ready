@@ -590,11 +590,19 @@ npm test
 - 新增 release blocker 测试，防止 RDP readiness job interval 被误改回 5 分钟。
 - 验证通过：`npm run typecheck`；`npm test`（25 个测试文件，135 个测试全部通过）；`npm run build:upload`。
 
-## 2026-06-02 Windows Server 2025 简体中文 DD 快速安装实验路线
+## 2026-06-02 Windows Server 2025 / Windows 11 简体中文 DD 快速安装实验路线
 
 - 参考 bin456789/reinstall 与 leitbogioro/Tools 的 DD 思路：先进入中间 Linux/StackScript 阶段，下载 DD 镜像，解压写入目标 raw disk，挂载 Windows 分区并注入首次启动脚本，再重启进入 Windows。
-- 新增 Windows 版本 `2k25-cn-dd`：`Windows Server 2025 简体中文 DD 快速安装（实验）`，预计 5-15 分钟。
-- 不内置第三方 DD 镜像 URL；部署者必须配置 Worker 环境变量 `WINDOWS_2025_CN_DD_IMAGE_URL`，且必须为 HTTPS。未配置时创建会失败，不会创建 Linode 实例。
+- 新增 Windows 版本 `2k25-cn-dd` 与 `w11-cn-dd`：Windows Server 2025 / Windows 11 简体中文 DD 快速安装（实验），预计 5-15 分钟。
+- Server 2025 DD 默认使用 `https://dl.lamp.sh/vhd/zh-cn_win2025.xz`；Win11 DD 默认使用 `https://dl.lamp.sh/vhd/zh-cn_windows11_22h2.xz`。部署者可配置 Worker 环境变量 `WINDOWS_2025_CN_DD_IMAGE_URL` / `WINDOWS_11_CN_DD_IMAGE_URL` 覆盖，覆盖值必须为 HTTPS。
 - StackScript 新增 `DD_IMAGE_URL` UDF 和 `2k25-cn-dd` 分支：下载 `.xz/.gz/.zst/raw` 镜像流式写入 `/dev/sdb`，挂载 Windows 分区，向 Startup 与 `Windows/Setup/Scripts/SetupComplete.cmd` 注入 `LinodeGuardLiteSetup.bat`，用于设置 Administrator/自定义用户密码、启用 RDP、扩容系统分区并发送安装完成回调。
 - 当前 DD 路线要求镜像本身可启动且包含 Linode 环境所需磁盘/网卡驱动；后续实机验证后再考虑离线注册表/SAM、驱动注入或自建镜像发布流程。
 - 验证通过：`npm run typecheck`；`npm test`（25 个测试文件，137 个测试全部通过）；`npm run build:upload`。
+
+## 2026-06-02 Windows 11 DD 快速安装与内置默认镜像
+
+- 用户反馈：DD 路线应参考 leitbogioro/Tools 的内置镜像源，不应强制部署者自己找 URL。
+- Server 2025 DD 改为默认使用 `https://dl.lamp.sh/vhd/zh-cn_win2025.xz`，仍可用 `WINDOWS_2025_CN_DD_IMAGE_URL` 覆盖。
+- 新增 Win11 DD 版本 `w11-cn-dd`：默认使用 `https://dl.lamp.sh/vhd/zh-cn_windows11_22h2.xz`，可用 `WINDOWS_11_CN_DD_IMAGE_URL` 覆盖。
+- StackScript DD 分支支持 `2k25-cn-dd` 与 `w11-cn-dd`，两者都走下载 DD 镜像、写盘、挂载 Windows 分区、注入首次启动脚本、RDP 回调与每分钟 RDP readiness 检测。
+- 验证通过：`npm run typecheck`；`npm test -- tests/phase6-instances.test.ts`。

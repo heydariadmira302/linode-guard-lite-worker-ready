@@ -229,7 +229,7 @@ export function renderWindowsVersionText(): string {
     "",
     "稳定路线：Windows Server 2022 Evaluation。",
     "新增路线：Windows Server 2025 简体中文版 / English。",
-    "实验快速路线：Windows Server 2025 简体中文 DD，需要部署者配置可信 DD 镜像 URL。",
+    "实验快速路线：Windows Server 2025 / Windows 11 简体中文 DD，默认参考 dl.lamp.sh/vhd 内置镜像源。",
     "实验路线：Windows 11 Enterprise LTSC 2024，Bot 会自动查找官方 ISO，不需要你输入 ISO URL。"
   ].join("\n");
 }
@@ -241,6 +241,7 @@ export function renderWindowsVersionKeyboard(accountId: number): TelegramInlineK
     [{ text: "⚡ Windows Server 2025 中文 DD 快速安装", callback_data: `windows:create:version:${accountId}:2k25-cn-dd` }],
     [{ text: "🇺🇸 Windows Server 2025 English", callback_data: `windows:create:version:${accountId}:2k25-en` }],
     [{ text: "🧪 Windows 11 LTSC 2024", callback_data: `windows:create:version:${accountId}:w11-ltsc-2024` }],
+    [{ text: "⚡ Windows 11 中文 DD 快速安装", callback_data: `windows:create:version:${accountId}:w11-cn-dd` }],
     [{ text: "⬅️ 上一步：账号", callback_data: "windows:create" }],
     [{ text: "❌ 取消", callback_data: "menu:instances" }]
   ] };

@@ -75,7 +75,7 @@ export class WindowsInstanceService {
   async getCreateOptions(accountId: number, requestId: string, input: { version?: WindowsVersionId; lang?: WindowsLanguageId } = {}): Promise<WindowsCreateOptions> {
     const account = await this.getActiveAccount(accountId, requestId);
     const version = this.versions.getVersion(input.version, requestId);
-    const lang = this.versions.getLanguage(version.id === "2k25-cn" || version.id === "2k25-cn-dd" ? "zh-cn" : version.id === "2k25-en" ? "en-us" : input.lang, requestId);
+    const lang = this.versions.getLanguage(version.id === "2k25-cn" || version.id === "2k25-cn-dd" || version.id === "w11-cn-dd" ? "zh-cn" : version.id === "2k25-en" ? "en-us" : input.lang, requestId);
     const token = await this.decryptAccountToken(account);
     const client = new LinodeClient(token);
     const [regions, types, firewalls] = await Promise.all([client.listRegions(requestId), client.listTypes(requestId), client.listFirewalls(requestId).catch((error) => {
@@ -96,7 +96,7 @@ export class WindowsInstanceService {
     const tempRootPassword = generateLinuxPassword();
     const token = await this.decryptAccountToken(account);
     const version = this.versions.getVersion(input.version, context.requestId);
-    const lang = this.versions.getLanguage(version.id === "2k25-cn" || version.id === "2k25-cn-dd" ? "zh-cn" : version.id === "2k25-en" ? "en-us" : input.lang, context.requestId);
+    const lang = this.versions.getLanguage(version.id === "2k25-cn" || version.id === "2k25-cn-dd" || version.id === "w11-cn-dd" ? "zh-cn" : version.id === "2k25-en" ? "en-us" : input.lang, context.requestId);
     const client = new LinodeClient(token);
     await this.validateCreateTarget(client, input.region, input.type, version, context.requestId);
     const firewallStatus = await this.validateRdpFirewall(client, input.firewall_id, context.requestId);
@@ -186,10 +186,15 @@ export class WindowsInstanceService {
   }
 
   private getDdImageUrl(versionId: WindowsVersionId, requestId: string): string {
-    if (versionId !== "2k25-cn-dd") return "";
-    const url = typeof this.env.WINDOWS_2025_CN_DD_IMAGE_URL === "string" ? this.env.WINDOWS_2025_CN_DD_IMAGE_URL.trim() : "";
-    if (!url) throw new AppError(ErrorCode.CONFIG_MISSING, "Missing WINDOWS_2025_CN_DD_IMAGE_URL for Windows Server 2025 DD fast install", requestId, 500);
-    if (!/^https:\/\//i.test(url)) throw new AppError(ErrorCode.CONFIG_MISSING, "WINDOWS_2025_CN_DD_IMAGE_URL must be an https URL", requestId, 500);
+    const defaults: Partial<Record<WindowsVersionId, string>> = {
+      "2k25-cn-dd": "https://dl.lamp.sh/vhd/zh-cn_win2025.xz",
+      "w11-cn-dd": "https://dl.lamp.sh/vhd/zh-cn_windows11_22h2.xz"
+    };
+    const envKey = versionId === "2k25-cn-dd" ? "WINDOWS_2025_CN_DD_IMAGE_URL" : versionId === "w11-cn-dd" ? "WINDOWS_11_CN_DD_IMAGE_URL" : null;
+    if (!envKey) return "";
+    const override = typeof this.env[envKey] === "string" ? this.env[envKey]?.trim() : "";
+    const url = override || defaults[versionId] || "";
+    if (!/^https:\/\//i.test(url)) throw new AppError(ErrorCode.CONFIG_MISSING, `${envKey} must be an https URL`, requestId, 500);
     return url;
   }
 

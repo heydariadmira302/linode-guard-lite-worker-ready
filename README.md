@@ -100,7 +100,7 @@ Telegram 入口「🪟 创建 Windows 服务器」已采用 API-first / Service-
 
 - Windows Server 2022 Evaluation：稳定路线。
 - Windows Server 2025：新增实验路线，支持简体中文 `zh-cn` 与 English `en-us`，使用 Microsoft 官方 Evaluation ISO。
-- Windows Server 2025 简体中文 DD 快速安装：实验路线，需部署者配置可信 HTTPS 镜像 URL `WINDOWS_2025_CN_DD_IMAGE_URL`，项目不内置第三方 DD 镜像。
+- Windows Server 2025 / Windows 11 简体中文 DD 快速安装：实验路线，默认参考 `https://dl.lamp.sh/vhd/` 内置镜像源；部署者可用 `WINDOWS_2025_CN_DD_IMAGE_URL` / `WINDOWS_11_CN_DD_IMAGE_URL` 覆盖。
 - Windows 11 Enterprise LTSC 2024：实验路线，Bot 自动解析官方 ISO，用户不需要输入 ISO URL；支持 `zh-cn` / `en-us`。
 
 参考与致谢：kitknox/winode <https://github.com/kitknox/winode>、bin456789/reinstall <https://github.com/bin456789/reinstall>、leitbogioro/Tools <https://github.com/leitbogioro/Tools>。

@@ -547,7 +547,7 @@ callback: menu:diagnostics
 
 ### Windows Server 创建
 
-服务器管理页提供「🪟 创建 Windows 服务器」。当前开放 Windows Server 2022 稳定路线、Windows Server 2025 简体中文版 / English 实验路线、Windows Server 2025 简体中文 DD 快速安装实验路线和 Windows 11 Enterprise LTSC 2024 实验路线：
+服务器管理页提供「🪟 创建 Windows 服务器」。当前开放 Windows Server 2022 稳定路线、Windows Server 2025 简体中文版 / English 实验路线、Windows Server 2025 / Windows 11 简体中文 DD 快速安装实验路线和 Windows 11 Enterprise LTSC 2024 实验路线：
 
 ```text
 选择账号
@@ -559,9 +559,9 @@ callback: menu:diagnostics
 → 调用 WindowsInstanceService.createWindowsInstance(...)
 ```
 
-Telegram 不直接实现 Windows 创建业务逻辑，只保存会话状态、展示选项、收集确认并调用 service/API。流程为：选择版本 → Win11 选择语言 zh-cn/en-us（Server 2025 按版本固定 zh-cn 或 en-us） → 选择凭据（自动生成强密码或自己输入密码）→ 设置 Linode 实例名称（可跳过自动命名）→ Region → Plan → Firewall → 高危确认。Win11 页面明确提示 Bot 会自动查找官方 ISO，不需要用户输入 ISO URL。DD 快速安装路线要求部署者配置可信 `WINDOWS_2025_CN_DD_IMAGE_URL`，不内置第三方镜像。创建成功后会显示一次性 Windows 登录用户名、Windows 密码和临时 Ubuntu root 密码；默认用户名为 `Administrator`。Server 2022 预计 15-30 分钟，Server 2025 DD 预计 5-15 分钟，Win11 预计 20-40 分钟，完成后用 RDP 3389 连接。
+Telegram 不直接实现 Windows 创建业务逻辑，只保存会话状态、展示选项、收集确认并调用 service/API。流程为：选择版本 → Win11 选择语言 zh-cn/en-us（Server 2025 按版本固定 zh-cn 或 en-us） → 选择凭据（自动生成强密码或自己输入密码）→ 设置 Linode 实例名称（可跳过自动命名）→ Region → Plan → Firewall → 高危确认。Win11 页面明确提示 Bot 会自动查找官方 ISO，不需要用户输入 ISO URL。DD 快速安装路线默认参考 `https://dl.lamp.sh/vhd/` 内置镜像源；部署者可配置 `WINDOWS_2025_CN_DD_IMAGE_URL` / `WINDOWS_11_CN_DD_IMAGE_URL` 覆盖。创建成功后会显示一次性 Windows 登录用户名、Windows 密码和临时 Ubuntu root 密码；默认用户名为 `Administrator`。Server 2022 预计 15-30 分钟，Server 2025 DD 预计 5-15 分钟，Win11 预计 20-40 分钟，完成后用 RDP 3389 连接。
 
-DD 快速安装参考 bin456789/reinstall 与 leitbogioro/Tools 的思路：下载 DD 镜像、写入目标磁盘、挂载 Windows 分区并注入首次启动脚本。当前只开放 Windows Server 2025 简体中文实验路线，不使用公开默认密码，不硬编码第三方镜像 URL；必须先由部署者配置可信 HTTPS 镜像。后续如扩展更多 DD 镜像，也必须先落 service/API，并保留高危确认、审计日志和一次性密码展示规则。
+DD 快速安装参考 bin456789/reinstall 与 leitbogioro/Tools 的思路：下载 DD 镜像、写入目标磁盘、挂载 Windows 分区并注入首次启动脚本。当前开放 Windows Server 2025 与 Windows 11 简体中文实验路线，不使用公开默认密码；默认镜像参考 leitbogioro/Tools 提到的 TeddySun 镜像源 `dl.lamp.sh/vhd`，也支持部署者配置可信 HTTPS 镜像覆盖。后续如扩展更多 DD 镜像，也必须先落 service/API，并保留高危确认、审计日志和一次性密码展示规则。
 
 
 Windows 密码自定义：Telegram 支持在创建流程中选择“自己输入密码”。系统会校验 10-64 位、大小写字母、数字和符号，禁止空格、中文、XML 特殊字符和明显弱密码；收到后会尝试删除用户发送的密码消息。为降低登录失败风险，用户名默认固定 `Administrator`，API 虽预留 `windows_username`，Telegram 暂不开放自定义用户名。
