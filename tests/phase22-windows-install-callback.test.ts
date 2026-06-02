@@ -27,7 +27,7 @@ class FakeD1Database {
   windowsInstalls: Record<string, any>[] = [];
   prepare(sql: string) { return new FakePreparedStatement(this, sql); }
   first<T>(sql: string, values: unknown[]): T | null {
-    if (sql.includes("FROM windows_installs")) return (this.windowsInstalls.find((row) => row.callback_token_hash === String(values[0]) && row.status === "installing") as T | undefined) ?? null;
+    if (sql.includes("FROM windows_installs")) return (this.windowsInstalls.find((row) => row.callback_token_hash === String(values[0]) && (row.status === "installing" || row.status === "failed") && !row.callback_received_at) as T | undefined) ?? null;
     if (sql.includes("UPDATE windows_installs SET status = 'ready'")) {
       const row = this.windowsInstalls.find((item) => Number(item.id) === Number(values[4]));
       if (!row) return null;
@@ -73,6 +73,26 @@ describe("Windows install callback notification", () => {
       expect(String(fetchMock.mock.calls[0][0])).toContain("/sendMessage");
       expect(String(fetchMock.mock.calls[0][1]?.body)).toContain("Windows 安装完成");
       expect(String(fetchMock.mock.calls[0][1]?.body)).not.toContain(token);
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("accepts late callback after timeout notification marked the install failed", async () => {
+    const db = new FakeD1Database();
+    const token = "late-install-callback-token-1234567890";
+    db.windowsInstalls.push({ id: 2, account_id: 1, instance_id: 98494238, instance_label: "test2025", ip_address: "172.104.117.244", status: "failed", callback_token_hash: await hashInstallCallbackToken(token), telegram_chat_id: "123456789", telegram_user_id: "123456789", notified_at: "2026-06-02T07:55:52.316Z", callback_received_at: null, created_at: "2026-06-02T07:06:03.062Z", updated_at: "2026-06-02T07:55:52.316Z", metadata_json: JSON.stringify({ reason: "install_callback_timeout" }) });
+    const env = { ...baseEnv, DB: db as unknown as D1Database };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ ok: true, result: { message_id: 101 } }), { status: 200 }));
+    try {
+      const response = await worker.fetch(new Request("https://example.com/api/v1/windows/install-callback", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token, ip_address: "172.104.117.244", status: "ready" }) }), env as never);
+      const body = await response.json() as { data: { status: string; notified: boolean } };
+      expect(response.status).toBe(200);
+      expect(body.data.status).toBe("ready");
+      expect(db.windowsInstalls[0].status).toBe("ready");
+      expect(db.windowsInstalls[0].callback_received_at).toBeTruthy();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(String(fetchMock.mock.calls[0][1]?.body)).toContain("Windows 安装完成");
     } finally {
       fetchMock.mockRestore();
     }

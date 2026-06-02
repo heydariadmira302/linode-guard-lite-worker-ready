@@ -41,8 +41,12 @@ export class WindowsInstallRepository {
       .run();
   }
 
+  async findPendingByTokenHash(tokenHash: string): Promise<WindowsInstallRecord | null> {
+    return await this.db.prepare(`SELECT * FROM windows_installs WHERE callback_token_hash = ? AND status IN ('installing', 'failed') AND callback_received_at IS NULL LIMIT 1`).bind(tokenHash).first<WindowsInstallRecord>();
+  }
+
   async findInstallingByTokenHash(tokenHash: string): Promise<WindowsInstallRecord | null> {
-    return await this.db.prepare(`SELECT * FROM windows_installs WHERE callback_token_hash = ? AND status = 'installing' LIMIT 1`).bind(tokenHash).first<WindowsInstallRecord>();
+    return await this.findPendingByTokenHash(tokenHash);
   }
 
   async markReady(id: number, input: { ipAddress?: string | null; metadata?: Record<string, unknown> }): Promise<WindowsInstallRecord | null> {

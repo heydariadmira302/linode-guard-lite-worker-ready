@@ -303,6 +303,8 @@ describe("Phase 6 Linode instance read-only management", () => {
         expect(payload.script).toContain("<UserAuthentication>0</UserAuthentication>");
         expect(payload.script).toContain("<FirstLogonCommands>");
         expect(payload.script).toContain("Allow RDP 3389");
+        expect(payload.script).toContain("<Username>Administrator</Username>");
+        expect(payload.script).not.toContain("<Username>$WINDOWS_USERNAME</Username>");
         expect(payload.script).toContain("WINDOWS_REBOOT_OK");
         expect(payload.script).toContain("2k25-cn");
         expect(payload.script).toContain("2k25-en");

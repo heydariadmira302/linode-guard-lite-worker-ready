@@ -29,7 +29,7 @@ export class WindowsInstallMonitorService {
   async handleCallback(input: WindowsInstallCallbackInput, requestId: string): Promise<{ record: WindowsInstallRecord; notified: boolean }> {
     if (!input.token || input.token.length < 24) throw new AppError(ErrorCode.UNAUTHORIZED, "Invalid Windows install callback token", requestId, 401);
     const tokenHash = await hashInstallCallbackToken(input.token);
-    const existing = await this.repository.findInstallingByTokenHash(tokenHash);
+    const existing = await this.repository.findPendingByTokenHash(tokenHash);
     if (!existing) throw new AppError(ErrorCode.UNAUTHORIZED, "Invalid or already used Windows install callback token", requestId, 401);
     const record = await this.repository.markReady(existing.id, { ipAddress: normalizeIp(input.ip_address) ?? null, metadata: { status: input.status ?? "ready", message: input.message ?? null, rdp_port: input.rdp_port ?? 3389 } });
     if (!record) throw new AppError(ErrorCode.JOB_FAILED, "Failed to update Windows install status", requestId, 500);
@@ -47,7 +47,7 @@ export class WindowsInstallMonitorService {
       if (record.notified_at) continue;
       const ok = await this.notifyTimeout(record, olderThanMinutes);
       if (ok) {
-        await this.repository.markFailed(record.id, { reason: "install_callback_timeout", older_than_minutes: olderThanMinutes });
+        await this.repository.markFailed(record.id, { reason: "install_callback_timeout", older_than_minutes: olderThanMinutes, note: "Timeout notification sent; late install callbacks are still accepted." });
         await this.repository.markNotified(record.id);
         notified += 1;
       }

@@ -11,7 +11,7 @@ export function renderWindowsInstallStatusText(records: WindowsInstallRecord[]):
       record.instance_id ? `实例 ID：${record.instance_id}` : "实例 ID：创建后同步中",
       record.ip_address ? `RDP：${record.ip_address}:3389` : "RDP：等待公网 IPv4",
       record.callback_received_at ? `完成回调：${record.callback_received_at}` : `创建时间：${record.created_at}`,
-      record.notified_at ? `已通知：${record.notified_at}` : "已通知：否",
+      formatNotificationLine(record),
       ""
     );
   }
@@ -24,6 +24,13 @@ export function renderWindowsInstallStatusKeyboard(): TelegramInlineKeyboardMark
 
 function formatInstallStatus(status: string): string {
   if (status === "ready") return "✅ 已完成，可尝试 RDP";
-  if (status === "failed") return "⚠️ 可能超时 / 回调失败";
+  if (status === "failed") return "⚠️ 超时提醒已发送，仍等待完成回调";
   return "⏳ 安装中";
+}
+
+function formatNotificationLine(record: WindowsInstallRecord): string {
+  if (!record.notified_at) return "通知状态：未通知";
+  if (record.status === "ready") return `完成通知：${record.notified_at}`;
+  if (record.status === "failed") return `超时提醒：${record.notified_at}`;
+  return `通知时间：${record.notified_at}`;
 }
