@@ -2319,7 +2319,7 @@ StackScript ID：${status.stackscript_id}
 
 async function getCreateInstanceSession(sessions: Pick<BotSessionService, "getCurrentSession" | "setCurrentSession" | "clearCurrentSession">, userId: string): Promise<{ accountId: number; options: any; state: Record<string, unknown> }> {
   const session = await sessions.getCurrentSession(userId);
-  if (!session || !["creating_instance", "creating_windows_instance", "creating_windows_password", "creating_windows_label"].includes(session.state)) throw new AppError(ErrorCode.VALIDATION_ERROR, "创建服务器会话已过期，请重新开始。", "req_telegram", 400);
+  if (!session || !["creating_instance", "creating_windows_instance", "creating_windows_password", "creating_windows_username", "creating_windows_label"].includes(session.state)) throw new AppError(ErrorCode.VALIDATION_ERROR, "创建服务器会话已过期，请重新开始。", "req_telegram", 400);
   if (Date.parse(session.expires_at) <= Date.now()) {
     await sessions.clearCurrentSession(userId);
     throw new AppError(ErrorCode.VALIDATION_ERROR, "创建服务器会话已过期，请重新开始。", "req_telegram", 400);
@@ -2330,7 +2330,7 @@ async function getCreateInstanceSession(sessions: Pick<BotSessionService, "getCu
 
 async function saveCreateInstanceSession(sessions: Pick<BotSessionService, "getCurrentSession" | "setCurrentSession" | "clearCurrentSession">, update: Extract<ParsedTelegramUpdate, { kind: "callback_query" }>, accountId: number, parsed: { options: any; state: Record<string, unknown> }): Promise<void> {
   const current = await sessions.getCurrentSession(update.fromId);
-  await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: current?.state === "creating_windows_instance" || current?.state === "creating_windows_password" ? "creating_windows_instance" : "creating_instance", data: { account_id: accountId, options: parsed.options, state: parsed.state } });
+  await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: current?.state === "creating_windows_instance" || current?.state === "creating_windows_password" || current?.state === "creating_windows_username" || current?.state === "creating_windows_label" ? "creating_windows_instance" : "creating_instance", data: { account_id: accountId, options: parsed.options, state: parsed.state } });
 }
 
 function parseCallbackSessionData(dataJson?: string | null): Record<string, any> {

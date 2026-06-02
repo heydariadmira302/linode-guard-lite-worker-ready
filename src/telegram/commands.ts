@@ -166,6 +166,8 @@ export async function handleTelegramMessageCommand(
     }
     const windowsPasswordFlowResult = await continueWindowsPasswordFlow(update, client, sessions, env, requestId);
     if (windowsPasswordFlowResult) return windowsPasswordFlowResult;
+    const windowsUsernameFlowResult = await continueWindowsUsernameFlow(update, client, sessions, env, requestId);
+    if (windowsUsernameFlowResult) return windowsUsernameFlowResult;
     const windowsLabelFlowResult = await continueWindowsLabelFlow(update, client, sessions, env, requestId);
     if (windowsLabelFlowResult) return windowsLabelFlowResult;
     const accountTokenFlowResult = await continueAccountTokenUpdateFlow(update, client, sessions, env, requestId);
@@ -204,6 +206,8 @@ export async function handleTelegramMessageCommand(
     default: {
       const windowsPasswordFlowResult = await continueWindowsPasswordFlow(update, client, sessions, env, requestId);
       if (windowsPasswordFlowResult) return windowsPasswordFlowResult;
+      const windowsUsernameFlowResult = await continueWindowsUsernameFlow(update, client, sessions, env, requestId);
+      if (windowsUsernameFlowResult) return windowsUsernameFlowResult;
       const windowsLabelFlowResult = await continueWindowsLabelFlow(update, client, sessions, env, requestId);
       if (windowsLabelFlowResult) return windowsLabelFlowResult;
       const accountTokenFlowResult = await continueAccountTokenUpdateFlow(update, client, sessions, env, requestId);

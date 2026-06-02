@@ -6,6 +6,7 @@ const LONG_FLOW_STATES = new Set([
   "creating_instance",
   "creating_windows_instance",
   "creating_windows_password",
+  "creating_windows_username",
   "creating_windows_label",
   "creating_schedule_custom_time",
   "confirming_batch_delete"
