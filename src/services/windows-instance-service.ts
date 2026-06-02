@@ -75,7 +75,7 @@ export class WindowsInstanceService {
   async getCreateOptions(accountId: number, requestId: string, input: { version?: WindowsVersionId; lang?: WindowsLanguageId } = {}): Promise<WindowsCreateOptions> {
     const account = await this.getActiveAccount(accountId, requestId);
     const version = this.versions.getVersion(input.version, requestId);
-    const lang = this.versions.getLanguage(input.lang, requestId);
+    const lang = this.versions.getLanguage(version.id === "2k25-cn" ? "zh-cn" : version.id === "2k25-en" ? "en-us" : input.lang, requestId);
     const token = await this.decryptAccountToken(account);
     const client = new LinodeClient(token);
     const [regions, types, firewalls] = await Promise.all([client.listRegions(requestId), client.listTypes(requestId), client.listFirewalls(requestId).catch((error) => {
@@ -96,7 +96,7 @@ export class WindowsInstanceService {
     const tempRootPassword = generateLinuxPassword();
     const token = await this.decryptAccountToken(account);
     const version = this.versions.getVersion(input.version, context.requestId);
-    const lang = this.versions.getLanguage(input.lang, context.requestId);
+    const lang = this.versions.getLanguage(version.id === "2k25-cn" ? "zh-cn" : version.id === "2k25-en" ? "en-us" : input.lang, context.requestId);
     const client = new LinodeClient(token);
     await this.validateCreateTarget(client, input.region, input.type, version, context.requestId);
     const firewallStatus = await this.validateRdpFirewall(client, input.firewall_id, context.requestId);
@@ -167,8 +167,7 @@ export class WindowsInstanceService {
     if (!region || !type) throw new AppError(ErrorCode.VALIDATION_ERROR, "region/type are required", requestId, 400);
     const label = resolvedLabel ?? this.resolveLabel(input, requestId);
     if (!/^[A-Za-z0-9._-]{3,64}$/.test(label)) throw new AppError(ErrorCode.VALIDATION_ERROR, "Invalid instance label", requestId, 400);
-    const stackscriptVersion = version.id === "2k25" ? (lang.id === "zh-cn" ? "2k25-cn" : "2k25-en") : version.stackscript_version;
-    const stackscriptData = { TOKEN: linodeToken, WINDOWS_PASSWORD: adminPassword, WINDOWS_USERNAME: windowsUsername, KEEP_ADMINISTRATOR_FALLBACK: keepAdministratorFallback ? "true" : "false", INSTALL_WINDOWS_VERSION: stackscriptVersion, WINDOWS_IMAGE_NAME: version.image_name, WINDOWS_LANG: lang.id, AUTOLOGIN: "true", W11_ISO_URL: isoUrl, INSTALL_CALLBACK_URL: await this.getWindowsInstallCallbackUrl(), INSTALL_CALLBACK_TOKEN: installCallbackToken };
+    const stackscriptData = { TOKEN: linodeToken, WINDOWS_PASSWORD: adminPassword, WINDOWS_USERNAME: windowsUsername, KEEP_ADMINISTRATOR_FALLBACK: keepAdministratorFallback ? "true" : "false", INSTALL_WINDOWS_VERSION: version.stackscript_version, WINDOWS_IMAGE_NAME: version.image_name, WINDOWS_LANG: lang.id, AUTOLOGIN: "true", W11_ISO_URL: isoUrl, INSTALL_CALLBACK_URL: await this.getWindowsInstallCallbackUrl(), INSTALL_CALLBACK_TOKEN: installCallbackToken };
     if (JSON.stringify(stackscriptData).length > 65535) throw new AppError(ErrorCode.VALIDATION_ERROR, "StackScript data is too large", requestId, 400);
     const payload: any = { region, type, image: WINDOWS_STACKSCRIPT_IMAGE, label, root_pass: tempRootPassword, backups_enabled: false, tags: ["linode-guard-lite", "windows-stackscript", version.id], stackscript_id: stackscriptId, stackscript_data: stackscriptData };
     if (input.firewall_id !== undefined && input.firewall_id !== null) {
