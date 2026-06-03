@@ -561,8 +561,15 @@ describe("Phase 6 Linode instance read-only management", () => {
         expect(payload.script).toContain("DD_IMAGE_URL");
         expect(payload.script).toContain("streaming DD image to /dev/sdb");
         expect(payload.script).toContain("LinodeGuardLiteSetup.bat");
-        expect(payload.script).toContain("DD_WINDOWS_BUILTIN_PASSWORD='X8li8x5VFN.'");
+        expect(payload.script).toContain("DD_WINDOWS_BUILTIN_PASSWORD='Teddysun.com'");
         expect(payload.script).toContain("hivexregedit --merge /mnt/windows-dd/Windows/System32/config/SOFTWARE /tmp/lgl-autologon.reg");
+        expect(payload.script).toContain("Could not locate mounted Windows system partition in DD image");
+        expect(payload.script).toContain("/mnt/windows-dd/Windows/System32/config/SOFTWARE");
+        expect(payload.script).toContain("[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon]");
+        expect(payload.script).toContain("LinodeGuardLiteSetup");
+        expect(payload.script).toContain("[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\RunOnce]");
+        expect(payload.script).toContain("[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run]");
+        expect(payload.script).toContain(`reg delete "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v LinodeGuardLiteSetup /f`);
         expect(payload.script).toContain(`"DefaultPassword"="$DD_WINDOWS_BUILTIN_PASSWORD"`);
         expect(payload.script).toContain(`reg delete "HKLM\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon" /v DefaultPassword /f`);
         expect(payload.script).toContain(`reg add "HKLM\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon" /v AutoAdminLogon /t REG_SZ /d 0 /f`);
