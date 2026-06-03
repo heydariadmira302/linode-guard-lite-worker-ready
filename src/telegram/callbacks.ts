@@ -1871,8 +1871,17 @@ export async function routeTelegramCallback(
       }
       const lang = version === "2k25-cn" ? "zh-cn" : "en-us";
       const options = await new WindowsInstanceService(env).getCreateOptions(accountId, requestId, { version: version as any, lang: lang as any });
-      await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_windows_instance", data: { account_id: accountId, options, state: { windows_version: version, windows_version_label: options.version.label, windows_lang: lang } } });
-      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsCredentialModeText({ windows_version: version, windows_version_label: options.version.label, windows_lang: lang }), reply_markup: renderWindowsCredentialModeKeyboard(accountId, version) });
+      const state = { windows_version: version, windows_version_label: options.version.label, windows_lang: lang } as Record<string, unknown>;
+      if (version === "2k25-cn-dd" || version === "w11-cn-dd") {
+        state.windows_username = "Administrator";
+        state.keep_administrator_fallback = true;
+        await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_windows_instance", data: { account_id: accountId, options, state } });
+        return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: `${renderWindowsLabelModeText(state)}
+
+⚡ DD 极速版使用镜像默认账号/密码：Administrator / Teddysun.com。不会尝试自定义用户名或密码，以换取最快启动。`, reply_markup: renderWindowsLabelModeKeyboard(accountId) });
+      }
+      await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "creating_windows_instance", data: { account_id: accountId, options, state } });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsCredentialModeText(state), reply_markup: renderWindowsCredentialModeKeyboard(accountId, version) });
     } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
   }
 

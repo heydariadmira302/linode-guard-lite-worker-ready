@@ -22,6 +22,12 @@ export const WINDOWS_STACKSCRIPT_VERSION = "2k22";
 export const WINDOWS_STACKSCRIPT_VERSION_LABEL = "Windows Server 2022 Evaluation";
 export const WINDOWS_STACKSCRIPT_MIN_MEMORY_MB = 4096;
 export const WINDOWS_STACKSCRIPT_MIN_DISK_MB = 81920;
+export const DD_WINDOWS_DEFAULT_USERNAME = "Administrator";
+export const DD_WINDOWS_DEFAULT_PASSWORD = "Teddysun.com";
+
+export function isDdWindowsVersion(versionId: WindowsVersionId | string | undefined): boolean {
+  return versionId === "2k25-cn-dd" || versionId === "w11-cn-dd";
+}
 
 export interface WindowsInstanceServiceContext { requestId: string; actor: string; source: string; telegramChatId?: string; telegramUserId?: string }
 export interface WindowsStackScriptStatus { account: PublicAccount; stackscript_id: number | null; configured: boolean; version: string; version_label: string; base_image: string }
@@ -90,12 +96,13 @@ export class WindowsInstanceService {
     const account = await this.getActiveAccount(accountId, context.requestId);
     const publicAccount = await this.toPublicAccount(account);
     const stackscriptId = await this.ensureCurrentStackScript(account, context);
-    const adminPassword = input.administrator_password ? validateWindowsPassword(input.administrator_password, context.requestId) : generateWindowsPassword();
-    const windowsUsername = validateWindowsUsername(input.windows_username ?? "Administrator", context.requestId);
-    const keepAdministratorFallback = input.keep_administrator_fallback !== false || windowsUsername === "Administrator";
+    const version = this.versions.getVersion(input.version, context.requestId);
+    const isDdFastInstall = isDdWindowsVersion(version.id);
+    const adminPassword = isDdFastInstall ? DD_WINDOWS_DEFAULT_PASSWORD : input.administrator_password ? validateWindowsPassword(input.administrator_password, context.requestId) : generateWindowsPassword();
+    const windowsUsername = isDdFastInstall ? DD_WINDOWS_DEFAULT_USERNAME : validateWindowsUsername(input.windows_username ?? "Administrator", context.requestId);
+    const keepAdministratorFallback = isDdFastInstall ? true : input.keep_administrator_fallback !== false || windowsUsername === "Administrator";
     const tempRootPassword = generateLinuxPassword();
     const token = await this.decryptAccountToken(account);
-    const version = this.versions.getVersion(input.version, context.requestId);
     const lang = this.versions.getLanguage(version.id === "2k25-cn" || version.id === "2k25-cn-dd" || version.id === "w11-cn-dd" ? "zh-cn" : version.id === "2k25-en" ? "en-us" : input.lang, context.requestId);
     const client = new LinodeClient(token);
     await this.validateCreateTarget(client, input.region, input.type, version, context.requestId);
@@ -105,11 +112,16 @@ export class WindowsInstanceService {
     const ddImageUrl = this.getDdImageUrl(version.id, context.requestId);
     const installMonitor = this.installs ? new WindowsInstallMonitorService(this.env, this.installs) : null;
     const preliminaryLabel = this.resolveLabel(input, context.requestId);
-    const install = installMonitor ? await installMonitor.createInstallRecord({ accountId: account.id, instanceLabel: preliminaryLabel, telegramChatId: context.telegramChatId ?? null, telegramUserId: context.telegramUserId ?? null, metadata: { version: version.id, lang: lang.id, windows_username: windowsUsername, firewall: firewallStatus } }) : null;
+    const install = installMonitor ? await installMonitor.createInstallRecord({ accountId: account.id, instanceLabel: preliminaryLabel, telegramChatId: context.telegramChatId ?? null, telegramUserId: context.telegramUserId ?? null, metadata: { version: version.id, lang: lang.id, windows_username: windowsUsername, install_mode: isDdFastInstall ? "dd_fast" : "custom", default_credentials: isDdFastInstall ? true : false, firewall: firewallStatus } }) : null;
     const payload = await this.buildCreatePayload(input, stackscriptId, token, adminPassword, windowsUsername, keepAdministratorFallback, tempRootPassword, context.requestId, version, lang, iso?.iso_url ?? "NOURL", install?.callbackToken ?? "", preliminaryLabel, ddImageUrl);
     try {
       const instance = await client.createInstance(payload, context.requestId);
-      if (this.installs && install) await this.installs.attachInstance(install.record.id, Number(instance.id), Array.isArray((instance as any).ipv4) ? (instance as any).ipv4[0] : null, { version: version.id, lang: lang.id, label: payload.label, windows_username: windowsUsername });
+      if (this.installs && install) {
+        const ipAddress = Array.isArray((instance as any).ipv4) ? (instance as any).ipv4[0] : null;
+        const metadata = { version: version.id, lang: lang.id, label: payload.label, windows_username: windowsUsername, install_mode: isDdFastInstall ? "dd_fast" : "custom", default_credentials: isDdFastInstall ? true : false };
+        await this.installs.attachInstance(install.record.id, Number(instance.id), ipAddress, metadata);
+        if (isDdFastInstall) await this.installs.markReady(install.record.id, { ipAddress, metadata });
+      }
       await this.recordAudit(context, "windows_instance.create", "instance", String(instance.id || payload.label), "critical", "success", null, { account_id: account.id, region: payload.region, type: payload.type, stackscript_id: stackscriptId, version: version.id, lang: lang.id, iso_resolved: Boolean(iso) });
       return { account: publicAccount, instance, stackscript_id: stackscriptId, windows_version: version.id, windows_version_label: version.label, windows_lang: lang.id, windows_username: windowsUsername, administrator_password: adminPassword, temp_root_password: tempRootPassword };
     } catch (error) {

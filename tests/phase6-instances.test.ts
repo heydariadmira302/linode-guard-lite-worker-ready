@@ -53,7 +53,8 @@ class FakeD1Database {
       return row as T;
     }
     if (sql.includes("UPDATE windows_installs SET status = 'ready'")) {
-      const row = this.windowsInstalls.find((install) => Number(install.id) === Number(values[4]));
+      const idIndex = values.length - 1;
+      const row = this.windowsInstalls.find((install) => Number(install.id) === Number(values[idIndex]));
       if (row) { row.status = "ready"; row.ip_address = values[0] ?? row.ip_address; row.callback_received_at = String(values[1]); row.updated_at = String(values[2]); row.metadata_json = values[3] ?? row.metadata_json; return row as T; }
       return null;
     }
@@ -448,7 +449,8 @@ describe("Phase 6 Linode instance read-only management", () => {
       expect(optionsBody.data.types.map((item) => item.id)).toEqual(["g6-standard-2"]);
 
       const createResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/windows/instances", { method: "POST", body: JSON.stringify({ region: "jp-osa", type: "g6-standard-2", label: "win11-office-01", version: "w11-ltsc-2024", lang: "zh-cn", administrator_password: "MyStrongPass9!" }) }), env as never);
-      const createBody = await createResponse.json() as { data: { windows_version: string; windows_lang: string } };
+      const createBody = await createResponse.json() as { data: { windows_version: string; windows_lang: string }; error?: unknown };
+      if (createResponse.status !== 200) throw new Error(JSON.stringify(createBody));
       expect(createResponse.status).toBe(200);
       expect(createBody.data.windows_version).toBe("w11-ltsc-2024");
       expect(createBody.data.windows_lang).toBe("zh-cn");
@@ -560,19 +562,10 @@ describe("Phase 6 Linode instance read-only management", () => {
         expect(payload.script).toContain("2k25-cn-dd");
         expect(payload.script).toContain("DD_IMAGE_URL");
         expect(payload.script).toContain("streaming DD image to /dev/sdb");
-        expect(payload.script).toContain("LinodeGuardLiteSetup.bat");
-        expect(payload.script).toContain("DD_WINDOWS_BUILTIN_PASSWORD='Teddysun.com'");
-        expect(payload.script).toContain("hivexregedit --merge /mnt/windows-dd/Windows/System32/config/SOFTWARE /tmp/lgl-autologon.reg");
-        expect(payload.script).toContain("Could not locate mounted Windows system partition in DD image");
-        expect(payload.script).toContain("/mnt/windows-dd/Windows/System32/config/SOFTWARE");
-        expect(payload.script).toContain("[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon]");
-        expect(payload.script).toContain("LinodeGuardLiteSetup");
-        expect(payload.script).toContain("[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\RunOnce]");
-        expect(payload.script).toContain("[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run]");
-        expect(payload.script).toContain(`reg delete "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v LinodeGuardLiteSetup /f`);
-        expect(payload.script).toContain(`"DefaultPassword"="$DD_WINDOWS_BUILTIN_PASSWORD"`);
-        expect(payload.script).toContain(`reg delete "HKLM\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon" /v DefaultPassword /f`);
-        expect(payload.script).toContain(`reg add "HKLM\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon" /v AutoAdminLogon /t REG_SZ /d 0 /f`);
+        expect(payload.script).toContain("DD image written; skipping Windows customization for fastest boot");
+        expect(payload.script).not.toContain("LinodeGuardLiteSetup.bat");
+        expect(payload.script).not.toContain("DD_WINDOWS_BUILTIN_PASSWORD");
+        expect(payload.script).not.toContain("hivexregedit --merge");
         return new Response(JSON.stringify({ id: 2022, label: payload.label }), { status: 200 });
       }
       if (url.endsWith("/linode/instances") && init?.method === "POST") {
@@ -595,14 +588,16 @@ describe("Phase 6 Linode instance read-only management", () => {
       expect(optionsBody.data.lang.id).toBe("zh-cn");
 
       const createResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/windows/instances", { method: "POST", body: JSON.stringify({ region: "jp-osa", type: "g6-standard-2", version: "2k25-cn-dd", administrator_password: "MyStrongPass9!" }) }), env as never);
-      const createBody = await createResponse.json() as { data: { windows_version: string; windows_lang: string } };
+      const createBody = await createResponse.json() as { data: { windows_version: string; windows_lang: string }; error?: unknown };
+      if (createResponse.status !== 200) throw new Error(JSON.stringify(createBody));
       expect(createResponse.status).toBe(200);
       expect(createBody.data.windows_version).toBe("2k25-cn-dd");
       expect(createBody.data.windows_lang).toBe("zh-cn");
 
       const flow = await worker.fetch(telegramRequest(callbackUpdate("windows:create:version:1:2k25-cn-dd")), env as never);
       const flowBody = await flow.json() as { data: { telegram: { payload: { text: string } } } };
-      expect(flowBody.data.telegram.payload.text).toContain("DD 快速安装");
+      expect(flowBody.data.telegram.payload.text).toContain("DD 极速版");
+      expect(flowBody.data.telegram.payload.text).toContain("Administrator / Teddysun.com");
     } finally {
       fetchMock.mockRestore();
     }
@@ -622,6 +617,8 @@ describe("Phase 6 Linode instance read-only management", () => {
         const payload = JSON.parse(String(init.body));
         expect(payload.script).toContain("w11-cn-dd");
         expect(payload.script).toContain("DD fast install mode started for Windows 11");
+        expect(payload.script).toContain("DD image written; skipping Windows customization for fastest boot");
+        expect(payload.script).not.toContain("LinodeGuardLiteSetup");
         return new Response(JSON.stringify({ id: 2022, label: payload.label }), { status: 200 });
       }
       if (url.endsWith("/linode/instances") && init?.method === "POST") {

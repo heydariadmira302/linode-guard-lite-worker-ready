@@ -480,6 +480,7 @@ export function renderWindowsLabelPromptKeyboard(accountId: number): TelegramInl
 
 export function renderWindowsCreateTypeText(state: Record<string, unknown>): string {
   const isW11 = state.windows_version === "w11-ltsc-2024";
+  const isDdFast = state.windows_version === "2k25-cn-dd" || state.windows_version === "w11-cn-dd";
   const is2025 = state.windows_version === "2k25-cn" || state.windows_version === "2k25-en";
   return [
     "🪟 创建 Windows 服务器",
@@ -511,6 +512,7 @@ export function renderWindowsCreateFirewallText(state: Record<string, unknown>):
 
 export function renderWindowsCreateConfirmText(account: PublicAccount, state: Record<string, unknown>): string {
   const isW11 = state.windows_version === "w11-ltsc-2024";
+  const isDdFast = state.windows_version === "2k25-cn-dd" || state.windows_version === "w11-cn-dd";
   const is2025 = state.windows_version === "2k25-cn" || state.windows_version === "2k25-en";
   return [
     "🪟 创建 Windows 服务器",
@@ -527,12 +529,12 @@ export function renderWindowsCreateConfirmText(account: PublicAccount, state: Re
     state.firewall_id ? `RDP 防火墙：${state.rdp_firewall_message ?? "将检查 TCP 3389 入站规则"}` : "RDP：未使用 Linode Firewall，Windows 内部仍会放行 TCP 3389。",
     state.firewall_id && state.rdp_firewall_ok === false ? "⚠️ 当前 Firewall 未放行 3389，建议先点击一键修复后再创建。" : null,
     `Windows 用户名：${state.windows_username ?? "Administrator"}`,
-    state.windows_username && state.windows_username !== "Administrator" ? `Administrator 兜底：${state.keep_administrator_fallback === false ? "不保留" : "保留，同密码"}` : null,
-    `密码：${state.administrator_password ? "用户自定义（只显示一次）" : "自动生成（只显示一次）"}`,
+    state.windows_version === "2k25-cn-dd" || state.windows_version === "w11-cn-dd" ? "DD 极速版：固定使用镜像默认账号/密码，不支持自定义用户名和密码。" : state.windows_username && state.windows_username !== "Administrator" ? `Administrator 兜底：${state.keep_administrator_fallback === false ? "不保留" : "保留，同密码"}` : null,
+    `密码：${state.windows_version === "2k25-cn-dd" || state.windows_version === "w11-cn-dd" ? "镜像默认密码（Teddysun.com）" : state.administrator_password ? "用户自定义（只显示一次）" : "自动生成（只显示一次）"}`,
     "",
     "⚠️ 确认后会调用 Linode API 创建收费 Linode。",
     isW11 ? "⚠️ Windows 11 是非官方实验路线，成功率低于 Windows Server 2022。" : is2025 ? `⚠️ Windows Server 2025 ${state.windows_version === "2k25-en" ? "English" : "简体中文版"}为新增实验路线，请先用测试账号验证。` : null,
-    isW11 ? "⚠️ 安装预计 20-40 分钟，多次重启属正常。" : is2025 ? "⚠️ 安装预计 20-35 分钟，多次重启属正常。" : "⚠️ StackScript 会把新建 Ubuntu 机器转换为 Windows，安装约 15-30 分钟，中途多次重启属正常。",
+    isDdFast ? "⚠️ DD 极速版通常比完整安装更快，目标是尽快进入系统并探测 RDP。" : isW11 ? "⚠️ 安装预计 20-40 分钟，多次重启属正常。" : is2025 ? "⚠️ 安装预计 20-35 分钟，多次重启属正常。" : "⚠️ StackScript 会把新建 Ubuntu 机器转换为 Windows，安装约 15-30 分钟，中途多次重启属正常。",
     "⚠️ 安装脚本会临时使用当前 Linode Token 调用 Linode API 配置磁盘/启动项。",
     "🔐 Administrator 密码和临时 Ubuntu root 密码只会在创建成功消息里显示一次，请立即复制保存。"
   ].filter(Boolean).join("\n");
@@ -574,7 +576,7 @@ export function renderWindowsCreatedText(result: { account: PublicAccount; insta
     "",
     `Windows：${result.windows_version_label ?? "Windows Server 2022 Evaluation"}`,
     result.windows_version === "w11-ltsc-2024" || result.windows_version === "2k25-cn" || result.windows_version === "2k25-en" ? `语言：${result.windows_lang}` : null,
-    result.windows_version === "w11-ltsc-2024" ? "预计安装耗时：20-40 分钟，中途重启属于正常现象。" : (result.windows_version === "2k25-cn" || result.windows_version === "2k25-en") ? "预计安装耗时：20-35 分钟，中途重启属于正常现象。" : "预计安装耗时：15-30 分钟，中途重启属于正常现象。",
+    result.windows_version === "2k25-cn-dd" || result.windows_version === "w11-cn-dd" ? "DD 极速版：默认账号 Administrator / 默认密码 Teddysun.com。" : result.windows_version === "w11-ltsc-2024" ? "预计安装耗时：20-40 分钟，中途重启属于正常现象。" : (result.windows_version === "2k25-cn" || result.windows_version === "2k25-en") ? "预计安装耗时：20-35 分钟，中途重启属于正常现象。" : "预计安装耗时：15-30 分钟，中途重启属于正常现象。",
     "通知顺序：① 创建请求已提交 → ② Windows 已进入系统但 RDP 未确认 → ③ RDP 已可连接。",
     "只有第 ③ 条通知才表示可以远程登录。",
     "如果超时仍无法 RDP，需要进 Linode LISH/控制台查看 StackScript 日志。"
