@@ -20,7 +20,6 @@ export function renderInstancesMenuKeyboard(): TelegramInlineKeyboardMarkup {
       [{ text: "🖥 查看全部服务器", callback_data: "instances:list:all" }],
       [{ text: "➕ 创建 Linux 服务器", callback_data: "instances:create" }],
       [{ text: "🪟 创建 Windows 服务器", callback_data: "windows:create" }],
-      [{ text: "📡 Windows 安装状态", callback_data: "windows:install_status" }],
       [{ text: "🔎 筛选", callback_data: "instances:filter" }, { text: "⚡ 批量操作", callback_data: "menu:batch" }],
       [{ text: "🏠 返回主菜单", callback_data: "menu:main" }]
     ]

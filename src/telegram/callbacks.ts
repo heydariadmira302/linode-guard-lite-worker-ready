@@ -17,7 +17,6 @@ import { SecurityService } from "../services/security-service";
 import { SecuritySettingsService } from "../services/security-settings-service";
 import { AppSettingsService } from "../services/app-settings-service";
 import { StatusOverviewService } from "../services/status-overview-service";
-import { WindowsInstallRepository } from "../storage/windows-install-repository";
 import { AuditRepository } from "../storage/audit-repository";
 import type { ParsedTelegramUpdate, TelegramClientResult } from "./types";
 import { acquireActionCooldown, renderActionCooldownText, type ActionCooldownResult } from "./action-cooldown";
@@ -32,7 +31,6 @@ import { renderProtectionAccountKeyboard, renderProtectionAccountText, renderPro
 import { renderSecuritySettingsKeyboard, renderSecuritySettingsText, renderSecurityTokenAccountsKeyboard, renderSecurityTokenAccountsText, renderSecurityTokenConfirmKeyboard, renderSecurityTokenConfirmText, renderSecurityTokenGeneratedKeyboard, renderSecurityTokenGeneratedText } from "./security-settings-renderer";
 import { renderStatusOverviewKeyboard, renderStatusOverviewText } from "./status-overview-renderer";
 import { renderCheckinInlineKeyboard } from "./keyboards";
-import { renderWindowsInstallStatusKeyboard, renderWindowsInstallStatusText } from "./windows-install-renderer";
 import { renderAccountActionResultText, renderAccountDeleteConfirmKeyboard, renderAccountDeleteConfirmText, renderAccountDetailKeyboard, renderAccountDetailText, renderAccountListKeyboard, renderAccountListText, renderAccountsMenuKeyboard, renderAccountsMenuText, renderDiagnosticsMenuKeyboard, renderDiagnosticsMenuText, renderMainMenuKeyboard, renderMainMenuText, renderMoreMenuKeyboard, renderMoreMenuText, renderMyIdKeyboard, renderMyIdText, renderPrivacyCleanupResultText, renderPrivacyMenuKeyboard, renderPrivacyMenuText, renderSettingsMenuKeyboard, renderSettingsMenuText } from "./menus";
 import { GroupService } from "../services/group-service";
 import { renderGroupAccountsKeyboard, renderGroupAccountsText, renderGroupDeleteConfirmKeyboard, renderGroupDeleteConfirmText, renderGroupDetailKeyboard, renderGroupDetailText, renderGroupInstancesKeyboard, renderGroupInstancesText, renderGroupsListKeyboard, renderGroupsMenuKeyboard, renderGroupsMenuText } from "./group-renderer";
@@ -1824,17 +1822,6 @@ export async function routeTelegramCallback(
     }
   }
 
-
-
-
-  if (update.data === "windows:install_status" && env?.DB) {
-    try {
-      const accounts = await new AccountService(env).listAccounts();
-      const repository = new WindowsInstallRepository(env.DB);
-      const all = (await Promise.all(accounts.map((account) => repository.listByAccount(account.id, 10)))).flat().sort((a: any, b: any) => Number(b.id) - Number(a.id)).slice(0, 10);
-      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsInstallStatusText(all), reply_markup: renderWindowsInstallStatusKeyboard() });
-    } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
-  }
 
   if (update.data === "windows:create" && env?.DB) {
     try {

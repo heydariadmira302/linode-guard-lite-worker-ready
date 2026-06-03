@@ -69,7 +69,7 @@ export class WindowsInstallMonitorService {
       `已超过约 ${olderThanMinutes} 分钟。你可以尝试 RDP 登录，或进入 LISH Console 检查安装状态。`,
       "如果 RDP 连不上，请确认 Linode Firewall 已放行 TCP 3389。"
     ].filter(Boolean).join("\n");
-    const result = await sendTelegramAction(this.env.TELEGRAM_BOT_TOKEN, { method: "sendMessage", payload: { chat_id: chatId, text, reply_markup: { inline_keyboard: [[{ text: "📡 Windows 安装状态", callback_data: "windows:install_status" }], [{ text: "🖥 服务器管理", callback_data: "menu:instances" }]] } } } as any);
+    const result = await sendTelegramAction(this.env.TELEGRAM_BOT_TOKEN, { method: "sendMessage", payload: { chat_id: chatId, text, reply_markup: { inline_keyboard: [[{ text: "🖥 服务器管理", callback_data: "menu:instances" }]] } } } as any);
     return Boolean((result as { ok?: boolean } | undefined)?.ok);
   }
 
@@ -114,7 +114,7 @@ export class WindowsInstallMonitorService {
       "Bot 会继续探测 3389；收到最终 RDP 可用通知后再连接。",
       "请使用创建成功时显示的 Windows 登录密码；密码不会再次展示。"
     ].filter(Boolean).join("\n");
-    const result = await sendTelegramAction(this.env.TELEGRAM_BOT_TOKEN, { method: "sendMessage", payload: { chat_id: chatId, text, reply_markup: { inline_keyboard: [[{ text: "📡 Windows 安装状态", callback_data: "windows:install_status" }], [{ text: "🖥 服务器管理", callback_data: "menu:instances" }]] } } } as any);
+    const result = await sendTelegramAction(this.env.TELEGRAM_BOT_TOKEN, { method: "sendMessage", payload: { chat_id: chatId, text, reply_markup: { inline_keyboard: [[{ text: "🖥 服务器管理", callback_data: "menu:instances" }]] } } } as any);
     return Boolean((result as { ok?: boolean } | undefined)?.ok);
   }
 
@@ -134,7 +134,7 @@ export class WindowsInstallMonitorService {
       "",
       "请使用创建成功时显示的 Windows 登录密码；密码不会再次展示。"
     ].filter(Boolean).join("\n");
-    const result = await sendTelegramAction(this.env.TELEGRAM_BOT_TOKEN, { method: "sendMessage", payload: { chat_id: chatId, text, reply_markup: { inline_keyboard: [[{ text: "📡 Windows 安装状态", callback_data: "windows:install_status" }], [{ text: "🖥 服务器管理", callback_data: "menu:instances" }]] } } } as any);
+    const result = await sendTelegramAction(this.env.TELEGRAM_BOT_TOKEN, { method: "sendMessage", payload: { chat_id: chatId, text, reply_markup: { inline_keyboard: [[{ text: "🖥 服务器管理", callback_data: "menu:instances" }]] } } } as any);
     return Boolean((result as { ok?: boolean } | undefined)?.ok);
   }
 }

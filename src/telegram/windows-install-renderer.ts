@@ -22,7 +22,7 @@ export function renderWindowsInstallStatusText(records: WindowsInstallRecord[]):
 }
 
 export function renderWindowsInstallStatusKeyboard(): TelegramInlineKeyboardMarkup {
-  return { inline_keyboard: [[{ text: "🔄 刷新状态", callback_data: "windows:install_status" }], [{ text: "🪟 创建 Windows 服务器", callback_data: "windows:create" }], [{ text: "🏠 返回服务器管理", callback_data: "menu:instances" }]] };
+  return { inline_keyboard: [[{ text: "🪟 创建 Windows 服务器", callback_data: "windows:create" }], [{ text: "🏠 返回服务器管理", callback_data: "menu:instances" }]] };
 }
 
 function formatInstallStatus(status: string): string {
