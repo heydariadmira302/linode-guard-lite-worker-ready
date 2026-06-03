@@ -102,15 +102,17 @@ export class WindowsInstallMonitorService {
     if (!chatId || !this.env.TELEGRAM_BOT_TOKEN) return false;
     const ip = record.ip_address || "请在 Linode 控制台查看公网 IPv4";
     const text = [
-      "✅ Windows 已进入系统，开始检测 RDP 可用性",
+      "🟡 Windows 已进入系统，RDP 仍在检测中",
       "",
       `服务器：${record.instance_label}`,
       record.instance_id ? `实例 ID：${record.instance_id}` : null,
-      `RDP：${ip}:3389`,
+      `待检测地址：${ip}:3389`,
       `用户名：${getWindowsUsername(record)}`,
+      "当前结论：暂时不要连接 RDP。",
       "",
-      "密码不会重复发送，请使用创建成功页里的一次性密码。",
-      "Bot 会继续检测 3389，真正可远程登录后会再发一条成功通知。"
+      "说明：这条消息只表示 Windows 已能回调 Bot，不代表 TCP 3389 已经可连接。",
+      "Bot 会继续探测 3389；收到最终 RDP 可用通知后再连接。",
+      "请使用创建成功时显示的 Windows 登录密码；密码不会再次展示。"
     ].filter(Boolean).join("\n");
     const result = await sendTelegramAction(this.env.TELEGRAM_BOT_TOKEN, { method: "sendMessage", payload: { chat_id: chatId, text, reply_markup: { inline_keyboard: [[{ text: "📡 Windows 安装状态", callback_data: "windows:install_status" }], [{ text: "🖥 服务器管理", callback_data: "menu:instances" }]] } } } as any);
     return Boolean((result as { ok?: boolean } | undefined)?.ok);
@@ -128,8 +130,9 @@ export class WindowsInstallMonitorService {
       `RDP：${ip}:3389`,
       `用户名：${getWindowsUsername(record)}`,
       `耗时：${formatDuration(record.created_at, record.rdp_ready_at ?? new Date().toISOString())}`,
+      "当前结论：可以连接 RDP。",
       "",
-      "密码不会重复发送，请使用创建成功页里的一次性密码。"
+      "请使用创建成功时显示的 Windows 登录密码；密码不会再次展示。"
     ].filter(Boolean).join("\n");
     const result = await sendTelegramAction(this.env.TELEGRAM_BOT_TOKEN, { method: "sendMessage", payload: { chat_id: chatId, text, reply_markup: { inline_keyboard: [[{ text: "📡 Windows 安装状态", callback_data: "windows:install_status" }], [{ text: "🖥 服务器管理", callback_data: "menu:instances" }]] } } } as any);
     return Boolean((result as { ok?: boolean } | undefined)?.ok);

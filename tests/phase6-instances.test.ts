@@ -393,6 +393,10 @@ describe("Phase 6 Linode instance read-only management", () => {
       const createdBody = await createdFlow.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<Record<string, unknown>>> } } } } };
       expect(createdBody.data.telegram.payload.text).toContain("不会再次显示，请立刻复制保存");
       expect(createdBody.data.telegram.payload.text).toContain("不会提供找回入口");
+      expect(createdBody.data.telegram.payload.text).toContain("RDP：待检测，暂时不要连接");
+      expect(createdBody.data.telegram.payload.text).toContain("当前结论：创建请求已提交，不代表 3389 已可连接");
+      expect(createdBody.data.telegram.payload.text).toContain("只有第 ③ 条通知才表示可以远程登录");
+      expect(createdBody.data.telegram.payload.text).not.toContain("RDP：3389（安装完成后连接）");
       expect(createdBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🏠 返回主菜单", callback_data: "menu:main" });
       expect(createdBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🖥 稍后查看服务器详情", callback_data: "instances:detail:1:92022:account_1" });
       expect(createdBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).not.toContainEqual({ text: "🖥 打开服务器详情", callback_data: "instances:detail:1:92022:account_1" });
@@ -557,6 +561,11 @@ describe("Phase 6 Linode instance read-only management", () => {
         expect(payload.script).toContain("DD_IMAGE_URL");
         expect(payload.script).toContain("streaming DD image to /dev/sdb");
         expect(payload.script).toContain("LinodeGuardLiteSetup.bat");
+        expect(payload.script).toContain("DD_WINDOWS_BUILTIN_PASSWORD='X8li8x5VFN.'");
+        expect(payload.script).toContain("hivexregedit --merge /mnt/windows-dd/Windows/System32/config/SOFTWARE /tmp/lgl-autologon.reg");
+        expect(payload.script).toContain(`"DefaultPassword"="$DD_WINDOWS_BUILTIN_PASSWORD"`);
+        expect(payload.script).toContain(`reg delete "HKLM\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon" /v DefaultPassword /f`);
+        expect(payload.script).toContain(`reg add "HKLM\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon" /v AutoAdminLogon /t REG_SZ /d 0 /f`);
         return new Response(JSON.stringify({ id: 2022, label: payload.label }), { status: 200 });
       }
       if (url.endsWith("/linode/instances") && init?.method === "POST") {

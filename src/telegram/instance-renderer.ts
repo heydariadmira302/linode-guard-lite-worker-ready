@@ -557,8 +557,9 @@ export function renderWindowsCreatedText(result: { account: PublicAccount; insta
     `状态：${translateInstanceStatus(result.instance.status)}`,
     `地区：${result.instance.region}`,
     `公网 IP：${ip}`,
-    "RDP：3389（安装完成后连接）",
+    "RDP：待检测，暂时不要连接。收到最终 RDP 可用通知后再连接。",
     `用户名：${result.windows_username ?? "Administrator"}`,
+    "当前结论：创建请求已提交，不代表 3389 已可连接。",
     "",
     "⚠️ 重要：下面两个密码不会再次显示，请立刻复制保存。",
     "如果关闭/清理消息后忘记密码，需要通过 Linode 控制台重置或重装。",
@@ -574,7 +575,9 @@ export function renderWindowsCreatedText(result: { account: PublicAccount; insta
     `Windows：${result.windows_version_label ?? "Windows Server 2022 Evaluation"}`,
     result.windows_version === "w11-ltsc-2024" || result.windows_version === "2k25-cn" || result.windows_version === "2k25-en" ? `语言：${result.windows_lang}` : null,
     result.windows_version === "w11-ltsc-2024" ? "预计安装耗时：20-40 分钟，中途重启属于正常现象。" : (result.windows_version === "2k25-cn" || result.windows_version === "2k25-en") ? "预计安装耗时：20-35 分钟，中途重启属于正常现象。" : "预计安装耗时：15-30 分钟，中途重启属于正常现象。",
-    "如果 30 分钟后仍无法 RDP，需要进 Linode LISH/控制台查看 StackScript 日志。"
+    "通知顺序：① 创建请求已提交 → ② Windows 已进入系统但 RDP 未确认 → ③ RDP 已可连接。",
+    "只有第 ③ 条通知才表示可以远程登录。",
+    "如果超时仍无法 RDP，需要进 Linode LISH/控制台查看 StackScript 日志。"
   ].join("\n");
 }
 

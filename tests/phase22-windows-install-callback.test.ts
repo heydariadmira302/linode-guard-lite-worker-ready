@@ -92,7 +92,12 @@ describe("Windows install callback notification", () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(String(fetchMock.mock.calls[0][0])).toContain("/sendMessage");
       expect(String(fetchMock.mock.calls[0][1]?.body)).toContain("Windows 已进入系统");
-      expect(String(fetchMock.mock.calls[0][1]?.body)).toContain("开始检测 RDP");
+      expect(String(fetchMock.mock.calls[0][1]?.body)).toContain("RDP 仍在检测中");
+      expect(String(fetchMock.mock.calls[0][1]?.body)).toContain("不代表 TCP 3389 已经可连接");
+      expect(String(fetchMock.mock.calls[0][1]?.body)).toContain("当前结论：暂时不要连接 RDP");
+      expect(String(fetchMock.mock.calls[0][1]?.body)).toContain("收到最终 RDP 可用通知后再连接");
+      expect(String(fetchMock.mock.calls[0][1]?.body)).not.toContain("RDP：203.0.113.25:3389");
+      expect(String(fetchMock.mock.calls[0][1]?.body)).toContain("待检测地址：203.0.113.25:3389");
       expect(String(fetchMock.mock.calls[0][1]?.body)).not.toContain("Windows 已可远程登录");
       expect(String(fetchMock.mock.calls[0][1]?.body)).not.toContain(token);
     } finally {
@@ -138,6 +143,7 @@ describe("Windows install callback notification", () => {
       expect(body).toContain("172.104.117.244:3389");
       expect(body).toContain("用户名：test");
       expect(body).toContain("耗时");
+      expect(body).toContain("当前结论：可以连接 RDP");
     } finally {
       fetchMock.mockRestore();
     }
