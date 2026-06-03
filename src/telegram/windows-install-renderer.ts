@@ -12,7 +12,7 @@ export function renderWindowsInstallStatusText(records: WindowsInstallRecord[]):
       record.ip_address ? (record.rdp_ready_at ? `RDP：${record.ip_address}:3389` : `待检测地址：${record.ip_address}:3389`) : "RDP：等待公网 IPv4",
       `连接建议：${formatConnectionAdvice(record)}`,
       record.callback_received_at ? `完成回调：${record.callback_received_at}` : `创建时间：${record.created_at}`,
-      record.rdp_ready_at ? `RDP 可用：${record.rdp_ready_at}` : record.status === "ready" ? `RDP 检测：等待连通${record.rdp_check_attempts ? `（已检测 ${record.rdp_check_attempts} 次）` : ""}` : "",
+      record.rdp_ready_at ? `RDP 探测完成：${record.rdp_ready_at}` : record.status === "ready" ? `RDP 检测：等待连通${record.rdp_check_attempts ? `（已检测 ${record.rdp_check_attempts} 次）` : ""}` : "",
       record.rdp_ready_at ? `总耗时：${formatDuration(record.created_at, record.rdp_ready_at)}` : "",
       formatNotificationLine(record),
       ""
@@ -40,7 +40,7 @@ function formatConnectionAdvice(record: WindowsInstallRecord): string {
 
 function formatNotificationLine(record: WindowsInstallRecord): string {
   if (!record.notified_at) return "通知状态：未通知";
-  if (record.rdp_notified_at) return `RDP 可用通知：${record.rdp_notified_at}`;
+  if (record.rdp_notified_at) return `RDP 探测完成：${record.rdp_notified_at}`;
   if (record.status === "ready") return `系统进入通知：${record.notified_at}`;
   if (record.status === "failed") return `超时提醒：${record.notified_at}`;
   return `通知时间：${record.notified_at}`;

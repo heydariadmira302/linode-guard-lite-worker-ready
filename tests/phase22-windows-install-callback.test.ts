@@ -95,7 +95,6 @@ describe("Windows install callback notification", () => {
       expect(String(fetchMock.mock.calls[0][1]?.body)).toContain("RDP 仍在检测中");
       expect(String(fetchMock.mock.calls[0][1]?.body)).toContain("不代表 TCP 3389 已经可连接");
       expect(String(fetchMock.mock.calls[0][1]?.body)).toContain("当前结论：暂时不要连接 RDP");
-      expect(String(fetchMock.mock.calls[0][1]?.body)).toContain("收到最终 RDP 可用通知后再连接");
       expect(String(fetchMock.mock.calls[0][1]?.body)).not.toContain("RDP：203.0.113.25:3389");
       expect(String(fetchMock.mock.calls[0][1]?.body)).toContain("待检测地址：203.0.113.25:3389");
       expect(String(fetchMock.mock.calls[0][1]?.body)).not.toContain("Windows 已可远程登录");
@@ -126,7 +125,7 @@ describe("Windows install callback notification", () => {
   });
 
 
-  it("sends final RDP ready notification only after TCP 3389 is reachable", async () => {
+  it("records RDP readiness internally without sending a final ready notification", async () => {
     const db = new FakeD1Database();
     db.windowsInstalls.push({ id: 3, account_id: 1, instance_id: 98494238, instance_label: "test2025", ip_address: "172.104.117.244", status: "ready", callback_token_hash: "hash", telegram_chat_id: "123456789", telegram_user_id: "123456789", notified_at: "2026-06-02T07:55:52.316Z", callback_received_at: "2026-06-02T07:55:52.316Z", rdp_ready_at: null, rdp_notified_at: null, rdp_check_attempts: 0, last_rdp_check_error: null, created_at: "2026-06-02T07:06:03.062Z", updated_at: "2026-06-02T07:55:52.316Z", metadata_json: JSON.stringify({ windows_username: "test" }) });
     const env = { ...baseEnv, DB: db as unknown as D1Database };
@@ -137,13 +136,7 @@ describe("Windows install callback notification", () => {
       expect(result).toEqual({ checked: 1, ready: 1, notified: 1 });
       expect(db.windowsInstalls[0].rdp_ready_at).toBeTruthy();
       expect(db.windowsInstalls[0].rdp_notified_at).toBeTruthy();
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-      const body = String(fetchMock.mock.calls[0][1]?.body);
-      expect(body).toContain("Windows 已可远程登录");
-      expect(body).toContain("172.104.117.244:3389");
-      expect(body).toContain("用户名：test");
-      expect(body).toContain("耗时");
-      expect(body).toContain("当前结论：可以连接 RDP");
+      expect(fetchMock).not.toHaveBeenCalled();
     } finally {
       fetchMock.mockRestore();
     }

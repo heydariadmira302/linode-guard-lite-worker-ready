@@ -89,10 +89,9 @@ export class WindowsInstallMonitorService {
       await this.repository.markRdpCheck(record.id, null);
       if (!updated) continue;
       ready += 1;
-      if (!updated.rdp_notified_at && await this.notifyRdpReady(updated)) {
-        await this.repository.markRdpNotified(updated.id);
-        notified += 1;
-      }
+      // RDP readiness is tracked internally only; no final user notification.
+      await this.repository.markRdpNotified(updated.id);
+      notified += 1;
     }
     return { checked: pending.length, ready, notified };
   }
@@ -111,32 +110,13 @@ export class WindowsInstallMonitorService {
       "当前结论：暂时不要连接 RDP。",
       "",
       "说明：这条消息只表示 Windows 已能回调 Bot，不代表 TCP 3389 已经可连接。",
-      "Bot 会继续探测 3389；收到最终 RDP 可用通知后再连接。",
+      "Bot 会继续探测 3389；探测通过后只记录结果，不再单独发送最终通知。",
       "请使用创建成功时显示的 Windows 登录密码；密码不会再次展示。"
     ].filter(Boolean).join("\n");
     const result = await sendTelegramAction(this.env.TELEGRAM_BOT_TOKEN, { method: "sendMessage", payload: { chat_id: chatId, text, reply_markup: { inline_keyboard: [[{ text: "🖥 服务器管理", callback_data: "menu:instances" }]] } } } as any);
     return Boolean((result as { ok?: boolean } | undefined)?.ok);
   }
 
-  private async notifyRdpReady(record: WindowsInstallRecord): Promise<boolean> {
-    const chatId = record.telegram_chat_id || this.env.SUPER_ADMIN_TELEGRAM_ID;
-    if (!chatId || !this.env.TELEGRAM_BOT_TOKEN) return false;
-    const ip = record.ip_address || "请在 Linode 控制台查看公网 IPv4";
-    const text = [
-      "✅ Windows 已可远程登录",
-      "",
-      `服务器：${record.instance_label}`,
-      record.instance_id ? `实例 ID：${record.instance_id}` : null,
-      `RDP：${ip}:3389`,
-      `用户名：${getWindowsUsername(record)}`,
-      `耗时：${formatDuration(record.created_at, record.rdp_ready_at ?? new Date().toISOString())}`,
-      "当前结论：可以连接 RDP。",
-      "",
-      "请使用创建成功时显示的 Windows 登录密码；密码不会再次展示。"
-    ].filter(Boolean).join("\n");
-    const result = await sendTelegramAction(this.env.TELEGRAM_BOT_TOKEN, { method: "sendMessage", payload: { chat_id: chatId, text, reply_markup: { inline_keyboard: [[{ text: "🖥 服务器管理", callback_data: "menu:instances" }]] } } } as any);
-    return Boolean((result as { ok?: boolean } | undefined)?.ok);
-  }
 }
 
 export function generateInstallCallbackToken(): string {

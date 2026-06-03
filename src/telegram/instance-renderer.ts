@@ -558,7 +558,7 @@ export function renderWindowsCreatedText(result: { account: PublicAccount; insta
     `状态：${translateInstanceStatus(result.instance.status)}`,
     `地区：${result.instance.region}`,
     `公网 IP：${ip}`,
-    "RDP：待检测，暂时不要连接。收到最终 RDP 可用通知后再连接。",
+    "RDP：待检测，暂时不要连接。",
     `用户名：${result.windows_username ?? "Administrator"}`,
     "当前结论：创建请求已提交，不代表 3389 已可连接。",
     "",
