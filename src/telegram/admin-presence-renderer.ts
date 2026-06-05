@@ -95,6 +95,13 @@ export function formatPolicyScope(scope: string): string {
   return scope;
 }
 
+function formatPreFinalReminder(policy: PublicAdminPresencePolicy): string {
+  if (policy.action === "notify") return "无需设置";
+  if (policy.hourly_reminder_before_minutes && policy.hourly_reminder_before_minutes > 0) return `最终动作前 ${formatPolicyDurationPlain(policy.hourly_reminder_before_minutes)}开始，每小时提醒打卡`;
+  if (policy.action === "delete_all_instances") return "最终动作前 6 小时开始，每小时提醒打卡";
+  return "未开启";
+}
+
 export function formatPolicyAction(action: string): string {
   if (action === "notify") return "🔔 只通知";
   if (action === "shutdown_all_instances") return "⚠️ 关闭全部服务器";
@@ -557,6 +564,7 @@ export function renderAdminPresencePanelText(data: AdminPresencePanelData): stri
       `提醒阈值：${policy.remind_after_minutes && policy.remind_after_minutes > 0 ? `${formatPolicyMinutes(policy.remind_after_minutes)}提醒` : "不提醒"}`,
       `最终动作阈值：${policy.final_after_minutes && policy.final_after_minutes > 0 ? `${formatPolicyMinutes(policy.final_after_minutes)}执行` : "不执行"}`,
       `最终动作：${formatPolicyAction(policy.action)}`,
+      `最终动作前提醒：${formatPreFinalReminder(policy)}`,
       `作用范围：${formatPolicyScope(policy.scope)}`
     ].join("\n") : "当前还没有保活风控配置。建议先设置提醒时间和最终动作。",
     "",
@@ -570,6 +578,7 @@ export function renderAdminPresencePanelKeyboard(policy: PublicAdminPresencePoli
     [{ text: "✅ 立即打卡", callback_data: "admin_presence:checkin" }],
     [{ text: enabled ? "⏸ 关闭保活" : "🟢 开启保活", callback_data: enabled && policy ? `admin_presence:policy:disable:${policy.id}` : "admin_presence:global:enable" }],
     [{ text: "⏰ 设置提醒时间", callback_data: "admin_presence:global:warn" }, { text: "⏳ 设置最终时间", callback_data: "admin_presence:global:final" }],
+    [{ text: "🔔 设置最终前提醒", callback_data: "admin_presence:global:pre_final" }],
     [{ text: "🛡 设置最终动作", callback_data: "admin_presence:global:action" }, { text: "🎯 设置范围", callback_data: "admin_presence:global:scope" }],
     [{ text: "📋 高级策略列表", callback_data: "admin_presence:policies" }],
     [{ text: "🏠 返回主菜单", callback_data: "menu:main" }]
@@ -617,6 +626,36 @@ export function renderAdminPresenceGlobalFinalKeyboard(remindAfter = 0): Telegra
   ].filter((option) => option.minutes > remindAfter);
   return { inline_keyboard: [
     ...chunkTimeOptions(options).map((row) => row.map((option) => ({ text: option.text, callback_data: `admin_presence:global:final_to:${option.minutes}` }))),
+    [{ text: "↩️ 返回保活面板", callback_data: "menu:admin_presence" }]
+  ] };
+}
+
+export function renderAdminPresenceGlobalPreFinalText(policy: PublicAdminPresencePolicy | null): string {
+  return [
+    "🔔 设置最终动作前提醒",
+    "━━━━━━━━━━━━",
+    "这是最终动作执行前的打卡提醒。",
+    "开启后，会在最终动作前指定时间开始，每小时提醒一次，直到你打卡或最终动作执行。",
+    "",
+    `当前：${policy ? formatPreFinalReminder(policy) : "未设置"}`,
+    policy?.action === "delete_all_instances" ? "删除全部服务器前必须设置打卡提醒，不允许关闭。" : null
+  ].filter(Boolean).join("\n");
+}
+
+export function renderAdminPresenceGlobalPreFinalKeyboard(policy: PublicAdminPresencePolicy | null): TelegramInlineKeyboardMarkup {
+  const action = policy?.action ?? "notify";
+  const remindAfter = policy?.remind_after_minutes ?? 12 * 60;
+  const finalAfter = policy?.final_after_minutes ?? 24 * 60;
+  if (action === "notify") return { inline_keyboard: [[{ text: "先设置最终动作为关机/删除", callback_data: "admin_presence:global:action" }], [{ text: "↩️ 返回保活面板", callback_data: "menu:admin_presence" }]] };
+  const options = [
+    ...(action === "delete_all_instances" ? [] : [{ text: "关闭提醒", minutes: 0 }]),
+    { text: "最终前 3 小时", minutes: 180 },
+    { text: "最终前 6 小时", minutes: 360 },
+    { text: "最终前 12 小时", minutes: 720 },
+    { text: "最终前 24 小时", minutes: 1440 }
+  ].filter((option) => option.minutes === 0 || finalAfter - option.minutes > remindAfter);
+  return { inline_keyboard: [
+    ...chunkTimeOptions(options).map((row) => row.map((option) => ({ text: option.text, callback_data: `admin_presence:global:pre_final_to:${option.minutes}` }))),
     [{ text: "↩️ 返回保活面板", callback_data: "menu:admin_presence" }]
   ] };
 }

@@ -433,9 +433,16 @@ describe("Phase 13 admin presence", () => {
       { text: "✅ 立即打卡", callback_data: "admin_presence:checkin" },
       { text: "⏰ 设置提醒时间", callback_data: "admin_presence:global:warn" },
       { text: "⏳ 设置最终时间", callback_data: "admin_presence:global:final" },
+      { text: "🔔 设置最终前提醒", callback_data: "admin_presence:global:pre_final" },
       { text: "🛡 设置最终动作", callback_data: "admin_presence:global:action" },
       { text: "🎯 设置范围", callback_data: "admin_presence:global:scope" }
     ]));
+
+    const preFinalResponse = await worker.fetch(telegramRequest(callbackUpdate("admin_presence:global:pre_final")), env as never);
+    const preFinalBody = await preFinalResponse.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+    expect(preFinalBody.data.telegram.payload.text).toContain("这是最终动作执行前的打卡提醒");
+    expect(preFinalBody.data.telegram.payload.text).toContain("当前：无需设置");
+    expect(preFinalBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "先设置最终动作为关机/删除", callback_data: "admin_presence:global:action" });
 
     const policiesResponse = await worker.fetch(telegramRequest(callbackUpdate("admin_presence:policies")), env as never);
     const policiesBody = await policiesResponse.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
