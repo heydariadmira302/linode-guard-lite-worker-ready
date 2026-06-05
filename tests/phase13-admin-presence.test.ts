@@ -354,8 +354,22 @@ describe("Phase 13 admin presence", () => {
     expect(createDelete.status).toBe(200);
     expect(deleteBody.data.policy.rules).toEqual([
       { rule_id: "notify", after_minutes: 720, action: "notify" },
+      { rule_id: "notify_countdown_1080", after_minutes: 1080, action: "notify" },
+      { rule_id: "notify_countdown_1140", after_minutes: 1140, action: "notify" },
+      { rule_id: "notify_countdown_1200", after_minutes: 1200, action: "notify" },
+      { rule_id: "notify_countdown_1260", after_minutes: 1260, action: "notify" },
+      { rule_id: "notify_countdown_1320", after_minutes: 1320, action: "notify" },
+      { rule_id: "notify_countdown_1380", after_minutes: 1380, action: "notify" },
       { rule_id: "delete_all_instances", after_minutes: 1440, action: "delete_all_instances" }
     ]);
+
+    const createDeleteNoReminder = await worker.fetch(apiRequest("/api/v1/admin-presence/policies", { method: "POST", body: JSON.stringify({ name: "delete stale servers guarded", scope: "all", action: "delete_all_instances", remind_after_minutes: 720, final_after_minutes: 1440, hourly_reminder_before_minutes: 0 }) }), env as never);
+    const deleteNoReminderBody = await createDeleteNoReminder.json() as { data: { policy: { rules: Array<{ rule_id: string; action: string; after_minutes: number }> } } };
+    expect(createDeleteNoReminder.status).toBe(200);
+    expect(deleteNoReminderBody.data.policy.rules).toEqual(expect.arrayContaining([
+      { rule_id: "notify_countdown_1080", after_minutes: 1080, action: "notify" },
+      { rule_id: "delete_all_instances", after_minutes: 1440, action: "delete_all_instances" }
+    ]));
 
     const listResponse = await worker.fetch(apiRequest("/api/v1/admin-presence/policies?limit=10&offset=0"), env as never);
     const listBody = await listResponse.json() as { data: { policies: Array<AdminPresencePolicyRecord & { action: string }>; limit: number; offset: number } };
@@ -614,9 +628,10 @@ describe("Phase 13 admin presence", () => {
 
     const deleteFinal = await worker.fetch(telegramRequest(callbackUpdate("ap:cf:d:a:720:1440")), env as never);
     const deleteFinalBody = await deleteFinal.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
-    expect(deleteFinalBody.data.telegram.payload.text).toContain("是否在最终动作前开启每小时打卡提醒");
+    expect(deleteFinalBody.data.telegram.payload.text).toContain("删除全部服务器前必须设置打卡提醒");
+    expect(deleteFinalBody.data.telegram.payload.text).toContain("不提供跳过提醒");
+    expect(deleteFinalBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).not.toContainEqual({ text: "不重复提醒", callback_data: "ap:ch:d:a:720:1440:0" });
     expect(deleteFinalBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
-      { text: "不重复提醒", callback_data: "ap:ch:d:a:720:1440:0" },
       { text: "最终前 6 小时", callback_data: "ap:ch:d:a:720:1440:360" }
     ]));
     expect(collectCallbackData(deleteFinalBody.data.telegram.payload.reply_markup).every((value) => Buffer.byteLength(value) <= 64)).toBe(true);

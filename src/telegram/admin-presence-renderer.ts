@@ -283,17 +283,16 @@ export function renderAdminPresencePolicyHourlyReminderText(action: string, remi
     `🛡 最终动作：${formatPolicyAction(action)}`,
     `⏰ 最终动作时间：${formatPolicyMinutes(finalAfter)}`,
     "",
-    "是否在最终动作前开启每小时打卡提醒？",
-    "要不要加一层“临门一脚”提醒？",
+    action === "delete_all_instances" ? "删除全部服务器前必须设置打卡提醒。" : "是否在最终动作前开启每小时打卡提醒？",
     "开启后，会在最终动作前指定时间开始，每小时提醒一次，直到你打卡或最终动作执行。",
     "",
-    "不想打扰太多，就选“不重复提醒”。"
+    action === "delete_all_instances" ? "这是删除前的最后保护，不提供跳过提醒。" : "不想打扰太多，可以选“不重复提醒”。"
   ].join("\n");
 }
 
 export function renderAdminPresencePolicyHourlyReminderKeyboard(action: string, scope: string, remindAfter: number, finalAfter: number): TelegramInlineKeyboardMarkup {
   const options = [
-    { text: "不重复提醒", minutes: 0 },
+    ...(action === "delete_all_instances" ? [] : [{ text: "不重复提醒", minutes: 0 }]),
     { text: "最终前 3 小时", minutes: 180 },
     { text: "最终前 6 小时", minutes: 360 },
     { text: "最终前 12 小时", minutes: 720 },
