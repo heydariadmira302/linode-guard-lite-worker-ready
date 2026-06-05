@@ -49,18 +49,16 @@ export async function handleTelegramWebhook(request: Request, env: Env, requestI
 }
 
 async function trackIncomingTelegramMessage(env: Env, update: ParsedTelegramUpdate): Promise<void> {
-  if (!env.DB) return;
+  if (!env.DB || update.kind !== "callback_query") return;
   try {
     const repository = new TelegramMessagesRepository(env.DB);
-    if (update.kind === "callback_query") {
-      const reminder = await repository.getPendingByMessagePurpose({ chat_id: update.chatId, message_id: String(update.messageId), purpose: "admin_presence_reminder" });
-      if (reminder) return;
-    }
+    const reminder = await repository.getPendingByMessagePurpose({ chat_id: update.chatId, message_id: String(update.messageId), purpose: "admin_presence_reminder" });
+    if (reminder) return;
     await repository.createIfMissing({
       chat_id: update.chatId,
       message_id: String(update.messageId),
       purpose: "auto_delete",
-      metadata: { direction: update.kind === "message" ? "incoming" : "callback_source" }
+      metadata: { direction: "callback_source" }
     });
   } catch {
     // Message cleanup must never block normal Telegram operations, especially before /setup initializes D1.

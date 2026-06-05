@@ -232,6 +232,8 @@ describe("Phase 18 Telegram-first experience", () => {
     const privacyBody = await privacy.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
     expect(privacyBody.data.telegram.payload.text).toContain("隐私清理");
     expect(privacyBody.data.telegram.payload.text).toContain("当前策略：关闭");
+    expect(privacyBody.data.telegram.payload.text).toContain("主要清理 Bot 发出的菜单、通知和操作结果");
+    expect(privacyBody.data.telegram.payload.text).toContain("Token 等敏感输入会尽量即时删除");
     expect(privacyBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
       { text: "1分钟", callback_data: "privacy:auto_delete:1" },
       { text: "🧹 立即清理一次", callback_data: "privacy:cleanup_now" }

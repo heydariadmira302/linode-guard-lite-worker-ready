@@ -59,11 +59,12 @@ export function renderPrivacyMenuText(settings: Pick<AppSettings, "telegram_auto
     `当前策略：${formatAutoDeleteSetting(settings.telegram_auto_delete_minutes)}`,
     "",
     "开启后，Bot 只记录 Telegram 消息 ID，不保存消息正文。",
-    "到达设定时间后，后台任务会清理可删除的消息。",
+    "主要清理 Bot 发出的菜单、通知和操作结果。",
+    "Token 等敏感输入会尽量即时删除，不依赖这里。",
     "",
     "注意：",
     "• Telegram 通常只允许删除 48 小时内的消息",
-    "• 群组需要 Bot 具备删除消息权限",
+    "• 用户发给 Bot 的普通消息，Telegram 可能不允许 Bot 删除",
     "• 高风险通知建议保留足够时间方便追溯"
   ].join("\n");
 }
