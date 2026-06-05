@@ -14,6 +14,7 @@ export type SecuritySettings = {
   night_end: string;
   timezone: string;
   token_error_dedupe_minutes: number;
+  login_confirmation_timeout_minutes: number;
   auto_generate_linode_token_enabled: boolean;
   auto_generated_token_scopes: string;
   auto_generated_token_expiry_days: number | null;
@@ -30,6 +31,7 @@ const DEFAULT_SECURITY_SETTINGS: SecuritySettings = {
   night_end: "06:00",
   timezone: "Asia/Shanghai",
   token_error_dedupe_minutes: 24 * 60,
+  login_confirmation_timeout_minutes: 30,
   auto_generate_linode_token_enabled: false,
   auto_generated_token_scopes: "*",
   auto_generated_token_expiry_days: null
@@ -68,6 +70,7 @@ export function normalizeSecuritySettings(input: Partial<SecuritySettings>, fall
     night_end: normalizeTime(input.night_end, "06:00"),
     timezone: typeof input.timezone === "string" && input.timezone.trim() ? input.timezone.trim() : fallbackTimezone,
     token_error_dedupe_minutes: normalizeMinutes(input.token_error_dedupe_minutes, 24 * 60),
+    login_confirmation_timeout_minutes: normalizeMinutes(input.login_confirmation_timeout_minutes, 30),
     auto_generate_linode_token_enabled: input.auto_generate_linode_token_enabled === true,
     auto_generated_token_scopes: typeof input.auto_generated_token_scopes === "string" && input.auto_generated_token_scopes.trim() ? input.auto_generated_token_scopes.trim() : "*",
     auto_generated_token_expiry_days: input.auto_generated_token_expiry_days === null || input.auto_generated_token_expiry_days === undefined ? null : Math.max(1, Math.min(365, Math.trunc(Number(input.auto_generated_token_expiry_days))))

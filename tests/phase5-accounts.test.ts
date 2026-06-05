@@ -69,6 +69,9 @@ class FakeD1Database {
     if (sql.includes("FROM linode_accounts") && sql.includes("WHERE alias = ?")) {
       return (this.accounts.find((account) => account.alias === values[0] && account.status === "active") as T | undefined) ?? null;
     }
+    if (sql.includes("FROM linode_accounts") && sql.includes("WHERE token_fingerprint = ?")) {
+      return (this.accounts.find((account) => account.token_fingerprint === values[0] && account.status === "active") as T | undefined) ?? null;
+    }
     if (sql.includes("FROM groups") && sql.includes("WHERE name = ?")) {
       return (this.groups.find((group) => group.name === values[0] && group.deleted_at === null) as T | undefined) ?? null;
     }
@@ -399,9 +402,9 @@ describe("Phase 5 Linode account and token management", () => {
     expect(listBody.data.telegram.payload.text).toContain("#1 default");
     expect(listBody.data.telegram.payload.text).toContain("#2 legacy");
     expect(listBody.data.telegram.payload.text).toContain("分组：未分组");
-    expect(listBody.data.telegram.payload.text).toContain("Token 状态：可用");
-    expect(listBody.data.telegram.payload.text).toContain("fp_123456789abc");
-    expect(listBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "📋 详情 #1 default", callback_data: "accounts:detail:1" });
+    expect(listBody.data.telegram.payload.text).toContain("Token：可用");
+    expect(listBody.data.telegram.payload.text).not.toContain("fp_123456789abc");
+    expect(listBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "👤 default", callback_data: "accounts:detail:1" });
     expect(JSON.stringify(listBody)).not.toContain("v1:encrypted");
   });
 
@@ -415,7 +418,9 @@ describe("Phase 5 Linode account and token management", () => {
       const detail = await worker.fetch(telegramRequest(callbackUpdate("accounts:detail:1")), env as never);
       const detailBody = await detail.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
       expect(detailBody.data.telegram.payload.text).toContain("账号详情");
-      expect(detailBody.data.telegram.payload.text).toContain("• 状态：可用");
+      expect(detailBody.data.telegram.payload.text).toContain("Token：可用");
+      expect(detailBody.data.telegram.payload.text).toContain("常用操作：查看服务器、测试/更新 Token、移动分组。");
+      expect(detailBody.data.telegram.payload.text).not.toContain("fp_123456789abc");
       expect(detailBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
         { text: "🖥 查看该账号服务器", callback_data: "instances:list:account:1" },
         { text: "🔍 测试 Token", callback_data: "accounts:test:1" },
@@ -528,6 +533,44 @@ describe("Phase 5 Linode account and token management", () => {
       expect(rawTelegram).not.toContain("valid-linode-token");
       expect(db.accounts).toHaveLength(1);
       expect(db.accounts[0].encrypted_token).not.toContain("valid-linode-token");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("rejects duplicate Linode tokens while keeping the two-step Telegram add flow", async () => {
+    const db = new FakeD1Database();
+    const token = "same-valid-linode-token";
+    db.accounts.push({
+      id: 1,
+      alias: "西班牙1",
+      group_id: 1,
+      encrypted_token: await encryptLinodeToken(token, "encryption-key"),
+      token_fingerprint: await createTokenFingerprint(token),
+      token_status: "valid",
+      status: "active",
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+      deleted_at: null
+    });
+    db.nextAccountId = 2;
+    const env = { ...baseEnv, DB: db as unknown as D1Database };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ username: "admin" }), { status: 200 }));
+    try {
+      await worker.fetch(telegramRequest(callbackUpdate("accounts:add")), env as never);
+      const aliasResponse = await worker.fetch(telegramRequest(messageUpdate("日本备用", 41)), env as never);
+      const aliasBody = await aliasResponse.json() as { data: { telegram: { payload: { text: string } } } };
+      expect(aliasBody.data.telegram.payload.text).toContain("请发送 Linode API Token");
+
+      const duplicateResponse = await worker.fetch(telegramRequest(messageUpdate(token, 42)), env as never);
+      const duplicateBody = await duplicateResponse.json() as { data: { telegram: Array<{ method: string; payload: { text?: string; message_id?: number } }> } };
+      const messages = duplicateBody.data.telegram.map((item) => item.payload.text ?? "").join("\n");
+      expect(duplicateBody.data.telegram).toEqual(expect.arrayContaining([
+        expect.objectContaining({ method: "deleteMessage", payload: expect.objectContaining({ message_id: 42 }) })
+      ]));
+      expect(messages).toContain("添加账号");
+      expect(messages).toContain("这个 Token 已经添加过： #1 西班牙1");
+      expect(db.accounts).toHaveLength(1);
     } finally {
       fetchMock.mockRestore();
     }

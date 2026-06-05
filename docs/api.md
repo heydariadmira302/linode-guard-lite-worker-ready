@@ -511,7 +511,7 @@ curl -X POST \
 
 ## Job Runner
 
-Cloudflare Cron 通过 Worker `scheduled` handler 进入统一 Job Runner。建议触发频率：`* * * * *`。Job Runner 会用 `jobs.next_run_at` 控制各任务实际频率；`message_cleanup` 可接近每分钟执行，其他常规任务默认约 5 分钟一轮。
+Cloudflare Cron 通过 Worker `scheduled` handler 进入统一 Job Runner。建议触发频率：`* * * * *`。Job Runner 会用 `jobs.next_run_at` 控制各任务实际频率；当前默认所有系统 job 均按约 1 分钟一轮检查。
 
 当前 Runner 会执行：
 

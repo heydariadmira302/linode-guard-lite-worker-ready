@@ -50,8 +50,12 @@ export class AccountService {
     }
     try {
       const tokenTest = await new LinodeClient(token).testToken(context.requestId);
-      const encryptedToken = await encryptLinodeToken(token, await getLinodeTokenEncryptionKey(this.env));
       const fingerprint = await createTokenFingerprint(token);
+      const duplicate = await this.accounts.getByTokenFingerprint(fingerprint);
+      if (duplicate) {
+        throw new AppError(ErrorCode.VALIDATION_ERROR, `Token already exists for account #${duplicate.id} ${duplicate.alias}`, context.requestId, 400);
+      }
+      const encryptedToken = await encryptLinodeToken(token, await getLinodeTokenEncryptionKey(this.env));
       const baselineAt = new Date().toISOString();
       const groupId = await this.resolveGroupId(input.group_id, context.requestId);
       const account = await this.accounts.create({

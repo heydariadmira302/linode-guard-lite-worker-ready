@@ -110,26 +110,34 @@ type InstanceListContext = "all" | "account" | "group" | "status_running" | "sta
 export function renderInstancesListKeyboard(results: AccountInstancesResult[], context: InstanceListContext = "all", accountId?: number, groupId?: number): TelegramInlineKeyboardMarkup {
   const source = buildInstanceSource(context, accountId, groupId);
   const detailButtons = results.flatMap((result) => result.instances.map((instance) => [{
-    text: `详情 #${instance.id}`,
+    text: instanceDetailButtonText(instance),
     callback_data: `instances:detail:${result.account.id}:${instance.id}:${source}`
   }]));
-  const backButton = context === "account" && accountId
-    ? { text: "↩️ 返回账号服务器", callback_data: `instances:list:account:${accountId}` }
-    : context === "group" && groupId
-      ? { text: "↩️ 返回分组服务器", callback_data: `instances:list:group:${groupId}` }
-      : context === "status_running"
-        ? { text: "↩️ 返回运行中列表", callback_data: "instances:list:status:running" }
-        : context === "status_offline"
-          ? { text: "↩️ 返回已关机列表", callback_data: "instances:list:status:offline" }
-          : { text: "↩️ 返回服务器管理", callback_data: "menu:instances" };
   return {
     inline_keyboard: [
       ...detailButtons,
       [{ text: "🔄 刷新", callback_data: refreshCallbackForContext(context, accountId, groupId) }, { text: "🔎 筛选", callback_data: "instances:filter" }],
-      [context === "status_running" || context === "status_offline" ? { text: "↩️ 返回筛选", callback_data: "instances:filter" } : backButton],
-      [{ text: "🏠 返回服务器管理", callback_data: "menu:instances" }]
+      ...instanceListNavigationRows(context)
     ]
   };
+}
+
+function instanceDetailButtonText(instance: LinodeInstance): string {
+  const label = instance.label?.trim() || `ID ${instance.id}`;
+  return `🖥 ${shortText(label, 28)}`;
+}
+
+function instanceListNavigationRows(context: InstanceListContext): TelegramInlineKeyboardButton[][] {
+  if (context === "status_running" || context === "status_offline") {
+    return [[{ text: "↩️ 返回筛选", callback_data: "instances:filter" }]];
+  }
+  if (context === "account") {
+    return [[{ text: "↩️ 返回账号选择", callback_data: "instances:accounts" }], [{ text: "↩️ 返回服务器管理", callback_data: "menu:instances" }]];
+  }
+  if (context === "group") {
+    return [[{ text: "↩️ 返回分组选择", callback_data: "instances:groups" }], [{ text: "↩️ 返回服务器管理", callback_data: "menu:instances" }]];
+  }
+  return [[{ text: "↩️ 返回服务器管理", callback_data: "menu:instances" }]];
 }
 
 export function renderInstanceDetailText(result: InstanceDetailResult): string {
@@ -165,10 +173,20 @@ export function renderInstanceDetailText(result: InstanceDetailResult): string {
 export function renderInstanceDetailKeyboard(result: InstanceDetailResult, source = `account_${result.account.id}`): TelegramInlineKeyboardMarkup {
   const accountId = result.account.id;
   const instanceId = result.instance.id;
-  const rows: TelegramInlineKeyboardButton[][] = statusActionRows(accountId, instanceId, result.instance.status, source);
+  const rows: TelegramInlineKeyboardButton[][] = [];
+  const copyRows = instanceCopyRows(result.instance);
+  if (copyRows.length > 0) rows.push(...copyRows);
+  rows.push(...statusActionRows(accountId, instanceId, result.instance.status, source));
   rows.push([{ text: "🚨 危险操作", callback_data: `instances:danger:${accountId}:${instanceId}:${source}`, style: "danger" }]);
   rows.push([{ text: "⬅️ 返回列表", callback_data: backToInstanceListCallback(source, accountId, result.account.group_id ?? undefined) }]);
   return { inline_keyboard: rows };
+}
+
+function instanceCopyRows(instance: LinodeInstance): TelegramInlineKeyboardButton[][] {
+  const rows: TelegramInlineKeyboardButton[][] = [[{ text: `ID ${instance.id}`, copy_text: { text: String(instance.id) } }]];
+  const primaryIp = instance.ipv4?.find(Boolean);
+  if (primaryIp) rows.unshift([{ text: primaryIp, copy_text: { text: primaryIp } }]);
+  return rows;
 }
 
 export function renderInstanceDangerText(result: InstanceDetailResult): string {
@@ -219,6 +237,24 @@ export function renderCreateInstanceAccountKeyboard(accounts: PublicAccount[]): 
   return { inline_keyboard: [...accounts.map((account) => [{ text: `👤 #${account.id} ${account.alias}`, callback_data: `instances:create:account:${account.id}` }]), [{ text: "↩️ 返回服务器管理", callback_data: "menu:instances" }]] };
 }
 
+
+export function renderWindowsCreateModeText(): string {
+  return [
+    "🪟 创建 Windows",
+    "━━━━━━━━━━━━",
+    "普通用户建议用快速创建：少填信息，按默认安全流程走。",
+    "",
+    "高级创建适合需要自定义版本、账号密码或安装路线时使用。"
+  ].join("\n");
+}
+
+export function renderWindowsCreateModeKeyboard(): TelegramInlineKeyboardMarkup {
+  return { inline_keyboard: [
+    [{ text: "⚡ 快速创建", callback_data: "windows:create:quick" }],
+    [{ text: "⚙️ 高级创建", callback_data: "windows:create:advanced" }],
+    [{ text: "↩️ 返回云机管理", callback_data: "menu:instances" }]
+  ] };
+}
 
 export function renderWindowsVersionText(): string {
   return [

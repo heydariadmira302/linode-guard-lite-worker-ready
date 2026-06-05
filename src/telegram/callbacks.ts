@@ -25,7 +25,7 @@ import { encodePolicyAction, encodePolicyScope, expandCompactCallbackData } from
 import { renderAdminPresenceCheckinKeyboard, renderAdminPresenceCheckinText, renderAdminPresenceGlobalActionKeyboard, renderAdminPresenceGlobalActionText, renderAdminPresenceGlobalFinalKeyboard, renderAdminPresenceGlobalFinalText, renderAdminPresenceGlobalScopeKeyboard, renderAdminPresenceGlobalScopeText, renderAdminPresenceGlobalWarnKeyboard, renderAdminPresenceGlobalWarnText, renderAdminPresencePanelKeyboard, renderAdminPresencePanelText, renderAdminPresenceDeletePolicyWarning, renderAdminPresenceMenuKeyboard, renderAdminPresenceMenuText, renderAdminPresencePoliciesKeyboard, renderAdminPresencePoliciesText, renderAdminPresencePolicyAccountKeyboard, renderAdminPresencePolicyAccountText, renderAdminPresencePolicyActionKeyboard, renderAdminPresencePolicyActionText, renderAdminPresencePolicyCreateKeyboard, renderAdminPresencePolicyCreateText, renderAdminPresencePolicyDeleteConfirmKeyboard, renderAdminPresencePolicyDeleteConfirmText, renderAdminPresencePolicyDeletedKeyboard, renderAdminPresencePolicyDeletedText, renderAdminPresencePolicyDetailKeyboard, renderAdminPresencePolicyDetailText, renderAdminPresencePolicyEditAccountKeyboard, renderAdminPresencePolicyEditActionKeyboard, renderAdminPresencePolicyEditGroupKeyboard, renderAdminPresencePolicyEditKeyboard, renderAdminPresencePolicyEditScopeKeyboard, renderAdminPresencePolicyEditText, renderAdminPresencePolicyEditTimeKeyboard, renderAdminPresencePolicyFinalActionKeyboard, renderAdminPresencePolicyFinalActionText, renderAdminPresencePolicyFinalTimeKeyboard, renderAdminPresencePolicyFinalTimeText, renderAdminPresencePolicyGroupKeyboard, renderAdminPresencePolicyGroupText, renderAdminPresencePolicyHourlyReminderKeyboard, renderAdminPresencePolicyHourlyReminderText, renderAdminPresencePolicyNamePrompt, renderAdminPresencePolicyNamePromptKeyboard, renderAdminPresencePolicyScopeKeyboard, renderAdminPresencePolicyScopeText, renderAdminPresencePolicyTimeHourKeyboard, renderAdminPresencePolicyTimeHourText, renderAdminPresencePolicyTimeKeyboard, renderAdminPresencePolicyTimeMinuteKeyboard, renderAdminPresencePolicyTimeMinuteText, renderAdminPresencePolicyTimeText, renderAdminPresencePolicyUpdatedText } from "./admin-presence-renderer";
 import { renderAuditLogsKeyboard, renderAuditLogsText } from "./audit-renderer";
 import { renderBatchAccountsKeyboard, renderBatchAccountsText, renderBatchConfirmKeyboard, renderBatchConfirmText, renderBatchDeleteArmedKeyboard, renderBatchDeleteArmedText, renderBatchDeleteMenuKeyboard, renderBatchDeleteMenuText, renderBatchGroupsKeyboard, renderBatchGroupsText, renderBatchMenuKeyboard, renderBatchMenuText, renderBatchResultKeyboard, renderBatchResultText, renderBatchScopeActionKeyboard, renderBatchScopeActionText } from "./batch-renderer";
-import { renderScheduleActionResultKeyboard, renderScheduleActionResultText, renderScheduleBulkToggleConfirmKeyboard, renderScheduleBulkToggleConfirmText, renderScheduleBulkToggleResultText, renderScheduleCreateAccountKeyboard, renderScheduleCreateAccountText, renderScheduleCreateActionKeyboard, renderScheduleCreateActionText, renderScheduleCreateGroupKeyboard, renderScheduleCreateGroupText, renderScheduleCreateInstanceAccountKeyboard, renderScheduleCreateInstanceAccountText, renderScheduleCreateInstanceKeyboard, renderScheduleCreateInstanceText, renderScheduleCreateHourKeyboard, renderScheduleCreateHourText, renderScheduleCreateMinuteKeyboard, renderScheduleCreateMinuteText, renderScheduleCreatePresetKeyboard, renderScheduleCreatePresetText, renderScheduleCreateScopeKeyboard, renderScheduleCreateScopeText, renderScheduleDetailKeyboard, renderScheduleDetailText, renderScheduleEditActionKeyboard, renderScheduleEditHourKeyboard, renderScheduleEditKeyboard, renderScheduleEditMinuteKeyboard, renderScheduleEditScopeKeyboard, renderScheduleEditText, renderScheduleEditTimeKeyboard, renderScheduleCustomTimePrompt, renderScheduleCustomTimePromptKeyboard, renderScheduleDeleteConfirmKeyboard, renderScheduleDeleteConfirmText, renderScheduleListKeyboard, renderScheduleListText, renderSchedulesMenuKeyboard, renderSchedulesMenuText } from "./schedule-renderer";
+import { renderQuickScheduleAccountKeyboard, renderQuickScheduleGroupKeyboard, renderQuickScheduleResultText, renderQuickScheduleScopeKeyboard, renderQuickScheduleScopeText, renderQuickScheduleTimeHourKeyboard, renderQuickScheduleTimeHourText, renderQuickScheduleTimeMinuteKeyboard, renderQuickScheduleTimeMinuteText, renderScheduleActionResultKeyboard, renderScheduleActionResultText, renderScheduleAdvancedMenuKeyboard, renderScheduleAdvancedMenuText, renderScheduleBulkToggleConfirmKeyboard, renderScheduleBulkToggleConfirmText, renderScheduleBulkToggleResultText, renderScheduleCreateAccountKeyboard, renderScheduleCreateAccountText, renderScheduleCreateActionKeyboard, renderScheduleCreateActionText, renderScheduleCreateGroupKeyboard, renderScheduleCreateGroupText, renderScheduleCreateInstanceAccountKeyboard, renderScheduleCreateInstanceAccountText, renderScheduleCreateInstanceKeyboard, renderScheduleCreateInstanceText, renderScheduleCreateHourKeyboard, renderScheduleCreateHourText, renderScheduleCreateMinuteKeyboard, renderScheduleCreateMinuteText, renderScheduleCreatePresetKeyboard, renderScheduleCreatePresetText, renderScheduleCreateScopeKeyboard, renderScheduleCreateScopeText, renderScheduleDetailKeyboard, renderScheduleDetailText, renderScheduleEditActionKeyboard, renderScheduleEditHourKeyboard, renderScheduleEditKeyboard, renderScheduleEditMinuteKeyboard, renderScheduleEditScopeKeyboard, renderScheduleEditText, renderScheduleEditTimeKeyboard, renderScheduleCustomTimePrompt, renderScheduleCustomTimePromptKeyboard, renderScheduleDeleteConfirmKeyboard, renderScheduleDeleteConfirmText, renderScheduleListKeyboard, renderScheduleListText, renderSchedulesMenuKeyboard, renderSchedulesMenuText } from "./schedule-renderer";
 import { renderSecurityCheckResultKeyboard, renderSecurityCheckResultText, renderSecurityEventStatusUpdateText, renderSecurityEventsKeyboard, renderSecurityEventsText, renderSecurityMenuKeyboard, renderSecurityMenuText } from "./security-renderer";
 import { renderProtectionAccountKeyboard, renderProtectionAccountText, renderProtectionBlockedText, renderProtectionInstanceKeyboard, renderProtectionInstanceText, renderProtectionMenuKeyboard, renderProtectionMenuText, renderProtectionUpdatedText } from "./protection-renderer";
 import { renderSecuritySettingsKeyboard, renderSecuritySettingsText, renderSecurityTokenAccountsKeyboard, renderSecurityTokenAccountsText, renderSecurityTokenConfirmKeyboard, renderSecurityTokenConfirmText, renderSecurityTokenGeneratedKeyboard, renderSecurityTokenGeneratedText } from "./security-settings-renderer";
@@ -58,6 +58,8 @@ import {
   renderWindowsLanguageText,
   renderWindowsVersionKeyboard,
   renderWindowsVersionText,
+  renderWindowsCreateModeKeyboard,
+  renderWindowsCreateModeText,
   renderWindowsCreateConfirmKeyboard,
   renderWindowsCreateConfirmText,
   renderWindowsCreateFirewallText,
@@ -338,7 +340,7 @@ export async function routeTelegramCallback(
     try {
       const account = await new AccountService(env).getAccount(Number(accountUpdateTokenMatch[1]), requestId);
       await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "updating_account_token", data: { account_id: account.id } });
-      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: [`👤 更新账号 Token`, "", `账号：#${account.id} ${account.alias}`, "", "请发送新的 Linode API Token。", "Bot 会尝试删除你的 Token 消息，不会在回复中回显 Token。", "更新成功后会重新建立安全基线，历史登录不通知。", "", "不想继续可以点下方按钮，或发送 /cancel。"].join("\n"), reply_markup: { inline_keyboard: [[{ text: "取消更新", callback_data: `accounts:update_token:cancel:${account.id}` }], [{ text: "返回账号详情", callback_data: `accounts:detail:${account.id}` }]] } });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: [`👤 更新账号 Token`, "", `账号：#${account.id} ${account.alias}`, "", "请发送新的 Linode API Token。", "Bot 会尝试删除你的 Token 消息，不会在回复中回显 Token。", "更新成功后，之后的新登录才会提醒。", "", "不想继续可以点下方按钮，或发送 /cancel。"].join("\n"), reply_markup: { inline_keyboard: [[{ text: "取消更新", callback_data: `accounts:update_token:cancel:${account.id}` }], [{ text: "返回账号详情", callback_data: `accounts:detail:${account.id}` }]] } });
     } catch (error) {
       return renderTelegramCallbackError(update, client, error, requestId);
     }
@@ -523,11 +525,98 @@ export async function routeTelegramCallback(
     }
   }
 
+  if (update.data === "menu:schedules" && env?.DB) {
+    try {
+      const settings = await new ScheduleService(env).getQuickPowerSettings();
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderSchedulesMenuText(settings), reply_markup: renderSchedulesMenuKeyboard(settings) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
   if (update.data === "menu:schedules") {
     return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderSchedulesMenuText(), reply_markup: renderSchedulesMenuKeyboard() });
   }
 
-  if (update.data === "schedules:list" && env?.DB) {
+  const quickScheduleTimeMatch = update.data.match(/^qs:time:(b|s)$/);
+  if (quickScheduleTimeMatch) {
+    const action = quickScheduleTimeMatch[1] === "b" ? "boot" : "shutdown";
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderQuickScheduleTimeHourText(action), reply_markup: renderQuickScheduleTimeHourKeyboard(action) });
+  }
+
+  const quickScheduleMinuteMatch = update.data.match(/^qs:m:(b|s):(\d{2})$/);
+  if (quickScheduleMinuteMatch) {
+    const action = quickScheduleMinuteMatch[1] === "b" ? "boot" : "shutdown";
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderQuickScheduleTimeMinuteText(action, quickScheduleMinuteMatch[2]), reply_markup: renderQuickScheduleTimeMinuteKeyboard(action, quickScheduleMinuteMatch[2]) });
+  }
+
+  const quickScheduleSetTimeMatch = update.data.match(/^qs:set:(b|s):(\d{2}):(\d{2})$/);
+  if (quickScheduleSetTimeMatch && env?.DB) {
+    try {
+      const action = quickScheduleSetTimeMatch[1] === "b" ? "boot" : "shutdown";
+      await new ScheduleService(env).upsertQuickPowerTime(action, quickScheduleSetTimeMatch[2], quickScheduleSetTimeMatch[3], { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      const settings = await new ScheduleService(env).getQuickPowerSettings();
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderQuickScheduleResultText("updated_time", settings), reply_markup: renderSchedulesMenuKeyboard(settings) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  if (update.data === "qs:scope" && env?.DB) {
+    const settings = await new ScheduleService(env).getQuickPowerSettings();
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderQuickScheduleScopeText(settings), reply_markup: renderQuickScheduleScopeKeyboard() });
+  }
+
+  if (update.data === "qs:scope:all" && env?.DB) {
+    try {
+      await new ScheduleService(env).updateQuickPowerScope({ scope: "all" }, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      const settings = await new ScheduleService(env).getQuickPowerSettings();
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderQuickScheduleResultText("updated_scope", settings), reply_markup: renderSchedulesMenuKeyboard(settings) });
+    } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
+  }
+
+  if (update.data === "qs:scope:account" && env?.DB) {
+    const accounts = await new AccountService(env).listAccounts();
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: "🎯 选择定时执行账号\n\n请选择账号：", reply_markup: renderQuickScheduleAccountKeyboard(accounts) });
+  }
+
+  const quickScheduleAccountScopeMatch = update.data.match(/^qs:scope:account:(\d+)$/);
+  if (quickScheduleAccountScopeMatch && env?.DB) {
+    try {
+      await new ScheduleService(env).updateQuickPowerScope({ scope: "account", account_id: Number(quickScheduleAccountScopeMatch[1]) }, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      const settings = await new ScheduleService(env).getQuickPowerSettings();
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderQuickScheduleResultText("updated_scope", settings), reply_markup: renderSchedulesMenuKeyboard(settings) });
+    } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
+  }
+
+  if (update.data === "qs:scope:group" && env?.DB) {
+    const groups = (await new GroupService(env).listGroups()).groups;
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: "🎯 选择定时执行分组\n\n请选择分组：", reply_markup: renderQuickScheduleGroupKeyboard(groups) });
+  }
+
+  const quickScheduleGroupScopeMatch = update.data.match(/^qs:scope:group:(\d+)$/);
+  if (quickScheduleGroupScopeMatch && env?.DB) {
+    try {
+      await new ScheduleService(env).updateQuickPowerScope({ scope: "group", group_id: Number(quickScheduleGroupScopeMatch[1]) }, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      const settings = await new ScheduleService(env).getQuickPowerSettings();
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderQuickScheduleResultText("updated_scope", settings), reply_markup: renderSchedulesMenuKeyboard(settings) });
+    } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
+  }
+
+  if ((update.data === "qs:enable" || update.data === "qs:disable") && env?.DB) {
+    try {
+      const enabled = update.data === "qs:enable";
+      await new ScheduleService(env).setQuickPowerEnabled(enabled, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      const settings = await new ScheduleService(env).getQuickPowerSettings();
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderQuickScheduleResultText(enabled ? "enabled" : "disabled", settings), reply_markup: renderSchedulesMenuKeyboard(settings) });
+    } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
+  }
+
+  if (update.data === "schedules:advanced") {
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleAdvancedMenuText(), reply_markup: renderScheduleAdvancedMenuKeyboard() });
+  }
+
+  if ((update.data === "schedules:list" || update.data === "schedules:advanced:list") && env?.DB) {
     try {
       const data = await new ScheduleService(env).listSchedules({ limit: 10, offset: 0 });
       return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderScheduleListText(data.schedules), reply_markup: renderScheduleListKeyboard(data.schedules) });
@@ -793,8 +882,9 @@ export async function routeTelegramCallback(
       const instanceId = scopePart.startsWith("instance:") ? Number(parts[2]) : null;
       const scope = instanceId ? "instance" : accountId ? "account" : groupId ? "group" : "all";
       const timeLabel = `每天 ${hour}:${minute}`;
+      const instanceLabel = instanceId && accountId ? await resolveInstanceScheduleLabel(env, accountId, instanceId, requestId) : null;
       const data = await new ScheduleService(env).createSchedule({
-        name: `${timeLabel} ${instanceId ? `实例 #${instanceId} ` : accountId ? `账号 #${accountId} ` : groupId ? `分组 #${groupId} ` : ""}${action === "boot" ? "开机" : action === "shutdown" ? "关机" : "重启"}`,
+        name: `${timeLabel} ${instanceId ? `${instanceLabel ?? "实例"}（#${instanceId}） ` : accountId ? `账号 #${accountId} ` : groupId ? `分组 #${groupId} ` : ""}${action === "boot" ? "开机" : action === "shutdown" ? "关机" : "重启"}`,
         action,
         scope,
         account_id: accountId,
@@ -836,8 +926,9 @@ export async function routeTelegramCallback(
       const groupId = scopePart.startsWith("group:") ? Number(parts[1]) : null;
       const instanceId = scopePart.startsWith("instance:") ? Number(parts[2]) : null;
       const scope = instanceId ? "instance" : accountId ? "account" : groupId ? "group" : "all";
+      const instanceLabel = instanceId && accountId ? await resolveInstanceScheduleLabel(env, accountId, instanceId, requestId) : null;
       const data = await new ScheduleService(env).createSchedule({
-        name: `${timeLabel} ${instanceId ? `实例 #${instanceId} ` : accountId ? `账号 #${accountId} ` : groupId ? `分组 #${groupId} ` : ""}${action === "boot" ? "开机" : action === "shutdown" ? "关机" : "重启"}`,
+        name: `${timeLabel} ${instanceId ? `${instanceLabel ?? "实例"}（#${instanceId}） ` : accountId ? `账号 #${accountId} ` : groupId ? `分组 #${groupId} ` : ""}${action === "boot" ? "开机" : action === "shutdown" ? "关机" : "重启"}`,
         action,
         scope,
         account_id: accountId,
@@ -1519,7 +1610,7 @@ export async function routeTelegramCallback(
       return client.editMessage({
         chat_id: update.chatId,
         message_id: update.messageId,
-        text: ["⚠️ 确认移除保护实例？", "", `规则：${index + 1}. ${rule.account_id ? `账号 #${rule.account_id}` : ""}${rule.instance_id ? ` / 实例 #${rule.instance_id}` : ""}${rule.label ? ` / Label：${rule.label}` : ""}`, "", "移除后，该实例将不再被批量关机 / 批量删除 / 保活最终动作自动跳过。"].join("\n"),
+        text: ["⚠️ 确认移除保护实例？", "", `保护项：${rule.label ? `${rule.label}${rule.instance_id ? `（#${rule.instance_id}）` : ""}` : rule.instance_id ? `实例 #${rule.instance_id}` : rule.account_id ? `账号 #${rule.account_id}` : `第 ${index + 1} 条`}`, "", "移除后，该实例将不再被批量关机 / 批量删除 / 保活最终动作自动跳过。"].join("\n"),
         reply_markup: { inline_keyboard: [[{ text: "确认移除保护", callback_data: `protect:remove:${index}` }], [{ text: "取消", callback_data: "protect:menu" }]] }
       });
     } catch (error) {
@@ -1593,6 +1684,25 @@ export async function routeTelegramCallback(
     } catch (error) {
       return renderTelegramCallbackError(update, client, error, requestId);
     }
+  }
+
+  const securityLoginDeleteMatch = update.data.match(/^security:login_delete:(\d+)$/);
+  if (securityLoginDeleteMatch && env?.DB) {
+    return client.editMessage({
+      chat_id: update.chatId,
+      message_id: update.messageId,
+      text: [
+        "⚠️ 登录确认超时后将执行删机保护。",
+        "",
+        `安全事件：#${securityLoginDeleteMatch[1]}`,
+        "",
+        "Lite 当前按安全默认值处理：这里只是开启/查看超时删机保护说明，不会立即删机。",
+        "如果后续启用自动删机，需要先在安全设置里明确打开，并经过强警告确认。",
+        "",
+        "现在如果确认不是本人操作，建议先点击“一键关机”进入二次确认，保护正在运行的服务器。"
+      ].join("\n"),
+      reply_markup: { inline_keyboard: [[{ text: "🛑 一键关机", callback_data: "batch:all:shutdown" }], [{ text: "查看安全事件", callback_data: "security:events" }]] }
+    });
   }
 
   const securityEventStatusMatch = update.data.match(/^security:(confirm|suspicious):(\d+)$/);
@@ -1823,10 +1933,14 @@ export async function routeTelegramCallback(
   }
 
 
-  if (update.data === "windows:create" && env?.DB) {
+  if (update.data === "windows:create") {
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsCreateModeText(), reply_markup: renderWindowsCreateModeKeyboard() });
+  }
+
+  if ((update.data === "windows:create:quick" || update.data === "windows:create:advanced") && env?.DB) {
     try {
       const accounts = await new AccountService(env).listAccounts();
-      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderCreateInstanceAccountText(accounts).replace("➕ 创建服务器", "🪟 创建 Windows 服务器").replace("先选择要用哪个 Linode 账号创建服务器。", "先选择要用哪个 Linode 账号创建 Windows。"), reply_markup: { inline_keyboard: [...accounts.map((account) => [{ text: `👤 #${account.id} ${account.alias}`, callback_data: `windows:create:account:${account.id}` }]), [{ text: "↩️ 返回服务器管理", callback_data: "menu:instances" }]] } });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderCreateInstanceAccountText(accounts).replace("➕ 创建服务器", update.data === "windows:create:quick" ? "⚡ 快速创建 Windows" : "⚙️ 高级创建 Windows").replace("先选择要用哪个 Linode 账号创建服务器。", "先选择要用哪个 Linode 账号创建 Windows。"), reply_markup: { inline_keyboard: [...accounts.map((account) => [{ text: `👤 #${account.id} ${account.alias}`, callback_data: `windows:create:account:${account.id}` }]), [{ text: "↩️ 返回创建方式", callback_data: "windows:create" }, { text: "↩️ 返回云机管理", callback_data: "menu:instances" }]] } });
     } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
   }
 
@@ -2379,6 +2493,15 @@ function renderInstanceOperationSuccessText(
     message: asyncNote,
     nextStep: action === "delete" ? "查看审计日志确认操作记录" : "刷新服务器状态确认最终结果"
   });
+}
+
+async function resolveInstanceScheduleLabel(env: Env, accountId: number, instanceId: number, requestId: string): Promise<string | null> {
+  try {
+    const data = await new InstanceService(env).listAccountInstances(accountId, requestId);
+    return data.instances.find((instance) => instance.id === instanceId)?.label ?? null;
+  } catch {
+    return null;
+  }
 }
 
 async function acquireDangerousActionCooldown(env: Env | undefined, fromId: string, key: string, requestId: string, action: BatchAction | "reboot"): Promise<ActionCooldownResult> {

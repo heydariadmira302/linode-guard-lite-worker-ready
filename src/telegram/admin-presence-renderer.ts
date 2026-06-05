@@ -5,22 +5,19 @@ import { encodePolicyAction, encodePolicyScope } from "./callback-codec";
 
 export function renderAdminPresenceMenuText(data: AdminPresenceStatusResult): string {
   return [
-    "❤️ 保活打卡 / 策略设置",
+    "❤️ 打卡保活",
     "━━━━━━━━━━━━",
-    "这里是保活总控：点一次打卡，就等于告诉系统“我还在，机器继续保留”。",
+    "点一次打卡，就表示你还在管理这套 Linode 资源。",
     "",
-    "策略可以配置：",
-    "• 多久没打卡先提醒",
-    "• 多久后执行最终动作",
-    "• 最终动作前是否每小时提醒",
+    `最近打卡：${formatPresenceTime(data.status.last_checkin_at)}`,
+    `保活状态：${data.enabled_policy_count > 0 ? "✅ 已开启" : "⛔ 未开启"}`,
     "",
-    `最近打卡：${data.status.last_checkin_at ?? "从未打卡"}`,
-    `启用策略：${data.enabled_policy_count} 个`
+    "超时后会按高级设置提醒或处理。"
   ].join("\n");
 }
 
 export function renderAdminPresenceMenuKeyboard(): TelegramInlineKeyboardMarkup {
-  return { inline_keyboard: [[{ text: "❤️ 立即打卡", callback_data: "admin_presence:checkin" }], [{ text: "🛡 保活策略设置", callback_data: "admin_presence:policies" }], [{ text: "🏠 返回主菜单", callback_data: "menu:main" }]] };
+  return { inline_keyboard: [[{ text: "❤️ 立即打卡", callback_data: "admin_presence:checkin" }], [{ text: "⚙️ 高级设置", callback_data: "admin_presence:policies" }], [{ text: "🏠 返回主菜单", callback_data: "menu:main" }]] };
 }
 
 export function renderAdminPresenceCheckinText(data: { status: { last_checkin_at: string | null; current_cycle_id: string | null }; deleted_reminders?: number }): string {
@@ -30,8 +27,8 @@ export function renderAdminPresenceCheckinText(data: { status: { last_checkin_at
     "━━━━━━━━━━━━",
     "羊羊已收到，你还在管理这套 Linode 资源。",
     "",
-    `最近打卡：${data.status.last_checkin_at ?? "-"}`,
-    `🕒 本次打卡：${data.status.last_checkin_at ?? "-"}`,
+    `最近打卡：${formatPresenceTime(data.status.last_checkin_at)}`,
+    `🕒 本次打卡：${formatPresenceTime(data.status.last_checkin_at)}`,
     "🔄 保活周期：已刷新",
     `🧹 本轮提醒：已清理 ${data.deleted_reminders ?? 0} 条`,
     "",
@@ -40,7 +37,7 @@ export function renderAdminPresenceCheckinText(data: { status: { last_checkin_at
 }
 
 export function renderAdminPresenceCheckinKeyboard(): TelegramInlineKeyboardMarkup {
-  return { inline_keyboard: [[{ text: "❤️ 查看保活状态", callback_data: "menu:admin_presence" }], [{ text: "🛡 保活策略设置", callback_data: "admin_presence:policies" }], [{ text: "🏠 返回主菜单", callback_data: "menu:main" }]] };
+  return { inline_keyboard: [[{ text: "❤️ 查看保活", callback_data: "menu:admin_presence" }], [{ text: "⚙️ 高级设置", callback_data: "admin_presence:policies" }], [{ text: "🏠 返回主菜单", callback_data: "menu:main" }]] };
 }
 
 export function renderAdminPresencePoliciesText(policies: PublicAdminPresencePolicy[]): string {
@@ -64,11 +61,11 @@ export function renderAdminPresencePoliciesText(policies: PublicAdminPresencePol
 
 export function renderAdminPresencePoliciesKeyboard(policies: PublicAdminPresencePolicy[] = []): TelegramInlineKeyboardMarkup {
   const rows = policies.slice(0, 10).flatMap((policy) => [
-    [{ text: `📋 #${policy.id} 详情/修改`, callback_data: `admin_presence:policy:detail:${policy.id}` }],
+    [{ text: `📋 ${shortPolicyName(policy.name)}`, callback_data: `admin_presence:policy:detail:${policy.id}` }],
     [Number(policy.enabled) === 1
-      ? { text: `⏸ #${policy.id} 停用`, callback_data: `admin_presence:policy:disable:${policy.id}` }
-      : { text: `✅ #${policy.id} 启用`, callback_data: `admin_presence:policy:enable:${policy.id}` }],
-    [{ text: `🗑 #${policy.id} 删除`, callback_data: `admin_presence:policy:delete_confirm:${policy.id}` }]
+      ? { text: `⏸ 停用`, callback_data: `admin_presence:policy:disable:${policy.id}` }
+      : { text: `✅ 启用`, callback_data: `admin_presence:policy:enable:${policy.id}` }],
+    [{ text: `🗑 删除`, callback_data: `admin_presence:policy:delete_confirm:${policy.id}` }]
   ]);
   return { inline_keyboard: [[{ text: "➕ 新建策略", callback_data: "admin_presence:policy:create" }], ...rows, [{ text: "↩️ 返回保活打卡", callback_data: "menu:admin_presence" }], [{ text: "🏠 返回主菜单", callback_data: "menu:main" }]] };
 }
@@ -650,4 +647,15 @@ export function renderAdminPresenceGlobalScopeKeyboard(): TelegramInlineKeyboard
     [{ text: "📋 去高级策略里选择账号/分组", callback_data: "admin_presence:policies" }],
     [{ text: "↩️ 返回保活面板", callback_data: "menu:admin_presence" }]
   ] };
+}
+
+function shortPolicyName(name: string): string {
+  return name.length <= 28 ? name : `${name.slice(0, 27)}…`;
+}
+
+function formatPresenceTime(value: string | null | undefined): string {
+  if (!value) return "从未打卡";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(date).replace("/", "-");
 }

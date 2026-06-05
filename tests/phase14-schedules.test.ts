@@ -211,14 +211,16 @@ describe("Phase 14 power schedules", () => {
     const env = { ...baseEnv, DB: db as unknown as D1Database };
     const menu = await worker.fetch(telegramRequest(callbackUpdate("menu:schedules")), env as never);
     const menuBody = await menu.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
-    expect(menuBody.data.telegram.payload.text).toContain("⏰ 定时任务");
-    expect(menuBody.data.telegram.payload.text).toContain("开机 / 关机");
+    expect(menuBody.data.telegram.payload.text).toContain("📅 定时计划");
+    expect(menuBody.data.telegram.payload.text).toContain("到点后 Bot 会自动执行");
+    expect(menuBody.data.telegram.payload.text).toContain("🚀 自动开机：08:50（默认）");
+    expect(menuBody.data.telegram.payload.text).toContain("🛑 自动关机：23:05（默认）");
     expect(menuBody.data.telegram.payload.text).not.toContain("boot / shutdown");
     expect(menuBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
-      { text: "➕ 新增定时任务", callback_data: "schedules:create" },
-      { text: "📋 查看定时任务", callback_data: "schedules:list" },
-      { text: "⏸ 暂停全部", callback_data: "schedules:disable_all_confirm" },
-      { text: "✅ 启用全部", callback_data: "schedules:enable_all" }
+      { text: "🚀 设置开机时间", callback_data: "qs:time:b" },
+      { text: "🛑 设置关机时间", callback_data: "qs:time:s" },
+      { text: "🎯 设置执行范围", callback_data: "qs:scope" },
+      { text: "⚙️ 高级功能", callback_data: "schedules:advanced" }
     ]));
 
     const list = await worker.fetch(telegramRequest(callbackUpdate("schedules:list")), env as never);
@@ -230,8 +232,8 @@ describe("Phase 14 power schedules", () => {
     expect(listBody.data.telegram.payload.text).toContain("范围：🌐 全部账号");
     expect(listBody.data.telegram.payload.text).not.toContain("动作：boot");
     expect(listBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
-      { text: "⏸ #1 停用", callback_data: "schedules:disable:1" },
-      { text: "🗑 #1 删除", callback_data: "schedules:delete_confirm:1" }
+      { text: "⏸ 停用", callback_data: "schedules:disable:1" },
+      { text: "🗑 删除", callback_data: "schedules:delete_confirm:1" }
     ]));
     expect(listRaw).not.toContain("metadata_json");
 
@@ -252,6 +254,44 @@ describe("Phase 14 power schedules", () => {
     expect(enabledBody.data.telegram.payload.text).toContain("本次影响任务数：1");
     expect(db.schedules[0].enabled).toBe(1);
     expect(db.auditLogs.map((log) => log.action)).toEqual(expect.arrayContaining(["schedule.disable_all", "schedule.enable_all"]));
+  });
+
+  it("enables default daily power schedules at 08:50 boot and 23:05 shutdown when quick schedules are empty", async () => {
+    const db = new FakeD1Database();
+    const env = { ...baseEnv, DB: db as unknown as D1Database };
+
+    const enabled = await worker.fetch(telegramRequest(callbackUpdate("qs:enable")), env as never);
+    const body = await enabled.json() as { data: { telegram: { payload: { text: string } } } };
+    expect(body.data.telegram.payload.text).toContain("定时开关机已开启");
+    expect(body.data.telegram.payload.text).toContain("🚀 自动开机：08:50");
+    expect(body.data.telegram.payload.text).toContain("🛑 自动关机：23:05");
+    expect(db.schedules).toEqual(expect.arrayContaining([
+      expect.objectContaining({ action: "boot", scope: "all", cron_expr: "50 8 * * *", enabled: 1 }),
+      expect.objectContaining({ action: "shutdown", scope: "all", cron_expr: "5 23 * * *", enabled: 1 })
+    ]));
+  });
+
+  it("creates default daily power schedules through the simplified legacy-style Telegram flow", async () => {
+    const db = new FakeD1Database();
+    const env = { ...baseEnv, DB: db as unknown as D1Database };
+
+    const hour = await worker.fetch(telegramRequest(callbackUpdate("qs:time:b")), env as never);
+    const hourBody = await hour.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+    expect(hourBody.data.telegram.payload.text).toContain("设置自动开机时间");
+    expect(hourBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "08", callback_data: "qs:m:b:08" });
+
+    const minute = await worker.fetch(telegramRequest(callbackUpdate("qs:m:b:08")), env as never);
+    const minuteBody = await minute.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+    expect(minuteBody.data.telegram.payload.text).toContain("08:__");
+    expect(minuteBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "50", callback_data: "qs:set:b:08:50" });
+
+    const saved = await worker.fetch(telegramRequest(callbackUpdate("qs:set:b:08:50")), env as never);
+    const savedBody = await saved.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+    expect(savedBody.data.telegram.payload.text).toContain("定时时间已保存");
+    expect(savedBody.data.telegram.payload.text).toContain("🚀 自动开机：08:50");
+    expect(db.schedules).toHaveLength(1);
+    expect(db.schedules[0]).toEqual(expect.objectContaining({ action: "boot", scope: "all", cron_expr: "50 8 * * *", enabled: 1 }));
+    expect(db.schedules[0].metadata_json).toContain("daily_power");
   });
 
   it("creates quick preset schedules from Telegram with Chinese copy through ScheduleService", async () => {
@@ -298,7 +338,9 @@ describe("Phase 14 power schedules", () => {
     expect(createdBody.data.telegram.payload.text).toContain("定时任务已创建");
     expect(createdBody.data.telegram.payload.text).toContain("动作：⚠️ 关机");
     expect(createdBody.data.telegram.payload.text).toContain("范围：🌐 全部账号");
-    expect(createdBody.data.telegram.payload.text).toContain("Cron：5 23 * * *");
+    expect(createdBody.data.telegram.payload.text).toContain("执行时间：每天 23:05");
+    expect(createdBody.data.telegram.payload.text).not.toContain("Cron：");
+    expect(createdBody.data.telegram.payload.text).not.toContain("下次运行");
     expect(db.schedules[0]).toMatchObject({ name: "每天 23:05 关机", action: "shutdown", scope: "all", account_id: null, enabled: 1, cron_expr: "5 23 * * *", timezone: "Asia/Shanghai" });
     expect(db.schedules[0].next_run_at?.endsWith("T15:05:00.000Z")).toBe(true);
     expect(db.auditLogs).toEqual(expect.arrayContaining([
@@ -340,7 +382,8 @@ describe("Phase 14 power schedules", () => {
     expect(createdBody.data.telegram.payload.text).toContain("定时任务已创建");
     expect(createdBody.data.telegram.payload.text).toContain("动作：✅ 开机");
     expect(createdBody.data.telegram.payload.text).toContain("范围：👤 单账号 #7");
-    expect(createdBody.data.telegram.payload.text).toContain("Cron：50 8 * * *");
+    expect(createdBody.data.telegram.payload.text).toContain("执行时间：每天 08:50");
+    expect(createdBody.data.telegram.payload.text).not.toContain("Cron：");
     expect(db.schedules[0]).toMatchObject({ name: "每天 08:50 账号 #7 开机", action: "boot", scope: "account", account_id: 7, enabled: 1, cron_expr: "50 8 * * *" });
     expect(db.auditLogs).toEqual(expect.arrayContaining([
       expect.objectContaining({ action: "schedule.create", target_id: "1", source: "telegram" })
@@ -393,8 +436,8 @@ describe("Phase 14 power schedules", () => {
       const createdBody = await created.json() as { data: { telegram: { payload: { text: string } } } };
       expect(createdBody.data.telegram.payload.text).toContain("定时任务已创建");
       expect(createdBody.data.telegram.payload.text).toContain("动作：🔄 重启");
-      expect(createdBody.data.telegram.payload.text).toContain("实例 #101");
-      expect(db.schedules[0]).toMatchObject({ name: "每天 08:50 实例 #101 重启", action: "reboot", scope: "instance", account_id: 7, instance_id: 101, enabled: 1, cron_expr: "50 8 * * *" });
+      expect(createdBody.data.telegram.payload.text).toContain("web-1（#101）");
+      expect(db.schedules[0]).toMatchObject({ name: "每天 08:50 web-1（#101） 重启", action: "reboot", scope: "instance", account_id: 7, instance_id: 101, enabled: 1, cron_expr: "50 8 * * *" });
     } finally {
       fetchMock.mockRestore();
     }
@@ -429,7 +472,9 @@ describe("Phase 14 power schedules", () => {
     expect(createdBody.data.telegram.payload.text).toContain("定时任务已创建");
     expect(createdBody.data.telegram.payload.text).toContain("动作：⚠️ 关机");
     expect(createdBody.data.telegram.payload.text).toContain("范围：📁 分组 #2");
-    expect(createdBody.data.telegram.payload.text).toContain("Cron：5 23 * * *");
+    expect(createdBody.data.telegram.payload.text).toContain("执行时间：每天 23:05");
+    expect(createdBody.data.telegram.payload.text).not.toContain("Cron：");
+    expect(createdBody.data.telegram.payload.text).not.toContain("下次运行");
     expect(db.schedules[0]).toMatchObject({ name: "每天 23:05 分组 #2 关机", action: "shutdown", scope: "group", group_id: 2, account_id: null, enabled: 1, cron_expr: "5 23 * * *" });
   });
 
@@ -467,7 +512,8 @@ describe("Phase 14 power schedules", () => {
     const createdBody = await created.json() as { data: { telegram: { payload: { text: string } } } };
     expect(createdBody.data.telegram.payload.text).toContain("定时任务已创建");
     expect(createdBody.data.telegram.payload.text).toContain("范围：📁 分组 #2");
-    expect(createdBody.data.telegram.payload.text).toContain("Cron：45 9 * * *");
+    expect(createdBody.data.telegram.payload.text).toContain("执行时间：每天 09:45");
+    expect(createdBody.data.telegram.payload.text).not.toContain("Cron：");
     expect(db.schedules[0]).toMatchObject({ name: "每天 09:45 分组 #2 关机", action: "shutdown", scope: "group", group_id: 2, cron_expr: "45 9 * * *", enabled: 1 });
   });
 
@@ -507,7 +553,8 @@ describe("Phase 14 power schedules", () => {
 
     const timeUpdated = await worker.fetch(telegramRequest(callbackUpdate("sc:et:1:10:35")), env as never);
     const timeUpdatedBody = await timeUpdated.json() as { data: { telegram: { payload: { text: string } } } };
-    expect(timeUpdatedBody.data.telegram.payload.text).toContain("Cron：35 10 * * *");
+    expect(timeUpdatedBody.data.telegram.payload.text).toContain("执行时间：每天 10:35");
+    expect(timeUpdatedBody.data.telegram.payload.text).not.toContain("Cron：");
     expect(db.schedules[0].cron_expr).toBe("35 10 * * *");
     expect(db.auditLogs).toEqual(expect.arrayContaining([expect.objectContaining({ action: "schedule.update", source: "telegram", target_id: "1" })]));
   });
@@ -537,7 +584,8 @@ describe("Phase 14 power schedules", () => {
     const createdTimeBody = await createdTime.json() as { data: { telegram: { payload: { text: string } } } };
     expect(createdTimeBody.data.telegram.payload.text).toContain("定时任务已创建");
     expect(createdTimeBody.data.telegram.payload.text).toContain("范围：🖥 单台服务器 账号 #7 / 实例 #101");
-    expect(createdTimeBody.data.telegram.payload.text).toContain("Cron：45 9 * * *");
+    expect(createdTimeBody.data.telegram.payload.text).toContain("执行时间：每天 09:45");
+    expect(createdTimeBody.data.telegram.payload.text).not.toContain("Cron：");
     expect(db.schedules[0]).toMatchObject({ action: "reboot", scope: "instance", account_id: 7, instance_id: 101, cron_expr: "45 9 * * *", timezone: "Asia/Shanghai" });
     expect(db.schedules[0].next_run_at?.endsWith("T01:45:00.000Z")).toBe(true);
     expect(db.botSessions).toHaveLength(0);
@@ -550,7 +598,8 @@ describe("Phase 14 power schedules", () => {
 
     const createdCron = await worker.fetch(telegramRequest(messageUpdate("30 6 * * *")), env as never);
     const createdCronBody = await createdCron.json() as { data: { telegram: { payload: { text: string } } } };
-    expect(createdCronBody.data.telegram.payload.text).toContain("Cron：30 6 * * *");
+    expect(createdCronBody.data.telegram.payload.text).toContain("执行时间：每天 06:30");
+    expect(createdCronBody.data.telegram.payload.text).not.toContain("Cron：");
     expect(db.schedules[1]).toMatchObject({ action: "boot", scope: "all", account_id: null, cron_expr: "30 6 * * *" });
     expect(db.botSessions).toHaveLength(0);
     expect(JSON.stringify(createdCronBody)).not.toContain("encrypted_token");

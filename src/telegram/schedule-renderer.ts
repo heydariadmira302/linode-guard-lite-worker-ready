@@ -2,6 +2,7 @@ import type { PublicAccount } from "../services/account-service";
 import type { AccountInstancesResult } from "../services/instance-service";
 import type { LinodeInstance } from "../clients/linode-client";
 import type { PowerScheduleRecord } from "../storage/schedules-repository";
+import type { QuickPowerSettings, ScheduleScope } from "../services/schedule-service";
 import type { TelegramInlineKeyboardMarkup } from "./types";
 import { encodeScheduleAction, encodeScheduleScope } from "./callback-codec";
 import { renderTelegramOperationResult } from "./result-template";
@@ -9,31 +10,107 @@ import { renderTelegramOperationResult } from "./result-template";
 const SCHEDULE_HOURS = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, "0"));
 const SCHEDULE_MINUTES = ["00", "05", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55"];
 
-export function renderSchedulesMenuText(): string {
+export function renderSchedulesMenuText(settings?: QuickPowerSettings): string {
+  if (!settings) {
+    return [
+      "📅 定时计划",
+      "━━━━━━━━━━━━",
+      "像老版一样，直接设置每天几点自动开机 / 关机。"
+    ].join("\n");
+  }
   return [
-    "⏰ 定时任务",
+    "📅 定时计划",
     "━━━━━━━━━━━━",
-    "自动开机 / 关机 / 重启的任务中心。",
-    "",
-    "支持范围：",
-    "• 🌐 全部账号",
-    "• 👤 单账号",
-    "• 📁 分组",
-    "• 🖥 单台服务器",
-    "",
-    "Cron 执行后会主动发送结果通知。"
+    `当前状态：${formatQuickPowerEnabled(settings.enabled)}`,
+    `🚀 自动开机：${settings.boot ? cronToTime(settings.boot.cron_expr) : "08:50（默认）"}`,
+    `🛑 自动关机：${settings.shutdown ? cronToTime(settings.shutdown.cron_expr) : "23:05（默认）"}`,
+    `🎯 执行范围：${formatScheduleScope(settings.scope, settings.account_id, settings.group_id, null)}`,
+    "到点后 Bot 会自动执行，并单独发送执行结果通知。"
   ].join("\n");
 }
 
-export function renderSchedulesMenuKeyboard(): TelegramInlineKeyboardMarkup {
+export function renderSchedulesMenuKeyboard(settings?: QuickPowerSettings): TelegramInlineKeyboardMarkup {
+  const enabled = settings?.enabled ?? "none";
   return {
     inline_keyboard: [
-      [{ text: "➕ 新增定时任务", callback_data: "schedules:create" }],
-      [{ text: "📋 查看定时任务", callback_data: "schedules:list" }],
-      [{ text: "⏸ 暂停全部", callback_data: "schedules:disable_all_confirm" }, { text: "✅ 启用全部", callback_data: "schedules:enable_all" }],
+      [{ text: "🚀 设置开机时间", callback_data: "qs:time:b" }, { text: "🛑 设置关机时间", callback_data: "qs:time:s" }],
+      [{ text: "🎯 设置执行范围", callback_data: "qs:scope" }, { text: "⚙️ 高级功能", callback_data: "schedules:advanced" }],
+      [{ text: enabled === "all" ? "⛔ 关闭定时" : "✅ 开启定时", callback_data: enabled === "all" ? "qs:disable" : "qs:enable" }],
       [{ text: "🏠 返回主菜单", callback_data: "menu:main" }]
     ]
   };
+}
+
+export function renderScheduleAdvancedMenuText(): string {
+  return [
+    "⚙️ 高级定时",
+    "━━━━━━━━━━━━",
+    "这里适合少数特殊需求：",
+    "• 单独给某台服务器设定时",
+    "• 添加重启计划",
+    "• 管理多条定时任务",
+    "• 使用自定义 Cron",
+    "",
+    "普通每天开关机，建议返回「定时计划」。"
+  ].join("\n");
+}
+
+export function renderScheduleAdvancedMenuKeyboard(): TelegramInlineKeyboardMarkup {
+  return { inline_keyboard: [
+    [{ text: "📋 任务列表", callback_data: "schedules:advanced:list" }],
+    [{ text: "➕ 新增任务", callback_data: "schedules:create" }],
+    [{ text: "↩️ 返回定时计划", callback_data: "menu:schedules" }]
+  ] };
+}
+
+export function renderQuickScheduleTimeHourText(action: "boot" | "shutdown"): string {
+  return [`${action === "boot" ? "🚀 设置自动开机时间" : "🛑 设置自动关机时间"}`, "━━━━━━━━━━━━", "请选择小时："].join("\n");
+}
+
+export function renderQuickScheduleTimeHourKeyboard(action: "boot" | "shutdown"): TelegramInlineKeyboardMarkup {
+  const actionCode = encodeScheduleAction(action);
+  const rows = [] as Array<Array<{ text: string; callback_data: string }>>;
+  for (let i = 0; i < SCHEDULE_HOURS.length; i += 4) rows.push(SCHEDULE_HOURS.slice(i, i + 4).map((hour) => ({ text: hour, callback_data: `qs:m:${actionCode}:${hour}` })));
+  rows.push([{ text: "⬅️ 返回定时计划", callback_data: "menu:schedules" }]);
+  return { inline_keyboard: rows };
+}
+
+export function renderQuickScheduleTimeMinuteText(action: "boot" | "shutdown", hour: string): string {
+  return [`${action === "boot" ? "🚀 设置自动开机时间" : "🛑 设置自动关机时间"}`, "━━━━━━━━━━━━", `已选小时：${hour}:__`, "请选择分钟："].join("\n");
+}
+
+export function renderQuickScheduleTimeMinuteKeyboard(action: "boot" | "shutdown", hour: string): TelegramInlineKeyboardMarkup {
+  const actionCode = encodeScheduleAction(action);
+  const rows = [] as Array<Array<{ text: string; callback_data: string }>>;
+  for (let i = 0; i < SCHEDULE_MINUTES.length; i += 4) rows.push(SCHEDULE_MINUTES.slice(i, i + 4).map((minute) => ({ text: minute, callback_data: `qs:set:${actionCode}:${hour}:${minute}` })));
+  rows.push([{ text: "⬅️ 重选小时", callback_data: `qs:time:${actionCode}` }]);
+  return { inline_keyboard: rows };
+}
+
+export function renderQuickScheduleScopeText(settings: QuickPowerSettings): string {
+  return ["🎯 定时执行范围", "━━━━━━━━━━━━", `当前范围：${formatScheduleScope(settings.scope, settings.account_id, settings.group_id, null)}`, "", "普通用户建议用「全部账号」或「单账号」。"].join("\n");
+}
+
+export function renderQuickScheduleScopeKeyboard(): TelegramInlineKeyboardMarkup {
+  return { inline_keyboard: [
+    [{ text: "🌐 全部账号", callback_data: "qs:scope:all" }],
+    [{ text: "👤 选择账号", callback_data: "qs:scope:account" }],
+    [{ text: "📁 选择分组", callback_data: "qs:scope:group" }],
+    [{ text: "⬅️ 返回定时计划", callback_data: "menu:schedules" }]
+  ] };
+}
+
+export function renderQuickScheduleAccountKeyboard(accounts: PublicAccount[]): TelegramInlineKeyboardMarkup {
+  return { inline_keyboard: [...accounts.slice(0, 10).map((account) => [{ text: `#${account.id} ${account.alias}`, callback_data: `qs:scope:account:${account.id}` }]), [{ text: "⬅️ 返回执行范围", callback_data: "qs:scope" }]] };
+}
+
+export function renderQuickScheduleGroupKeyboard(groups: Array<{ id: number; name: string }>): TelegramInlineKeyboardMarkup {
+  return { inline_keyboard: [...groups.slice(0, 10).map((group) => [{ text: `📁 ${group.name}`, callback_data: `qs:scope:group:${group.id}` }]), [{ text: "⬅️ 返回执行范围", callback_data: "qs:scope" }]] };
+}
+
+export function renderQuickScheduleResultText(action: "updated_time" | "updated_scope" | "enabled" | "disabled", settings: QuickPowerSettings): string {
+  const title = action === "updated_time" ? "定时时间已保存" : action === "updated_scope" ? "执行范围已更新" : action === "enabled" ? "定时开关机已开启" : "定时开关机已关闭";
+  return [title, "━━━━━━━━━━━━", `🚀 自动开机：${settings.boot ? cronToTime(settings.boot.cron_expr) : "08:50（默认）"}`, `🛑 自动关机：${settings.shutdown ? cronToTime(settings.shutdown.cron_expr) : "23:05（默认）"}`, `🎯 执行范围：${formatScheduleScope(settings.scope, settings.account_id, settings.group_id, null)}`, `当前状态：${formatQuickPowerEnabled(settings.enabled)}`].join("\n");
 }
 
 export function renderScheduleCreateActionText(): string {
@@ -240,19 +317,20 @@ export function renderScheduleListText(schedules: PowerScheduleRecord[]): string
   const lines = ["⏰ 定时任务列表", "━━━━━━━━━━━━", `共 ${schedules.length} 个任务，启用 ${enabledCount} 个`, ""];
   if (schedules.length === 0) lines.push("暂无定时任务。可以先新增一个每天开机或关机任务。");
   for (const s of schedules.slice(0, 10)) {
-    lines.push(`📌 #${s.id} ${s.name}`, `状态：${formatScheduleEnabled(s.enabled)}`, `动作：${formatScheduleAction(s.action)}`, `范围：${formatScheduleScope(s.scope, s.account_id, s.group_id, s.instance_id)}`, `Cron：${s.cron_expr}`, `下次运行：${s.next_run_at ?? "-"}`, "");
+    lines.push(`📌 #${s.id} ${s.name}`, `状态：${formatScheduleEnabled(s.enabled)}`, `动作：${formatScheduleAction(s.action)}`, `范围：${formatScheduleScope(s.scope, s.account_id, s.group_id, s.instance_id)}`, `执行时间：${formatScheduleTime(s.cron_expr)}`, "");
   }
   return lines.join("\n").trimEnd();
 }
 
 export function renderScheduleListKeyboard(schedules: PowerScheduleRecord[] = []): TelegramInlineKeyboardMarkup {
   const rows = schedules.slice(0, 10).flatMap((schedule) => {
+    const label = shortScheduleName(schedule.name);
     const toggle = Number(schedule.enabled) === 1
-      ? { text: `⏸ #${schedule.id} 停用`, callback_data: `schedules:disable:${schedule.id}` }
-      : { text: `✅ #${schedule.id} 启用`, callback_data: `schedules:enable:${schedule.id}` };
+      ? { text: `⏸ 停用`, callback_data: `schedules:disable:${schedule.id}` }
+      : { text: `✅ 启用`, callback_data: `schedules:enable:${schedule.id}` };
     return [
-      [{ text: `📋 #${schedule.id} 详情/修改`, callback_data: `schedules:detail:${schedule.id}` }],
-      [toggle, { text: `🗑 #${schedule.id} 删除`, callback_data: `schedules:delete_confirm:${schedule.id}` }]
+      [{ text: `📋 ${label}`, callback_data: `schedules:detail:${schedule.id}` }],
+      [toggle, { text: `🗑 删除`, callback_data: `schedules:delete_confirm:${schedule.id}` }]
     ];
   });
   return { inline_keyboard: [...rows, [{ text: "↩️ 返回定时任务", callback_data: "menu:schedules" }], [{ text: "🏠 返回主菜单", callback_data: "menu:main" }]] };
@@ -267,8 +345,7 @@ export function renderScheduleDetailText(schedule: PowerScheduleRecord): string 
     `状态：${formatScheduleEnabled(schedule.enabled)}`,
     `动作：${formatScheduleAction(schedule.action)}`,
     `范围：${formatScheduleScope(schedule.scope, schedule.account_id, schedule.group_id, schedule.instance_id)}`,
-    `Cron：${schedule.cron_expr}`,
-    `下次运行：${schedule.next_run_at ?? "-"}`,
+    `执行时间：${formatScheduleTime(schedule.cron_expr)}`,
     "",
     "可以直接修改动作、范围或执行时间，不需要删掉重建。"
   ].join("\n");
@@ -292,7 +369,7 @@ export function renderScheduleEditText(schedule: PowerScheduleRecord): string {
     `当前任务：#${schedule.id} ${schedule.name}`,
     `动作：${formatScheduleAction(schedule.action)}`,
     `范围：${formatScheduleScope(schedule.scope, schedule.account_id, schedule.group_id, schedule.instance_id)}`,
-    `Cron：${schedule.cron_expr}`,
+    `执行时间：${formatScheduleTime(schedule.cron_expr)}`,
     "",
     "请选择要修改的内容："
   ].join("\n");
@@ -355,7 +432,7 @@ export function renderScheduleEditMinuteKeyboard(scheduleId: number, hour: strin
 }
 
 export function renderScheduleDeleteConfirmText(schedule: PowerScheduleRecord): string {
-  return ["⚠️ 确认删除定时任务？", "", `任务：#${schedule.id} ${schedule.name}`, `动作：${formatScheduleAction(schedule.action)}`, `范围：${formatScheduleScope(schedule.scope, schedule.account_id, schedule.group_id, schedule.instance_id)}`, `Cron：${schedule.cron_expr}`, "", "删除后这个定时开机 / 关机 / 重启任务将不再执行。"].join("\n");
+  return ["⚠️ 确认删除定时任务？", "", `任务：#${schedule.id} ${schedule.name}`, `动作：${formatScheduleAction(schedule.action)}`, `范围：${formatScheduleScope(schedule.scope, schedule.account_id, schedule.group_id, schedule.instance_id)}`, `执行时间：${formatScheduleTime(schedule.cron_expr)}`, "", "删除后这个定时开机 / 关机 / 重启任务将不再执行。"].join("\n");
 }
 
 export function renderScheduleDeleteConfirmKeyboard(schedule: PowerScheduleRecord): TelegramInlineKeyboardMarkup {
@@ -422,8 +499,7 @@ export function renderScheduleActionResultText(action: "created" | "enabled" | "
       { label: "任务", value: `#${schedule.id} ${schedule.name}` },
       { label: "动作", value: formatScheduleAction(schedule.action) },
       { label: "范围", value: formatScheduleScope(schedule.scope, schedule.account_id, schedule.group_id, schedule.instance_id) },
-      { label: "Cron", value: schedule.cron_expr },
-      { label: "下次运行", value: schedule.next_run_at ?? "-" }
+      { label: "执行时间", value: formatScheduleTime(schedule.cron_expr) }
     ],
     nextStep: "返回定时任务列表确认状态"
   });
@@ -431,6 +507,29 @@ export function renderScheduleActionResultText(action: "created" | "enabled" | "
 
 export function renderScheduleActionResultKeyboard(): TelegramInlineKeyboardMarkup {
   return { inline_keyboard: [[{ text: "📋 返回定时任务列表", callback_data: "schedules:list" }], [{ text: "🏠 返回主菜单", callback_data: "menu:main" }]] };
+}
+
+function shortScheduleName(name: string): string {
+  return name.length <= 28 ? name : `${name.slice(0, 27)}…`;
+}
+
+function cronToTime(cronExpr: string): string {
+  const [minute, hour] = cronExpr.trim().split(/\s+/);
+  return `${String(Number(hour)).padStart(2, "0")}:${String(Number(minute)).padStart(2, "0")}`;
+}
+
+function formatScheduleTime(cronExpr: string): string {
+  const parts = cronExpr.trim().split(/\s+/);
+  if (parts.length === 5 && /^\d+$/.test(parts[0]) && /^\d+$/.test(parts[1]) && parts.slice(2).every((part) => part === "*")) {
+    return `每天 ${cronToTime(cronExpr)}`;
+  }
+  return `自定义 Cron（${cronExpr}）`;
+}
+
+function formatQuickPowerEnabled(enabled: "all" | "partial" | "none"): string {
+  if (enabled === "all") return "✅ 已开启";
+  if (enabled === "partial") return "⚠️ 部分开启";
+  return "⛔ 已关闭";
 }
 
 export function formatScheduleAction(action: string): string {

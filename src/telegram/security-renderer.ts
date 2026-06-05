@@ -105,22 +105,47 @@ export function formatSecurityEventStatus(status: string): string {
   if (status === "open") return "未确认";
   if (status === "confirmed") return "已确认：是我";
   if (status === "suspicious") return "已标记：不是我";
+  if (status === "timeout") return "确认超时";
   if (status === "closed") return "已关闭";
   return status;
 }
 
 export function renderSecurityEventStatusUpdateText(event: SecurityEventRecord): string {
-  const lines = [renderTelegramOperationResult({
+  if (event.status === "confirmed") {
+    return [
+      `✅ 已确认登录 ${event.linode_login_id ?? event.id} 是本人操作。`,
+      "",
+      `账号：${event.account_id ?? "-"}`,
+      `用户：${event.username ?? "-"}`,
+      `IP：${event.ip ?? "-"}`,
+      `时间：${event.occurred_at}`,
+      "",
+      "这条登录事件已标记为安全，不会再出现在未确认列表里。"
+    ].join("\n");
+  }
+  if (event.status === "suspicious") {
+    return [
+      `🚨 已标记登录 ${event.linode_login_id ?? event.id}：不是本人操作。`,
+      "",
+      `账号：${event.account_id ?? "-"}`,
+      `用户：${event.username ?? "-"}`,
+      `IP：${event.ip ?? "-"}`,
+      `时间：${event.occurred_at}`,
+      "",
+      "建议立即处理：",
+      "1. 先执行批量关机或进入服务器列表，保护正在运行的服务器。",
+      "2. 登录 Linode / Akamai Cloud 控制台，修改账号密码并检查二次验证。",
+      "3. 撤销或重置可疑 Linode Token，并检查近期登录记录。",
+      "4. 检查服务器列表、账单和审计日志，确认是否有异常创建或删除。"
+    ].join("\n");
+  }
+  return renderTelegramOperationResult({
     title: "更新安全事件",
     status: "success",
     fields: [
       { label: "事件", value: `#${event.id}` },
       { label: "状态", value: formatSecurityEventStatus(event.status) }
     ],
-    nextStep: event.status === "suspicious" ? "按风险建议处理账号与 Token" : "返回安全事件列表"
-  })];
-  if (event.status === "suspicious") {
-    lines.push("", "风险建议：", "1. 立即在 Linode / Akamai Cloud 控制台撤销或重置相关 Token。", "2. 检查账号近期登录记录和服务器状态。", "3. 如果不是本人操作，尽快修改账号密码并开启/检查二次验证。");
-  }
-  return lines.join("\n");
+    nextStep: "返回安全事件列表"
+  });
 }

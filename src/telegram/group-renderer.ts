@@ -160,7 +160,7 @@ export function renderGroupInstancesText(group: PublicGroup, results: AccountIns
 }
 
 export function renderGroupInstancesKeyboard(group: PublicGroup, results: AccountInstancesResult[]): TelegramInlineKeyboardMarkup {
-  const detailButtons = results.flatMap((result) => result.instances.map((instance) => [{ text: `详情 #${instance.id}`, callback_data: `instances:detail:${result.account.id}:${instance.id}` }]));
+  const detailButtons = results.flatMap((result) => result.instances.map((instance) => [{ text: `🖥 ${shortText(instance.label || `ID ${instance.id}`, 28)}`, callback_data: `instances:detail:${result.account.id}:${instance.id}` }]));
   return {
     inline_keyboard: [
       ...detailButtons,
@@ -172,7 +172,11 @@ export function renderGroupInstancesKeyboard(group: PublicGroup, results: Accoun
   };
 }
 
-function formatTokenStatus(status: string): string {
+function shortText(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+}
+
+function formatTokenStatus(status: string) {
   if (status === "valid") return "可用";
   if (status === "invalid") return "无效";
   if (status === "permission_error") return "权限不足";

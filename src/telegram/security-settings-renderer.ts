@@ -56,7 +56,13 @@ export function renderSecurityTokenConfirmKeyboard(account: PublicAccount): Tele
 }
 
 export function renderSecurityTokenGeneratedText(data: { account_id: number; alias: string; token_fingerprint: string; token_label: string; token_id: number | null; security_baseline_at: string }): string {
-  return ["✅ 新 Linode Token 已生成并保存", "", `账号：#${data.account_id} ${data.alias}`, `Token 标签：${data.token_label}`, `Token ID：${data.token_id ?? "-"}`, `Token 指纹：${data.token_fingerprint}`, `安全基线：${data.security_baseline_at}`].join("\n");
+  return ["✅ 新 Linode Token 已生成并保存", "", `账号：#${data.account_id} ${data.alias}`, `Token 标签：${data.token_label}`, `Token 指纹：${data.token_fingerprint}`, `安全基线：${formatSecurityTime(data.security_baseline_at)}`, "", "旧 Token 不会自动撤销，如不再使用，建议到 Linode 后台手动删除。"].join("\n");
+}
+
+function formatSecurityTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(date).replace("/", "-");
 }
 
 export function renderSecurityTokenGeneratedKeyboard(): TelegramInlineKeyboardMarkup {

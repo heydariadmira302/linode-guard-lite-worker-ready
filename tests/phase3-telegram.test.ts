@@ -70,7 +70,7 @@ function messageUpdate(text: string, fromId = 123456789) {
     message: {
       message_id: 10,
       chat: { id: 123456789, type: "private" },
-      from: { id: fromId, is_bot: false, first_name: "Admin" },
+      from: { id: fromId, is_bot: false, first_name: "Admin", username: "example_user" },
       text
     }
   };
@@ -135,15 +135,16 @@ describe("Phase 3 Telegram webhook and menu", () => {
     expect(body.data.telegram).toHaveLength(2);
     expect(body.data.telegram[0].method).toBe("sendMessage");
     expect(body.data.telegram[0].payload.reply_markup.keyboard).toEqual([
-      [{ text: "🏠 主菜单" }, { text: "🖥 服务器" }],
-      [{ text: "📊 状态总览" }, { text: "❤️ 打卡" }],
-      [{ text: "📄 审计" }]
+      [{ text: "🏠 主控菜单" }, { text: "🖥 云机管理" }],
+      [{ text: "📅 定时计划" }, { text: "❤️ 打卡保活" }],
+      [{ text: "📊 状态总览" }, { text: "🪪 我的ID" }],
+      [{ text: "📋 更多功能" }]
     ]);
     expect(body.data.telegram[1].payload.text).toContain("🛡 Linode Guard Lite");
     expect(body.data.telegram[1].payload.text).toContain("主菜单");
     expect(body.data.telegram[1].payload.reply_markup.inline_keyboard?.flat()).toEqual(expect.arrayContaining([
       { text: "📊 状态总览", callback_data: "status:overview" },
-      { text: "⏰ 定时", callback_data: "menu:schedules" },
+      { text: "📅 定时计划", callback_data: "menu:schedules" },
       { text: "🛡 安全", callback_data: "menu:security" },
       { text: "📋 更多", callback_data: "menu:more" }
     ]));
@@ -170,6 +171,17 @@ describe("Phase 3 Telegram webhook and menu", () => {
     } finally {
       fetchMock.mockRestore();
     }
+  });
+
+  it("renders my id in compact copy-friendly format", async () => {
+    const response = await worker.fetch(telegramRequest(messageUpdate("🪪 我的ID")), env as never);
+    const body = await response.json() as { ok: boolean; data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; copy_text?: { text: string } }>> } } } } };
+    expect(body.data.telegram.payload.text).toContain("@example_user");
+    expect(body.data.telegram.payload.text).toContain("Id: `123456789`");
+    expect(body.data.telegram.payload.text).not.toContain("Chat ID：");
+    expect(body.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ text: "123456789", copy_text: { text: "123456789" } })
+    ]));
   });
 
   it("handles /help and /setup wizard", async () => {

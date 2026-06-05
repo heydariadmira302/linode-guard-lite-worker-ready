@@ -209,6 +209,18 @@ class FakeD1Database {
       }
       return {};
     }
+    if (sql.includes("UPDATE security_events") && sql.includes("type IN ('LOGIN_SUCCESS', 'LOGIN_FAILED')")) {
+      const cutoff = String(values[2]);
+      let changes = 0;
+      for (const event of this.securityEvents) {
+        if (event.status === String(values[1]) && ["LOGIN_SUCCESS", "LOGIN_FAILED"].includes(event.type) && event.occurred_at < cutoff) {
+          event.status = String(values[0]);
+          event.updated_at = new Date().toISOString();
+          changes += 1;
+        }
+      }
+      return { changes };
+    }
     if (sql.includes("UPDATE security_events") && sql.includes("status = ?")) {
       const event = this.securityEvents.find((item) => item.id === Number(values[1]));
       if (event) {
@@ -584,6 +596,15 @@ describe("Phase 12 account security event monitor", () => {
       expect(JSON.stringify(eventsBody)).not.toContain("encrypted_token");
       expect(JSON.stringify(eventsBody)).not.toContain("metadata_json");
 
+      const loginDeleteResponse = await worker.fetch(telegramRequest(callbackUpdate("security:login_delete:1")), env as never);
+      const loginDeleteBody = await loginDeleteResponse.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+      expect(loginDeleteBody.data.telegram.payload.text).toContain("登录确认超时后将执行删机保护");
+      expect(loginDeleteBody.data.telegram.payload.text).toContain("不会立即删机");
+      expect(loginDeleteBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
+        { text: "🛑 一键关机", callback_data: "batch:all:shutdown" },
+        { text: "查看安全事件", callback_data: "security:events" }
+      ]));
+
       const checkResponse = await worker.fetch(telegramRequest(callbackUpdate("security:check")), env as never);
       const checkBody = await checkResponse.json() as { data: { telegram: { payload: { text: string } } } };
       const raw = JSON.stringify(checkBody);
@@ -612,13 +633,13 @@ describe("Phase 12 account security event monitor", () => {
 
     const confirmTelegramResponse = await worker.fetch(telegramRequest(callbackUpdate("security:confirm:1")), env as never);
     const confirmTelegramBody = await confirmTelegramResponse.json() as { data: { telegram: { payload: { text: string } } } };
-    expect(confirmTelegramBody.data.telegram.payload.text).toContain("状态：已确认：是我");
+    expect(confirmTelegramBody.data.telegram.payload.text).toContain("✅ 已确认登录 901 是本人操作");
 
     const telegramResponse = await worker.fetch(telegramRequest(callbackUpdate("security:suspicious:2")), env as never);
     const telegramBody = await telegramResponse.json() as { data: { telegram: { payload: { text: string } } } };
-    expect(telegramBody.data.telegram.payload.text).toContain("状态：已标记：不是我");
-    expect(telegramBody.data.telegram.payload.text).toContain("风险建议");
-    expect(telegramBody.data.telegram.payload.text).toContain("撤销或重置相关 Token");
+    expect(telegramBody.data.telegram.payload.text).toContain("🚨 已标记登录 902：不是本人操作");
+    expect(telegramBody.data.telegram.payload.text).toContain("建议立即处理");
+    expect(telegramBody.data.telegram.payload.text).toContain("撤销或重置可疑 Linode Token");
     expect(telegramBody.data.telegram.payload.text).not.toContain("suspicious");
     expect(db.securityEvents.map((event) => event.status)).toEqual(["confirmed", "suspicious"]);
     expect(db.auditLogs).toEqual(expect.arrayContaining([

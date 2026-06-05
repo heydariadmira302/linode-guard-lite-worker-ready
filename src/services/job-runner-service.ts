@@ -13,6 +13,7 @@ import { SecurityEventsRepository } from "../storage/events-repository";
 import { TelegramMessagesRepository } from "../storage/telegram-messages-repository";
 import { SettingsRepository } from "../storage/settings-repository";
 import { SecurityService, type SecurityCheckResult } from "./security-service";
+import { SecuritySettingsService } from "./security-settings-service";
 import { AppSettingsService } from "./app-settings-service";
 import { getSuperAdminChatId } from "./super-admin-service";
 import { sendTelegramAction } from "../telegram/action-sender";
@@ -88,7 +89,7 @@ export class JobRunnerService {
     if (jobName === "message_cleanup") return await this.runMessageCleanup(now);
     if (jobName === "audit_log_cleanup") return await this.runAuditLogCleanup(now);
     if (jobName === "security_event_cleanup") return await this.runSecurityEventCleanup(now);
-    if (jobName === "login_timeout") return { checked_events: 0, timed_out: 0 };
+    if (jobName === "login_timeout") return await this.runLoginTimeoutMonitor(now);
     return { skipped: true, reason: "unknown_job" };
   }
 
@@ -125,9 +126,13 @@ export class JobRunnerService {
         chat_id: chatId,
         text: renderLoginAlertText(newEvents),
         reply_markup: {
-          inline_keyboard: newEvents.slice(0, 5).map(({ event }) => [
-            { text: `#${event.id} 是我`, callback_data: `security:confirm:${event.id}` },
-            { text: `#${event.id} 不是我`, callback_data: `security:suspicious:${event.id}` }
+          inline_keyboard: newEvents.slice(0, 5).flatMap(({ event }) => [
+            [{ text: `✅ 是我登录 #${event.id}`, callback_data: `security:confirm:${event.id}` }],
+            [
+              { text: "🛑 一键关机", callback_data: "batch:all:shutdown" },
+              { text: "🚀 一键开机", callback_data: "batch:all:boot" }
+            ],
+            [{ text: "🗑 超时删机保护", callback_data: `security:login_delete:${event.id}` }]
           ])
         }
       }
@@ -276,6 +281,32 @@ export class JobRunnerService {
     return { deleted_security_events, deleted_login_events, retention_days: retentionDays };
   }
 
+  private async runLoginTimeoutMonitor(now: Date): Promise<{ checked_events: number; timed_out: number; timeout_minutes: number; notification_sent: boolean }> {
+    if (!this.env.DB) return { checked_events: 0, timed_out: 0, timeout_minutes: 0, notification_sent: false };
+    const settings = await new SecuritySettingsService(this.env).getSettings();
+    const timeoutMinutes = settings.login_confirmation_timeout_minutes;
+    const cutoff = new Date(now.getTime() - timeoutMinutes * 60 * 1000).toISOString();
+    const repo = new SecurityEventsRepository(this.env.DB);
+    const checkedEvents = await repo.countOpenSecurityEvents();
+    const timedOut = await repo.markLoginConfirmationTimeouts(cutoff);
+    let notificationSent = false;
+    if (timedOut > 0) {
+      const chatId = await getSuperAdminChatId(this.env);
+      if (chatId) {
+        await sendTelegramAction(this.env.TELEGRAM_BOT_TOKEN, {
+          method: "sendMessage",
+          payload: {
+            chat_id: chatId,
+            text: renderLoginTimeoutText(timedOut, timeoutMinutes),
+            reply_markup: { inline_keyboard: [[{ text: "查看安全事件", callback_data: "security:events" }], [{ text: "🛑 一键关机", callback_data: "batch:all:shutdown" }]] }
+          }
+        });
+        notificationSent = true;
+      }
+    }
+    return { checked_events: checkedEvents, timed_out: timedOut, timeout_minutes: timeoutMinutes, notification_sent: notificationSent };
+  }
+
   private async recordJobRun(jobName: string, startedAt: string, status: string, summary: unknown, errorCode: string | null): Promise<void> {
     if (!this.env.DB) return;
     await this.env.DB.prepare(`INSERT INTO job_runs (job_name, started_at, finished_at, status, duration_ms, summary, error_code, error_message, metadata_json)
@@ -290,8 +321,8 @@ function isJobDue(job: Record<string, unknown>, now: Date): boolean {
   return !Number.isFinite(nextRunAt) || nextRunAt <= now.getTime();
 }
 
-function nextRunDelayMs(jobName: string): number {
-  return jobName === "message_cleanup" ? 60 * 1000 : 5 * 60 * 1000;
+function nextRunDelayMs(_jobName: string): number {
+  return 60 * 1000;
 }
 
 type PresenceRule = { rule_id: string; after_minutes: number; action: "notify" | "shutdown_all_instances" | "delete_all_instances" };
@@ -315,20 +346,51 @@ function normalizeRetentionDays(raw: string | undefined): number {
   return Math.trunc(parsed);
 }
 
-function renderLoginAlertText(events: Array<{ accountAlias: string; event: { id: number; type: string; username: string | null; ip: string | null; occurred_at: string } }>): string {
-  const lines = ["账号安全登录通知", "", `发现 ${events.length} 个新事件：`, ""];
+function renderLoginTimeoutText(count: number, timeoutMinutes: number): string {
+  return [
+    "⚠️ 登录确认超时",
+    "",
+    `有 ${count} 条 Linode 登录事件超过 ${timeoutMinutes} 分钟未确认。`,
+    "",
+    "Lite 当前先按安全默认值处理：只标记为确认超时并提醒，不自动关机或删机。",
+    "如果不是本人操作，请先点击“一键关机”进入二次确认，或打开安全事件列表查看详情。"
+  ].join("\n");
+}
+
+function renderLoginAlertText(events: Array<{ accountAlias: string; event: { id: number; type: string; username: string | null; ip: string | null; country?: string | null; region?: string | null; city?: string | null; occurred_at: string } }>): string {
+  const lines: string[] = [];
   for (const { accountAlias, event } of events.slice(0, 10)) {
     lines.push(
-      `#${event.id} ${event.type}`,
+      "#linode 登录通知",
+      "",
       `账号：${accountAlias}`,
-      `用户：${event.username ?? "-"}`,
-      `IP：${event.ip ?? "-"}`,
-      `时间：${event.occurred_at}`,
+      "📌 类型：#Login",
+      `👤 用户：${event.username ?? "未知"}`,
+      `🌐 IP：${event.ip ?? "未知"}`,
+      `📍 位置：${formatLoginLocation(event)}`,
+      "🏢 ASN：未知",
+      "💻 设备：未知",
+      "🤖 UA：未知",
+      `📊 状态：${formatLoginAlertStatus(event.type)}`,
+      "🔒 受限用户：未知",
+      `📅 时间：${event.occurred_at}`,
       ""
     );
   }
   if (events.length > 10) lines.push(`另有 ${events.length - 10} 个事件，请打开安全事件列表查看。`);
   return lines.join("\n").trimEnd();
+}
+
+function formatLoginLocation(event: { country?: string | null; region?: string | null; city?: string | null }): string {
+  return [event.country, event.region, event.city].filter(Boolean).join(" ") || "未知";
+}
+
+function formatLoginAlertStatus(type: string): string {
+  if (type === "LOGIN_SUCCESS") return "successful";
+  if (type === "LOGIN_FAILED") return "failed";
+  if (type === "TOKEN_INVALID") return "Token 无效";
+  if (type === "TOKEN_PERMISSION_ERROR") return "Token 权限不足";
+  return type || "未知";
 }
 
 function renderPresenceReminderText(policy: AdminPresencePolicyRecord, rule: PresenceRule, rules: PresenceRule[], minutesSinceCheckin: number): string {

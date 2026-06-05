@@ -66,22 +66,61 @@ function auditKeyboard(prefixRows: TelegramInlineKeyboardMarkup["inline_keyboard
 }
 
 function renderScheduleRunNotification(result: ScheduleRunResult): string {
-  const title = result.result === "success" ? "✅ 定时任务已执行" : result.result === "partial_failed" ? "⚠️ 定时任务部分失败" : "❌ 定时任务执行失败";
+  const visibleItems = result.items.filter((entry) => entry.result !== "skipped");
+  const primary = visibleItems[0];
+  const title = formatScheduleRunTitle(result, primary);
   const lines = [title, "━━━━━━━━━━━━", `检查 ${result.checked} 个 / 执行 ${result.executed} 个 / 失败 ${result.failed} 个`];
-  for (const item of result.items.filter((entry) => entry.result !== "skipped").slice(0, 5)) {
-    lines.push("", `#${item.schedule_id} ${item.name}`, `结果：${formatResult(item.result)}`);
+  for (const item of visibleItems.slice(0, 5)) {
+    lines.push("", `计划：#${item.schedule_id} ${formatScheduleRunItemName(item)}`, `动作：${formatScheduleAction(item.action)}`, `执行时间：${formatScheduleTime(item.cron_expr)}`, `执行范围：${formatScheduleScope(item)}`, `结果：${formatResult(item.result)}`);
     if (item.batch) appendBatchSummary(lines, item.batch);
     if (item.error_code) lines.push(`失败原因：${formatError(item.error_code)}`);
   }
-  const extra = result.items.filter((entry) => entry.result !== "skipped").length - 5;
+  const extra = visibleItems.length - 5;
   if (extra > 0) lines.push("", `另有 ${extra} 个任务未展示，可查看审计日志。`);
   return lines.join("\n");
+}
+
+function formatScheduleRunTitle(result: ScheduleRunResult, primary?: { action: string }): string {
+  const prefix = result.result === "success" ? "#linode" : result.result === "partial_failed" ? "⚠️ #linode" : "❌ #linode";
+  if (primary?.action === "boot") return `${prefix} 定时批量开机`;
+  if (primary?.action === "shutdown") return `${prefix} 定时批量关机`;
+  if (primary?.action === "reboot") return `${prefix} 定时批量重启`;
+  return result.result === "success" ? "✅ 定时任务已执行" : result.result === "partial_failed" ? "⚠️ 定时任务部分失败" : "❌ 定时任务执行失败";
+}
+
+function formatScheduleAction(action: string): string {
+  if (action === "boot") return "开机";
+  if (action === "shutdown") return "关机";
+  if (action === "reboot") return "重启";
+  return action;
+}
+
+function formatScheduleTime(cronExpr: string): string {
+  const parts = cronExpr.trim().split(/\s+/);
+  if (parts.length === 5 && /^\d+$/.test(parts[0]) && /^\d+$/.test(parts[1]) && parts.slice(2).every((part) => part === "*")) {
+    return `每天 ${String(Number(parts[1])).padStart(2, "0")}:${String(Number(parts[0])).padStart(2, "0")}`;
+  }
+  return `自定义 Cron`;
+}
+
+function formatScheduleScope(item: { scope: string; account_id: number | null; group_id: number | null; instance_id: number | null }): string {
+  if (item.scope === "all") return "所有托管账号";
+  if (item.scope === "account") return `账号 #${item.account_id}`;
+  if (item.scope === "group") return `分组 #${item.group_id}`;
+  if (item.scope === "instance") return `单台服务器 #${item.instance_id}`;
+  return item.scope;
+}
+
+function formatScheduleRunItemName(item: { name: string; batch?: BatchOperationResult }): string {
+  const only = item.batch?.items.length === 1 ? item.batch.items[0] : undefined;
+  if (!only || !only.instance_id || !only.label) return item.name;
+  return item.name.replace(new RegExp(`实例 #${only.instance_id}\\b`), `${only.label}（#${only.instance_id}）`);
 }
 
 function renderPresenceFinalActionNotification(input: { policy: AdminPresencePolicyRecord; action: PresenceFinalAction; minutesSinceCheckin: number; batch: BatchOperationResult }): string {
   const isDelete = input.action === "delete_all_instances";
   const lines = [
-    isDelete ? "🚨 保活最终删除已执行" : "⚠️ 保活最终动作已执行",
+    isDelete ? "🚨 保活触发批量删除" : "⚠️ 保活触发批量关机",
     "━━━━━━━━━━━━",
     "",
     `策略：#${input.policy.id} ${input.policy.name}`,
@@ -98,17 +137,29 @@ function renderPresenceFinalActionNotification(input: { policy: AdminPresencePol
 function appendBatchSummary(lines: string[], batch: BatchOperationResult): void {
   const skipped = batch.items.filter((item) => item.result === "skipped");
   const failed = batch.items.filter((item) => item.result === "failed");
+  const succeeded = batch.items.filter((item) => item.result === "success");
   lines.push("执行结果", `总数：${batch.total}｜成功：${batch.success}｜失败：${batch.failed}｜保护跳过：${skipped.length}`);
+  if (succeeded.length > 0) {
+    lines.push("", "成功：");
+    for (const item of succeeded.slice(0, 10)) lines.push(`- ${formatBatchItemInstance(item)}`);
+    if (succeeded.length > 10) lines.push(`还有 ${succeeded.length - 10} 条成功未展示`);
+  }
   if (failed.length > 0) {
     lines.push("", "失败：");
-    for (const item of failed.slice(0, 10)) lines.push(`- ${item.label || `#${item.instance_id}`}：${formatError(item.error_code)}`);
+    for (const item of failed.slice(0, 10)) lines.push(`- ${formatBatchItemInstance(item)}：${formatError(item.error_code)}`);
     if (failed.length > 10) lines.push(`还有 ${failed.length - 10} 条失败未展示`);
   }
   if (skipped.length > 0) {
     lines.push("", "保护跳过：");
-    for (const item of skipped.slice(0, 10)) lines.push(`- ${item.label || `#${item.instance_id}`}`);
+    for (const item of skipped.slice(0, 10)) lines.push(`- ${formatBatchItemInstance(item)}`);
     if (skipped.length > 10) lines.push(`还有 ${skipped.length - 10} 条保护跳过未展示`);
   }
+}
+
+function formatBatchItemInstance(item: { instance_id: number; label?: string }): string {
+  if (item.label && item.instance_id) return `${item.label}（#${item.instance_id}）`;
+  if (item.label) return item.label;
+  return `#${item.instance_id}`;
 }
 
 function formatPresenceAction(action: PresenceFinalAction): string {

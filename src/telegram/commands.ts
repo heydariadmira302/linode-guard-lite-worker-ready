@@ -39,7 +39,7 @@ export async function handleTelegramMessageCommand(
 ): Promise<TelegramClientResult> {
   if (!update.command) {
     const replyText = update.text.trim();
-    if (replyText === "📊 状态总览" || replyText === "状态总览" || replyText === "总览") {
+    if (replyText === "📊 状态总览" || replyText === "📊 总览" || replyText === "状态总览" || replyText === "总览") {
       await sessions.clearCurrentSession(update.fromId);
       if (env.DB) {
         const data = await new StatusOverviewService(env).getOverview(requestId);
@@ -47,19 +47,19 @@ export async function handleTelegramMessageCommand(
       }
       return client.sendMessage({ chat_id: update.chatId, text: "状态总览需要数据库支持。", reply_markup: renderCheckinInlineKeyboard() });
     }
-    if (replyText === "🏠 主菜单" || replyText === "主菜单") {
+    if (replyText === "🏠 主控菜单" || replyText === "🏠 主菜单" || replyText === "主控菜单" || replyText === "主菜单") {
       await sessions.clearCurrentSession(update.fromId);
       return [
         client.sendMessage({ chat_id: update.chatId, text: "主导航已放到聊天框下方。", reply_markup: renderMainReplyKeyboard() }) as TelegramClientAction,
         client.sendMessage({ chat_id: update.chatId, text: renderMainMenuText(), reply_markup: renderMainMenuKeyboard() }) as TelegramClientAction
       ];
     }
-    if (replyText === "🖥 服务器" || replyText === "服务器") {
+    if (replyText === "🖥 云机管理" || replyText === "🖥 服务器" || replyText === "云机管理" || replyText === "服务器") {
       await sessions.clearCurrentSession(update.fromId);
       const data = await new InstanceService(env).listAllActiveAccountInstances(requestId);
       return client.sendMessage({ chat_id: update.chatId, text: renderAllInstancesText(data.accounts), reply_markup: renderInstancesListKeyboard(data.accounts, "all") });
     }
-    if (replyText === "❤️ 打卡" || replyText === "打卡") {
+    if (replyText === "❤️ 打卡保活" || replyText === "❤️ 打卡" || replyText === "打卡保活" || replyText === "打卡") {
       await sessions.clearCurrentSession(update.fromId);
       if (env.DB) {
         const data = await new AdminPresenceService(env).checkin({ requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
@@ -76,14 +76,14 @@ export async function handleTelegramMessageCommand(
       }
       return client.sendMessage({ chat_id: update.chatId, text: "审计日志功能需要数据库支持。", reply_markup: renderCheckinInlineKeyboard() });
     }
-    if (update.text === "🏠 主菜单" || update.text === "主菜单") {
+    if (update.text === "🏠 主控菜单" || update.text === "🏠 主菜单" || update.text === "主控菜单" || update.text === "主菜单") {
       await sessions.clearCurrentSession(update.fromId);
       return [
         client.sendMessage({ chat_id: update.chatId, text: "主导航已放到聊天框下方。", reply_markup: renderMainReplyKeyboard() }) as TelegramClientAction,
         client.sendMessage({ chat_id: update.chatId, text: renderMainMenuText(), reply_markup: renderMainMenuKeyboard() }) as TelegramClientAction
       ];
     }
-    if (update.text === "🖥 服务器" || update.text === "服务器") {
+    if (update.text === "🖥 云机管理" || update.text === "🖥 服务器" || update.text === "云机管理" || update.text === "服务器") {
       await sessions.clearCurrentSession(update.fromId);
       const data = await new InstanceService(env).listAllActiveAccountInstances(requestId);
       return client.sendMessage({ chat_id: update.chatId, text: renderAllInstancesText(data.accounts), reply_markup: renderInstancesListKeyboard(data.accounts, "all") });
@@ -92,7 +92,7 @@ export async function handleTelegramMessageCommand(
       await sessions.clearCurrentSession(update.fromId);
       return client.sendMessage({ chat_id: update.chatId, text: renderBatchMenuText(), reply_markup: renderBatchMenuKeyboard() });
     }
-    if (update.text === "📋 更多" || update.text === "📋 更多功能" || update.text === "更多" || update.text === "更多功能") {
+    if (update.text === "📋 更多功能" || update.text === "📋 更多" || update.text === "更多功能" || update.text === "更多") {
       await sessions.clearCurrentSession(update.fromId);
       return client.sendMessage({ chat_id: update.chatId, text: renderMoreMenuText(), reply_markup: renderMoreMenuKeyboard() });
     }
@@ -124,11 +124,15 @@ export async function handleTelegramMessageCommand(
       }
       return client.sendMessage({ chat_id: update.chatId, text: "安全事件功能需要数据库支持。", reply_markup: renderCheckinInlineKeyboard() });
     }
-    if (update.text === "⏰ 定时" || update.text === "⏰ 定时任务" || update.text === "定时" || update.text === "定时任务") {
+    if (update.text === "📅 定时计划" || update.text === "⏰ 定时" || update.text === "⏰ 定时任务" || update.text === "定时" || update.text === "定时任务" || update.text === "定时计划") {
       await sessions.clearCurrentSession(update.fromId);
+      if (env.DB) {
+        const settings = await new ScheduleService(env).getQuickPowerSettings();
+        return client.sendMessage({ chat_id: update.chatId, text: renderSchedulesMenuText(settings), reply_markup: renderSchedulesMenuKeyboard(settings) });
+      }
       return client.sendMessage({ chat_id: update.chatId, text: renderSchedulesMenuText(), reply_markup: renderSchedulesMenuKeyboard() });
     }
-    if (update.text === "❤️ 保活打卡" || update.text === "保活打卡") {
+    if (update.text === "❤️ 打卡保活" || update.text === "❤️ 保活打卡" || update.text === "打卡保活" || update.text === "保活打卡") {
       await sessions.clearCurrentSession(update.fromId);
       if (env.DB) {
         const data = await new AdminPresenceService(env).getStatus();
@@ -156,7 +160,7 @@ export async function handleTelegramMessageCommand(
         botManagedOfflineCount: deployment.boot_safety?.bot_managed_offline_count
       }), reply_markup: renderDiagnosticsMenuKeyboard() });
     }
-    if (update.text === "❤️ 打卡" || update.text === "打卡") {
+    if (update.text === "❤️ 打卡保活" || update.text === "❤️ 打卡" || update.text === "打卡保活" || update.text === "打卡") {
       await sessions.clearCurrentSession(update.fromId);
       if (env.DB) {
         const data = await new AdminPresenceService(env).checkin({ requestId, actor: `telegram:${update.fromId}`, source: "telegram" });

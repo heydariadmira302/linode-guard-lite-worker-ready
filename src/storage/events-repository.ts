@@ -152,6 +152,15 @@ export class SecurityEventsRepository {
     return await this.getSecurityEventById(id);
   }
 
+  async markLoginConfirmationTimeouts(cutoffIso: string): Promise<number> {
+    const result = await this.db.prepare(`UPDATE security_events
+      SET status = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE status = ? AND type IN ('LOGIN_SUCCESS', 'LOGIN_FAILED') AND occurred_at < ?`)
+      .bind("timeout", "open", cutoffIso)
+      .run();
+    return Number(result.meta.changes ?? 0);
+  }
+
   async cleanupSecurityEventsBefore(cutoffIso: string): Promise<number> {
     const result = await this.db.prepare("DELETE FROM security_events WHERE created_at < ?").bind(cutoffIso).run();
     return Number(result.meta.changes ?? 0);

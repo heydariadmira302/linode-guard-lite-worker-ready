@@ -16,7 +16,7 @@ export function renderMainMenuText(): string {
     "📊 状态总览：服务器、安全、定时、保活一屏查看",
     "🖥 服务器：查看状态，执行开机、关机、重启",
     "❤️ 打卡：刷新保活周期，避免自动最终动作",
-    "⏰ 定时：自动开机、关机、重启",
+    "📅 定时计划：自动开机、关机",
     "🛡 安全：登录事件、Token 状态和保护设置",
     "",
     "批量、分组、审计、隐私和设置在「更多」。"
@@ -28,7 +28,7 @@ export function renderMainMenuKeyboard(): TelegramInlineKeyboardMarkup {
     inline_keyboard: [
       [{ text: "📊 状态总览", callback_data: "status:overview" }],
       [{ text: "🖥 服务器", callback_data: "instances:list:all" }, { text: "👤 账号", callback_data: "menu:accounts" }],
-      [{ text: "❤️ 打卡", callback_data: "admin_presence:checkin" }, { text: "⏰ 定时", callback_data: "menu:schedules" }],
+      [{ text: "❤️ 打卡", callback_data: "admin_presence:checkin" }, { text: "📅 定时计划", callback_data: "menu:schedules" }],
       [{ text: "🛡 安全", callback_data: "menu:security" }, { text: "📋 更多", callback_data: "menu:more" }]
     ]
   };
@@ -141,8 +141,7 @@ export function renderAccountListText(accounts: PublicAccount[]): string {
       `#${account.id} ${account.alias}`,
       `状态：${formatAccountStatus(account.status)}`,
       `分组：${account.group_name ?? (account.group_id ? `#${account.group_id}` : "未分组")}`,
-      `Token：${account.token_fingerprint}`,
-      `Token 状态：${formatTokenStatus(account.token_status)}`,
+      `Token：${formatTokenStatus(account.token_status)}`,
       ""
     );
   }
@@ -152,7 +151,7 @@ export function renderAccountListText(accounts: PublicAccount[]): string {
 export function renderAccountListKeyboard(accounts: PublicAccount[] = []): TelegramInlineKeyboardMarkup {
   return {
     inline_keyboard: [
-      ...accounts.map((account) => [{ text: `📋 详情 #${account.id} ${account.alias}`, callback_data: `accounts:detail:${account.id}` }]),
+      ...accounts.map((account) => [{ text: `👤 ${account.alias}`, callback_data: `accounts:detail:${account.id}` }]),
       [{ text: "➕ 继续添加账号", callback_data: "accounts:add" }],
       [{ text: "↩️ 返回账号管理", callback_data: "menu:accounts" }],
       [{ text: "🏠 返回主菜单", callback_data: "menu:main" }]
@@ -168,15 +167,9 @@ export function renderAccountDetailText(account: PublicAccount): string {
     `状态：${formatAccountStatus(account.status)}`,
     `分组：${account.group_name ?? (account.group_id ? `#${account.group_id}` : "未分组")}`,
     "",
-    "Token：",
-    `• 状态：${formatTokenStatus(account.token_status)}`,
-    `• 指纹：${account.token_fingerprint}`,
+    `Token：${formatTokenStatus(account.token_status)}`,
     "",
-    "安全：",
-    `• 安全基线：${account.security_baseline_at ?? "-"}`,
-    "",
-    `创建时间：${account.created_at}`,
-    `更新时间：${account.updated_at}`
+    "常用操作：查看服务器、测试/更新 Token、移动分组。"
   ].join("\n");
 }
 
@@ -365,11 +358,7 @@ export function renderMyIdText(data: { userId: string; username?: string | null;
   const username = data.username ? `@${data.username}` : "无用户名";
   return [
     username,
-    `ID：\`${data.userId}\``,
-    `名：${data.firstName || "-"}`,
-    `姓：${data.lastName || "-"}`,
-    `语言：${data.languageCode || "-"}`,
-    `Chat ID：\`${data.chatId}\``
+    `Id: \`${data.userId}\``
   ].join("\n");
 }
 

@@ -16,8 +16,15 @@ export type ScheduleScope = "all" | "account" | "group" | "instance";
 export type ScheduleContext = { requestId: string; actor: string; source: string };
 export type ScheduleListResult = { schedules: PowerScheduleRecord[]; limit: number; offset: number };
 export type ScheduleBulkToggleResult = { affected: number; schedules: PowerScheduleRecord[] };
-export type ScheduleRunItem = { schedule_id: number; name: string; result: "success" | "partial_failed" | "failed" | "skipped"; batch?: BatchOperationResult; error_code?: string };
+export type ScheduleRunItem = { schedule_id: number; name: string; action: ScheduleAction; scope: ScheduleScope; account_id: number | null; group_id: number | null; instance_id: number | null; cron_expr: string; result: "success" | "partial_failed" | "failed" | "skipped"; batch?: BatchOperationResult; error_code?: string };
 export type ScheduleRunResult = { checked: number; executed: number; failed: number; result: "success" | "partial_failed" | "failed" | "skipped"; items: ScheduleRunItem[] };
+export type QuickPowerSettings = { boot: PowerScheduleRecord | null; shutdown: PowerScheduleRecord | null; scope: ScheduleScope; account_id: number | null; group_id: number | null; enabled: "all" | "partial" | "none" };
+
+const QUICK_POWER_PRESET = "daily_power";
+const QUICK_POWER_DEFAULTS = {
+  boot: { hour: "08", minute: "50", cron: "50 8 * * *", label: "08:50" },
+  shutdown: { hour: "23", minute: "05", cron: "5 23 * * *", label: "23:05" }
+} as const;
 
 export class ScheduleService {
   private readonly repository: SchedulesRepository;
@@ -40,7 +47,8 @@ export class ScheduleService {
     const cronExpr = validateCron(input.cron_expr, context.requestId);
     const name = typeof input.name === "string" && input.name.trim() ? input.name.trim() : `${action} schedule`;
     const timezone = typeof input.timezone === "string" && input.timezone.trim() ? input.timezone.trim() : this.env.APP_TIMEZONE ?? "Asia/Shanghai";
-    const schedule = await this.repository.create({ name, enabled: input.enabled !== false, action, scope, account_id: accountId, group_id: groupId, instance_id: instanceId, cron_expr: cronExpr, timezone, next_run_at: computeNextRunAt(cronExpr, new Date(), timezone) });
+    const metadataJson = typeof input.metadata_json === "string" ? input.metadata_json : null;
+    const schedule = await this.repository.create({ name, enabled: input.enabled !== false, action, scope, account_id: accountId, group_id: groupId, instance_id: instanceId, cron_expr: cronExpr, timezone, next_run_at: computeNextRunAt(cronExpr, new Date(), timezone), metadata_json: metadataJson });
     await this.auditSchedule(context, "schedule.create", schedule, "success", null);
     return { schedule };
   }
@@ -74,6 +82,7 @@ export class ScheduleService {
     const timezone = typeof input.timezone === "string" && input.timezone.trim() ? input.timezone.trim() : current.timezone || this.env.APP_TIMEZONE || "Asia/Shanghai";
     const name = typeof input.name === "string" && input.name.trim() ? input.name.trim() : current.name;
     const enabled = input.enabled === undefined ? current.enabled : input.enabled !== false ? 1 : 0;
+    const metadataJson = typeof input.metadata_json === "string" ? input.metadata_json : current.metadata_json;
     try {
       const schedule = await this.repository.update(id, {
         name,
@@ -86,7 +95,7 @@ export class ScheduleService {
         cron_expr: cronExpr,
         timezone,
         next_run_at: Number(enabled) === 1 ? computeNextRunAt(cronExpr, new Date(), timezone) : current.next_run_at,
-        metadata_json: current.metadata_json
+        metadata_json: metadataJson
       });
       await this.auditSchedule(context, "schedule.update", schedule, "success", null);
       return { schedule };
@@ -118,6 +127,85 @@ export class ScheduleService {
     return { schedule };
   }
 
+  async getQuickPowerSettings(): Promise<QuickPowerSettings> {
+    const schedules = await this.repository.list({ limit: 100, offset: 0 });
+    const boot = schedules.find((schedule) => isQuickPowerSchedule(schedule, "boot")) ?? null;
+    const shutdown = schedules.find((schedule) => isQuickPowerSchedule(schedule, "shutdown")) ?? null;
+    const source = boot ?? shutdown;
+    const enabledCount = [boot, shutdown].filter((schedule) => schedule && Number(schedule.enabled) === 1).length;
+    return {
+      boot,
+      shutdown,
+      scope: (source?.scope as ScheduleScope | undefined) ?? "all",
+      account_id: source?.account_id ?? null,
+      group_id: source?.group_id ?? null,
+      enabled: enabledCount === 2 ? "all" : enabledCount === 0 ? "none" : "partial"
+    };
+  }
+
+  async upsertQuickPowerTime(action: "boot" | "shutdown", hour: string, minute: string, context: ScheduleContext): Promise<{ schedule: PowerScheduleRecord }> {
+    const settings = await this.getQuickPowerSettings();
+    const current = action === "boot" ? settings.boot : settings.shutdown;
+    const cronExpr = `${Number(minute)} ${Number(hour)} * * *`;
+    const timeLabel = `${hour}:${minute}`;
+    const input = {
+      name: `默认每天 ${timeLabel} ${action === "boot" ? "开机" : "关机"}`,
+      action,
+      scope: settings.scope,
+      account_id: settings.account_id,
+      group_id: settings.group_id,
+      instance_id: null,
+      cron_expr: cronExpr,
+      timezone: this.env.APP_TIMEZONE ?? "Asia/Shanghai",
+      enabled: true,
+      metadata_json: quickPowerMetadata(action)
+    };
+    if (current) return this.updateSchedule(current.id, input, context);
+    return this.createSchedule(input, context);
+  }
+
+  async updateQuickPowerScope(input: { scope: "all" | "account" | "group"; account_id?: number | null; group_id?: number | null }, context: ScheduleContext): Promise<ScheduleBulkToggleResult> {
+    await this.validateScheduleTarget(input.scope, input.account_id ?? null, input.group_id ?? null, null, context.requestId);
+    const settings = await this.ensureQuickPowerDefaults(context, false);
+    const targets = [settings.boot, settings.shutdown].filter(Boolean) as PowerScheduleRecord[];
+    const updated: PowerScheduleRecord[] = [];
+    for (const schedule of targets) {
+      const result = await this.updateSchedule(schedule.id, { scope: input.scope, account_id: input.account_id ?? null, group_id: input.group_id ?? null, instance_id: null }, context);
+      updated.push(result.schedule);
+    }
+    return { affected: updated.length, schedules: updated };
+  }
+
+  async setQuickPowerEnabled(enabled: boolean, context: ScheduleContext): Promise<ScheduleBulkToggleResult> {
+    const settings = await this.ensureQuickPowerDefaults(context, enabled);
+    const targets = [settings.boot, settings.shutdown].filter(Boolean) as PowerScheduleRecord[];
+    const changed: PowerScheduleRecord[] = [];
+    for (const schedule of targets) {
+      if (enabled && Number(schedule.enabled) === 1) {
+        changed.push(schedule);
+      } else if (!enabled && Number(schedule.enabled) === 0) {
+        changed.push(schedule);
+      } else {
+        const result = enabled ? await this.enableSchedule(schedule.id, context) : await this.disableSchedule(schedule.id, context);
+        changed.push(result.schedule);
+      }
+    }
+    return { affected: changed.length, schedules: changed };
+  }
+
+  private async ensureQuickPowerDefaults(context: ScheduleContext, enabled: boolean): Promise<QuickPowerSettings> {
+    const settings = await this.getQuickPowerSettings();
+    const created: Partial<Record<"boot" | "shutdown", PowerScheduleRecord>> = {};
+    if (!settings.boot) {
+      created.boot = (await this.createSchedule(defaultQuickPowerInput("boot", settings, enabled, this.env.APP_TIMEZONE ?? "Asia/Shanghai"), context)).schedule;
+    }
+    if (!settings.shutdown) {
+      created.shutdown = (await this.createSchedule(defaultQuickPowerInput("shutdown", settings, enabled, this.env.APP_TIMEZONE ?? "Asia/Shanghai"), context)).schedule;
+    }
+    if (!created.boot && !created.shutdown) return settings;
+    return this.getQuickPowerSettings();
+  }
+
   async enableAllSchedules(context: ScheduleContext): Promise<ScheduleBulkToggleResult> {
     const result = await this.repository.enableAll();
     await this.auditScheduleBulk(context, "schedule.enable_all", result);
@@ -146,7 +234,7 @@ export class ScheduleService {
     const currentNextRunAt = schedule.next_run_at;
     const nextRunAt = computeNextRunAt(schedule.cron_expr, now, schedule.timezone);
     if (!currentNextRunAt || !(await this.repository.claimDueRun(schedule.id, currentNextRunAt, nextRunAt, started))) {
-      return { schedule_id: schedule.id, name: schedule.name, result: "skipped", error_code: "SCHEDULE_ALREADY_CLAIMED" };
+      return scheduleRunItemBase(schedule, "skipped", { error_code: "SCHEDULE_ALREADY_CLAIMED" });
     }
     try {
       const batchService = new BatchService(this.env);
@@ -158,11 +246,11 @@ export class ScheduleService {
             ? await batchService.runGroupBatch(Number(schedule.group_id), schedule.action as BatchAction, context)
             : await batchService.runAllAccountsBatch(schedule.action as BatchAction, context);
       await this.repository.createRun({ schedule_id: schedule.id, action: schedule.action, scope: schedule.scope, instance_id: schedule.instance_id, started_at: started, finished_at: new Date().toISOString(), status: batch.result, summary: JSON.stringify({ total: batch.total, success: batch.success, failed: batch.failed }), metadata_json: JSON.stringify({ result: batch.result }) });
-      return { schedule_id: schedule.id, name: schedule.name, result: batch.result === "failed" ? "failed" : batch.result, batch };
+      return scheduleRunItemBase(schedule, batch.result === "failed" ? "failed" : batch.result, { batch });
     } catch (error) {
       const code = error instanceof AppError ? error.code : ErrorCode.JOB_FAILED;
       await this.repository.createRun({ schedule_id: schedule.id, action: schedule.action, scope: schedule.scope, instance_id: schedule.instance_id, started_at: started, finished_at: new Date().toISOString(), status: "failed", error_code: code });
-      return { schedule_id: schedule.id, name: schedule.name, result: "failed", error_code: code };
+      return scheduleRunItemBase(schedule, "failed", { error_code: code });
     }
   }
 
@@ -218,6 +306,51 @@ export class ScheduleService {
   private async auditScheduleBulk(context: ScheduleContext, action: string, result: ScheduleBulkToggleResult): Promise<void> {
     await this.audit?.record({ request_id: context.requestId, actor: context.actor, source: context.source, action, target_type: "power_schedule", target_id: null, risk_level: "medium", result: "success", error_code: null, metadata_json: JSON.stringify({ affected: result.affected, schedule_ids: result.schedules.map((schedule) => schedule.id) }) });
   }
+}
+
+function scheduleRunItemBase(schedule: PowerScheduleRecord, result: ScheduleRunItem["result"], extra: { batch?: BatchOperationResult; error_code?: string } = {}): ScheduleRunItem {
+  return {
+    schedule_id: schedule.id,
+    name: schedule.name,
+    action: schedule.action as ScheduleAction,
+    scope: schedule.scope as ScheduleScope,
+    account_id: schedule.account_id ?? null,
+    group_id: schedule.group_id ?? null,
+    instance_id: schedule.instance_id ?? null,
+    cron_expr: schedule.cron_expr,
+    result,
+    ...extra
+  };
+}
+
+function defaultQuickPowerInput(action: "boot" | "shutdown", settings: QuickPowerSettings, enabled: boolean, timezone: string): Record<string, unknown> {
+  const preset = QUICK_POWER_DEFAULTS[action];
+  return {
+    name: `默认每天 ${preset.label} ${action === "boot" ? "开机" : "关机"}`,
+    action,
+    scope: settings.scope,
+    account_id: settings.account_id,
+    group_id: settings.group_id,
+    instance_id: null,
+    cron_expr: preset.cron,
+    timezone,
+    enabled,
+    metadata_json: quickPowerMetadata(action)
+  };
+}
+
+function isQuickPowerSchedule(schedule: PowerScheduleRecord, action: "boot" | "shutdown"): boolean {
+  if (schedule.action !== action || schedule.scope === "instance") return false;
+  try {
+    const metadata = schedule.metadata_json ? JSON.parse(schedule.metadata_json) as { preset?: string; action?: string } : null;
+    return metadata?.preset === QUICK_POWER_PRESET && metadata?.action === action;
+  } catch {
+    return false;
+  }
+}
+
+function quickPowerMetadata(action: "boot" | "shutdown"): string {
+  return JSON.stringify({ preset: QUICK_POWER_PRESET, action });
 }
 
 function validateAction(value: unknown, requestId: string): ScheduleAction {

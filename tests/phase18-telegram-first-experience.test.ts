@@ -181,16 +181,17 @@ describe("Phase 18 Telegram-first experience", () => {
     const startBody = await start.json() as { data: { telegram: Array<{ payload: { text: string; reply_markup: { keyboard?: Array<Array<{ text: string }>>; inline_keyboard?: Array<Array<{ text: string; callback_data: string }>> } } }> } };
     expect(startBody.data.telegram[0].payload.text).toContain("主导航");
     expect(startBody.data.telegram[0].payload.reply_markup.keyboard).toEqual([
-      [{ text: "🏠 主菜单" }, { text: "🖥 服务器" }],
-      [{ text: "📊 状态总览" }, { text: "❤️ 打卡" }],
-      [{ text: "📄 审计" }]
+      [{ text: "🏠 主控菜单" }, { text: "🖥 云机管理" }],
+      [{ text: "📅 定时计划" }, { text: "❤️ 打卡保活" }],
+      [{ text: "📊 状态总览" }, { text: "🪪 我的ID" }],
+      [{ text: "📋 更多功能" }]
     ]);
     expect(startBody.data.telegram[1].payload.reply_markup.inline_keyboard?.flat()).toEqual(expect.arrayContaining([
       { text: "📊 状态总览", callback_data: "status:overview" },
       { text: "🖥 服务器", callback_data: "instances:list:all" },
       { text: "👤 账号", callback_data: "menu:accounts" },
       { text: "❤️ 打卡", callback_data: "admin_presence:checkin" },
-      { text: "⏰ 定时", callback_data: "menu:schedules" },
+      { text: "📅 定时计划", callback_data: "menu:schedules" },
       { text: "🛡 安全", callback_data: "menu:security" },
       { text: "📋 更多", callback_data: "menu:more" }
     ]));
@@ -217,8 +218,8 @@ describe("Phase 18 Telegram-first experience", () => {
     const checkin = await worker.fetch(telegramRequest(messageUpdate("❤️ 打卡")), env as never);
     const checkinBody = await checkin.json() as { data: { telegram: { payload: { reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
     expect(checkinBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
-      { text: "❤️ 查看保活状态", callback_data: "menu:admin_presence" },
-      { text: "🛡 保活策略设置", callback_data: "admin_presence:policies" },
+      { text: "❤️ 查看保活", callback_data: "menu:admin_presence" },
+      { text: "⚙️ 高级设置", callback_data: "admin_presence:policies" },
       { text: "🏠 返回主菜单", callback_data: "menu:main" }
     ]));
   });
@@ -299,17 +300,20 @@ describe("Phase 18 Telegram-first experience", () => {
     });
     try {
       const list = await worker.fetch(telegramRequest(callbackUpdate("instances:list:all")), env as never);
-      const listBody = await list.json() as { data: { telegram: { payload: { text: string } } } };
+      const listBody = await list.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<Record<string, unknown>>> } } } } };
       expect(listBody.data.telegram.payload.text).toContain("IPv4：203.0.113.10");
+      expect(listBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🖥 web-1", callback_data: "instances:detail:1:101:all" });
       expect(listBody.data.telegram.payload.text).not.toContain("2001:db8");
 
       const detail = await worker.fetch(telegramRequest(callbackUpdate("instances:detail:1:101")), env as never);
-      const detailBody = await detail.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
+      const detailBody = await detail.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<Record<string, unknown>>> } } } } };
       const keyboard = detailBody.data.telegram.payload.reply_markup.inline_keyboard.flat();
       expect(detailBody.data.telegram.payload.text).toContain("• 203.0.113.10");
       expect(detailBody.data.telegram.payload.text).toContain("• 203.0.113.11");
       expect(detailBody.data.telegram.payload.text).not.toContain("IPv6");
       expect(keyboard).toEqual(expect.arrayContaining([
+        { text: "203.0.113.10", copy_text: { text: "203.0.113.10" } },
+        { text: "ID 101", copy_text: { text: "101" } },
         { text: "✅ 开机", callback_data: "instances:boot:1:101:account_1", style: "success" },
         { text: "🚨 危险操作", callback_data: "instances:danger:1:101:account_1", style: "danger" },
         { text: "⬅️ 返回列表", callback_data: "instances:list:account:1" }
@@ -339,9 +343,10 @@ describe("Phase 18 Telegram-first experience", () => {
     const db = new FakeD1Database();
     const env = { ...baseEnv, DB: db as unknown as D1Database };
 
-    const schedules = await worker.fetch(telegramRequest(messageUpdate("⏰ 定时任务", 41)), env as never);
+    const schedules = await worker.fetch(telegramRequest(messageUpdate("📅 定时计划", 41)), env as never);
     const schedulesBody = await schedules.json() as { data: { telegram: { payload: { text: string } } } };
-    expect(schedulesBody.data.telegram.payload.text).toContain("⏰ 定时任务");
+    expect(schedulesBody.data.telegram.payload.text).toContain("📅 定时计划");
+    expect(schedulesBody.data.telegram.payload.text).toContain("到点后 Bot 会自动执行");
     expect(schedulesBody.data.telegram.payload.text).not.toContain("/help");
 
     const security = await worker.fetch(telegramRequest(messageUpdate("🛡 安全", 42)), env as never);
@@ -351,8 +356,8 @@ describe("Phase 18 Telegram-first experience", () => {
 
     const adminPresence = await worker.fetch(telegramRequest(messageUpdate("❤️ 保活打卡", 43)), env as never);
     const adminPresenceBody = await adminPresence.json() as { data: { telegram: { payload: { text: string } } } };
-    expect(adminPresenceBody.data.telegram.payload.text).toContain("❤️ 保活打卡");
-    expect(adminPresenceBody.data.telegram.payload.text).toContain("启用策略");
+    expect(adminPresenceBody.data.telegram.payload.text).toContain("❤️ 打卡保活");
+    expect(adminPresenceBody.data.telegram.payload.text).toContain("保活状态");
 
     const settings = await worker.fetch(telegramRequest(messageUpdate("⚙️ 设置", 44)), env as never);
     const settingsBody = await settings.json() as { data: { telegram: { payload: { text: string } } } };

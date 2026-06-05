@@ -405,7 +405,10 @@ describe("Phase 6 Linode instance read-only management", () => {
       const detailBody = await detailFlow.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<Record<string, unknown>>> } } } } };
       expect(detailBody.data.telegram.payload.text).toContain("RDP：192.0.2.9:3389");
       expect(detailBody.data.telegram.payload.text).toContain("Windows 用户名：Administrator");
-      expect(JSON.stringify(detailBody.data.telegram.payload.reply_markup)).not.toContain("copy_text");
+      expect(detailBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ text: "192.0.2.9", copy_text: { text: "192.0.2.9" } }),
+        expect.objectContaining({ text: "ID 92022", copy_text: { text: "92022" } })
+      ]));
     } finally {
       fetchMock.mockRestore();
     }
@@ -782,7 +785,7 @@ describe("Phase 6 Linode instance read-only management", () => {
       expect(groupListBody.data.telegram.payload.text).toContain("分组：未分组");
       expect(groupListBody.data.telegram.payload.text).toContain("default-web");
       expect(groupListBody.data.telegram.payload.text).toContain("IPv4：203.0.113.10");
-      expect(groupKeyboard).toEqual(expect.arrayContaining([{ text: "详情 #101", callback_data: "instances:detail:1:101:group_1" }]));
+      expect(groupKeyboard).toEqual(expect.arrayContaining([{ text: "🖥 default-web", callback_data: "instances:detail:1:101:group_1" }]));
       expect(raw).not.toContain("✅ 开机");
       expect(raw).not.toContain("⚠️ 关机");
       expect(raw).not.toContain("🔄 重启");

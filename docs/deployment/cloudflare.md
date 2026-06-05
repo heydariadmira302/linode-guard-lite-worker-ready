@@ -20,7 +20,7 @@ https://github.com/<YOUR_GITHUB_REPO>
 
 - 一个 Cloudflare Worker：运行 Linode Guard Lite 的 HTTP API 和 Telegram Webhook。
 - 一个 Cloudflare D1 数据库：保存账号、加密后的 Linode Token、审计日志、定时任务、Job Runner 运行记录。
-- 一个 Cloudflare Cron Trigger：每 5 分钟执行 Job Runner。
+- 一个 Cloudflare Cron Trigger：每 1 分钟执行 Job Runner。
 - 一个 Telegram Bot：作为默认手机操作入口。
 - 一组 HTTP API：以后可以继续接 Web UI、CLI、Webhook、手机快捷指令或自动化脚本。
 
@@ -706,7 +706,7 @@ openssl rand -base64 32
 crons = ["* * * * *"]
 ```
 
-意思是每分钟唤醒一次 Job Runner。Job Runner 会用 `jobs.next_run_at` 控制各任务实际频率：消息隐私清理可接近每分钟执行，其他常规任务默认约 5 分钟一轮。Cloudflare 用 `npx wrangler deploy` 部署时会自动带上这个 Cron Trigger。
+意思是每分钟唤醒一次 Job Runner。Job Runner 会用 `jobs.next_run_at` 控制各任务实际频率；当前默认所有系统 job 均按约 1 分钟一轮检查。Cloudflare 用 `npx wrangler deploy` 部署时会自动带上这个 Cron Trigger。
 
 如果你在 Cloudflare 后台没有看到 Cron，或者你想手动确认，可以进入：
 

@@ -19,7 +19,7 @@ export function renderStatusOverviewText(data: StatusOverviewResult, timezone?: 
     `总数：${data.instances.total}｜运行：${data.instances.running}｜关机：${data.instances.offline}｜异常：${data.instances.other}`,
     data.instances.failed_accounts > 0 ? `账号异常：${data.instances.failed_accounts} 个，请检查 KEY 权限或 Token` : "账号异常：0",
     "",
-    "⏰ 定时任务",
+    "📅 定时计划",
     `启用：${data.schedules.enabled} / ${data.schedules.total}`,
     ...renderScheduleOverviewLines(data),
     "",
@@ -43,7 +43,7 @@ export function renderStatusOverviewKeyboard(): TelegramInlineKeyboardMarkup {
     inline_keyboard: [
       [{ text: "🔄 刷新", callback_data: "status:overview" }],
       [{ text: "🖥 服务器", callback_data: "instances:list:all" }, { text: "🛡 安全", callback_data: "menu:security" }],
-      [{ text: "⏰ 定时", callback_data: "menu:schedules" }, { text: "❤️ 保活", callback_data: "menu:admin_presence" }],
+      [{ text: "📅 定时计划", callback_data: "menu:schedules" }, { text: "❤️ 保活", callback_data: "menu:admin_presence" }],
       [{ text: "📄 审计", callback_data: "menu:audit_logs" }, { text: "🏠 主菜单", callback_data: "menu:main" }]
     ]
   };

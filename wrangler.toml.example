@@ -7,7 +7,8 @@ compatibility_flags = ["nodejs_compat"]
 # Dashboard when deploying from GitHub/Wrangler.
 keep_vars = true
 
-# Cloudflare Cron Trigger: run the job runner every 5 minutes.
+# Cloudflare Cron Trigger: wake the job runner every minute.
+# Individual jobs still use jobs.next_run_at for their own cadence.
 [triggers]
 crons = ["* * * * *"]
 

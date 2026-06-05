@@ -79,6 +79,15 @@ export class AccountsRepository {
     ).bind(alias).first<LinodeAccountRecord>();
   }
 
+  async getByTokenFingerprint(fingerprint: string): Promise<LinodeAccountRecord | null> {
+    return await this.db.prepare(
+      `SELECT id, alias, encrypted_token, token_fingerprint, token_status, status, group_id, last_seen_login_id, last_login_check_at, security_baseline_at, created_at, updated_at, deleted_at
+       FROM linode_accounts
+       WHERE token_fingerprint = ? AND COALESCE(status, 'active') = 'active'
+       LIMIT 1`
+    ).bind(fingerprint).first<LinodeAccountRecord>();
+  }
+
   async updateTokenStatus(id: number, tokenStatus: string): Promise<void> {
     await this.db.prepare(
       `UPDATE linode_accounts

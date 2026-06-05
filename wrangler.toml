@@ -7,9 +7,10 @@ compatibility_flags = ["nodejs_compat"]
 # Dashboard when deploying from GitHub/Wrangler.
 keep_vars = true
 
-# Cloudflare Cron Trigger: run the job runner every 5 minutes.
+# Cloudflare Cron Trigger: wake the job runner every minute.
+# Individual jobs still use jobs.next_run_at for their own cadence.
 [triggers]
-crons = ["*/5 * * * *"]
+crons = ["* * * * *"]
 
 # D1 binding used by the app. Cloudflare can provision/bind the database during
 # deploy, or you can bind an existing D1 database as DB in Worker Settings.

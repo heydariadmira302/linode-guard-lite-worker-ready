@@ -431,9 +431,9 @@ describe("Phase 13 admin presence", () => {
     expect(policiesBody.data.telegram.payload.text).toContain("范围：🌐 全部账号");
     expect(policiesBody.data.telegram.payload.text).not.toContain("action：notify");
     expect(policiesBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
-      { text: "📋 #1 详情/修改", callback_data: "admin_presence:policy:detail:1" },
-      { text: "⏸ #1 停用", callback_data: "admin_presence:policy:disable:1" },
-      { text: "🗑 #1 删除", callback_data: "admin_presence:policy:delete_confirm:1" }
+      { text: "📋 notify after 7 days", callback_data: "admin_presence:policy:detail:1" },
+      { text: "⏸ 停用", callback_data: "admin_presence:policy:disable:1" },
+      { text: "🗑 删除", callback_data: "admin_presence:policy:delete_confirm:1" }
     ]));
 
     const detailResponse = await worker.fetch(telegramRequest(callbackUpdate("admin_presence:policy:detail:1")), env as never);
@@ -511,7 +511,7 @@ describe("Phase 13 admin presence", () => {
     expect(checkinBody.data.telegram.payload.text).toContain("最近打卡：");
     expect(checkinBody.data.telegram.payload.text).not.toContain("current_cycle_id");
     expect(checkinBody.data.telegram.payload.reply_markup).toMatchObject({ inline_keyboard: expect.any(Array) });
-    expect(JSON.stringify(checkinBody.data.telegram.payload.reply_markup)).toContain("查看保活状态");
+    expect(JSON.stringify(checkinBody.data.telegram.payload.reply_markup)).toContain("查看保活");
     expect(db.auditLogs).toEqual(expect.arrayContaining([
       expect.objectContaining({ action: "admin_presence.checkin", actor: "telegram:123456789", source: "telegram", result: "success" })
     ]));

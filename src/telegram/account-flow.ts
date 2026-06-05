@@ -83,7 +83,7 @@ export async function continueAddAccountFlow(
         title: "添加账号",
         status: "failed",
         requestId,
-        errorMessage: mapAccountFlowError(code),
+        errorMessage: mapAccountFlowError(code, error instanceof Error ? error.message : undefined),
         errorCode: code,
         nextStep: "检查 Token 后重新发送，或点下方按钮取消/重填昵称"
       });
@@ -164,7 +164,10 @@ export function renderAddAccountTokenKeyboard(groupId?: number | null): Telegram
   };
 }
 
-function mapAccountFlowError(code: ErrorCode): string {
+function mapAccountFlowError(code: ErrorCode, message?: string): string {
+  if (code === ErrorCode.VALIDATION_ERROR && message?.includes("Token already exists")) {
+    return message.replace("Token already exists for account", "这个 Token 已经添加过：");
+  }
   switch (code) {
     case ErrorCode.TOKEN_INVALID:
       return "Token 无效：请检查是否复制完整，然后重新发送。";
