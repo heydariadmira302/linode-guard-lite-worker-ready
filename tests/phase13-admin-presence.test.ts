@@ -489,11 +489,11 @@ describe("Phase 13 admin presence", () => {
 
     const editRemind = await worker.fetch(telegramRequest(callbackUpdate("ap:et:1:r:720")), env as never);
     const editRemindBody = await editRemind.json() as { data: { telegram: { payload: { text: string } } } };
-    expect(editRemindBody.data.telegram.payload.text).toContain("提醒时间：12 小时后");
+    expect(editRemindBody.data.telegram.payload.text).toContain("提醒时间：最近打卡后满 12 小时");
 
     const editFinal = await worker.fetch(telegramRequest(callbackUpdate("ap:et:1:f:1440")), env as never);
     const editFinalBody = await editFinal.json() as { data: { telegram: { payload: { text: string } } } };
-    expect(editFinalBody.data.telegram.payload.text).toContain("最终动作时间：1 天后");
+    expect(editFinalBody.data.telegram.payload.text).toContain("最终动作时间：最近打卡后满 24 小时");
     expect(db.auditLogs).toEqual(expect.arrayContaining([expect.objectContaining({ action: "admin_presence.policy.update", source: "telegram", target_id: "1" })]));
 
     db.telegramMessages.push(
@@ -533,8 +533,8 @@ describe("Phase 13 admin presence", () => {
     const createMenuBody = await createMenu.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
     expect(createMenuBody.data.telegram.payload.text).toContain("保活策略是两段式");
     expect(createMenuBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
-      { text: "12 小时后提醒", callback_data: "ap:cr:p:a:720" },
-      { text: "18 小时后提醒", callback_data: "ap:cr:p:a:1080" }
+      { text: "满 12 小时提醒", callback_data: "ap:cr:p:a:720" },
+      { text: "满 18 小时提醒", callback_data: "ap:cr:p:a:1080" }
     ]));
     expect(createMenuBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "自定义提醒时间", callback_data: "ap:cth:r:p:a" });
     expect(collectCallbackData(createMenuBody.data.telegram.payload.reply_markup).every((value) => Buffer.byteLength(value) <= 64)).toBe(true);
@@ -551,11 +551,11 @@ describe("Phase 13 admin presence", () => {
     expect(customMinuteBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "返回选小时", callback_data: "ap:cth:r:p:a" });
     const customActionPicker = await worker.fetch(telegramRequest(callbackUpdate("ap:ct:r:p:a:0:35")), env as never);
     const customActionPickerBody = await customActionPicker.json() as { data: { telegram: { payload: { text: string } } } };
-    expect(customActionPickerBody.data.telegram.payload.text).toContain("第一段通知：35 分钟后");
+    expect(customActionPickerBody.data.telegram.payload.text).toContain("第一段通知：最近打卡后满 35 分钟");
 
     const actionPicker = await worker.fetch(telegramRequest(callbackUpdate("ap:cr:p:a:720")), env as never);
     const actionPickerBody = await actionPicker.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
-    expect(actionPickerBody.data.telegram.payload.text).toContain("第一段通知：12 小时后");
+    expect(actionPickerBody.data.telegram.payload.text).toContain("第一段通知：最近打卡后满 12 小时");
     expect(actionPickerBody.data.telegram.payload.text).toContain("请选择第二段最终动作");
     expect(actionPickerBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
       { text: "只通知", callback_data: "ap:ca:720:n" },
@@ -574,7 +574,7 @@ describe("Phase 13 admin presence", () => {
     const notifyNameBody = await notifyName.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
     expect(notifyNameBody.data.telegram.payload.text).toContain("保活策略已创建");
     expect(notifyNameBody.data.telegram.payload.text).toContain("范围：🌐 全部账号");
-    expect(notifyNameBody.data.telegram.payload.text).toContain("提醒时间：12 小时后");
+    expect(notifyNameBody.data.telegram.payload.text).toContain("提醒时间：最近打卡后满 12 小时");
     expect(notifyNameBody.data.telegram.payload.text).toContain("最终动作：无");
     expect(notifyNameBody.data.telegram.payload.text).toContain("最终动作：🔔 只通知");
     expect(db.policies[0]).toMatchObject({ name: "7天未打卡提醒", enabled: 1, scope: "all" });
@@ -591,7 +591,7 @@ describe("Phase 13 admin presence", () => {
     const deleteScope = await worker.fetch(telegramRequest(callbackUpdate("ap:cs:720:d:a")), env as never);
     const deleteScopeBody = await deleteScope.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
     expect(deleteScopeBody.data.telegram.payload.text).toContain("请选择第二段最终动作时间");
-    expect(deleteScopeBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "24 小时后", callback_data: "ap:cf:d:a:720:1440" });
+    expect(deleteScopeBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "满 24 小时", callback_data: "ap:cf:d:a:720:1440" });
     expect(deleteScopeBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "自定义最终动作时间", callback_data: "ap:cth:f:d:a:720" });
 
     const finalHour = await worker.fetch(telegramRequest(callbackUpdate("ap:cth:f:d:a:720")), env as never);
@@ -610,7 +610,7 @@ describe("Phase 13 admin presence", () => {
     expect(final24MinuteBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).not.toContainEqual({ text: "05", callback_data: "ap:ct:f:d:a:720:24:5" });
     const customFinal = await worker.fetch(telegramRequest(callbackUpdate("ap:ct:f:d:a:720:12:5")), env as never);
     const customFinalBody = await customFinal.json() as { data: { telegram: { payload: { text: string } } } };
-    expect(customFinalBody.data.telegram.payload.text).toContain("最终动作时间：12 小时5 分钟后");
+    expect(customFinalBody.data.telegram.payload.text).toContain("最终动作时间：最近打卡后满 12 小时 5 分钟");
 
     const deleteFinal = await worker.fetch(telegramRequest(callbackUpdate("ap:cf:d:a:720:1440")), env as never);
     const deleteFinalBody = await deleteFinal.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
@@ -630,8 +630,8 @@ describe("Phase 13 admin presence", () => {
     const deleteNameBody = await deleteName.json() as { data: { telegram: { payload: { text: string } } } };
     expect(deleteNameBody.data.telegram.payload.text).toContain("保活策略已创建");
     expect(deleteNameBody.data.telegram.payload.text).toContain("范围：🌐 全部账号");
-    expect(deleteNameBody.data.telegram.payload.text).toContain("提醒时间：12 小时后");
-    expect(deleteNameBody.data.telegram.payload.text).toContain("最终动作时间：1 天后");
+    expect(deleteNameBody.data.telegram.payload.text).toContain("提醒时间：最近打卡后满 12 小时");
+    expect(deleteNameBody.data.telegram.payload.text).toContain("最终动作时间：最近打卡后满 24 小时");
     expect(deleteNameBody.data.telegram.payload.text).toContain("最终动作前每小时提醒：提前 6 小时");
     expect(deleteNameBody.data.telegram.payload.text).toContain("最终动作：🚨 删除全部服务器");
     const deleteRules = JSON.parse(db.policies[1].rules_json).rules as Array<{ action: string; after_minutes: number }>;

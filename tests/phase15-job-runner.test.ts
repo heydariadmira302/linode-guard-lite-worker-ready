@@ -66,6 +66,24 @@ describe("Phase 15 job runner",()=>{
   } finally { fetchMock.mockRestore(); }
  });
 
+ it("fires admin presence delete exactly after 24 hours since the last check-in", async()=>{
+  const db=new FakeD1Database(); await addAccount(db);
+  db.presence={id:1,last_checkin_at:"2026-01-01T00:00:00.000Z",last_checkin_actor:"telegram:admin",current_cycle_id:"cycle_24h",created_at:"2026-01-01T00:00:00.000Z",updated_at:"2026-01-01T00:00:00.000Z"};
+  db.policies.push({id:1,name:"delete after 24h",enabled:1,scope:"all",rules_json:JSON.stringify({rules:[{rule_id:"notify",after_minutes:720,action:"notify"},{rule_id:"delete_all_instances",after_minutes:1440,action:"delete_all_instances"}]}),created_at:"2026-01-01T00:00:00.000Z",updated_at:"2026-01-01T00:00:00.000Z",deleted_at:null});
+  const env={...baseEnv,DB:db as unknown as D1Database};
+  const calls:string[]=[];
+  const fetchMock=vi.spyOn(globalThis,"fetch").mockImplementation(async(input,init)=>{const auth=new Headers(init?.headers).get("authorization")??""; const method=String(init?.method??"GET"); calls.push(`${method} ${String(input)} ${auth}`); if(String(input).endsWith("/linode/instances")&&auth.includes("token-default")) return new Response(JSON.stringify(instanceList(101)),{status:200}); if(String(input).includes("api.linode.com")) return new Response(null,{status:200}); return new Response(JSON.stringify({ok:true,result:{message_id:88}}),{status:200});});
+  try{
+   await worker.scheduled({ scheduledTime: Date.parse("2026-01-01T23:59:00.000Z"), cron: "*/5 * * * *", noRetry(){} } as ScheduledController, env as never, { waitUntil(promise:Promise<unknown>){ return promise; }, passThroughOnException(){} } as unknown as ExecutionContext);
+   expect(calls).not.toEqual(expect.arrayContaining(["DELETE https://api.linode.com/v4/linode/instances/101 Bearer token-default"]));
+   expect(db.presenceRuns.some((run)=>run.values.includes("delete_all_instances"))).toBe(false);
+
+   await worker.scheduled({ scheduledTime: Date.parse("2026-01-02T00:00:00.000Z"), cron: "*/5 * * * *", noRetry(){} } as ScheduledController, env as never, { waitUntil(promise:Promise<unknown>){ return promise; }, passThroughOnException(){} } as unknown as ExecutionContext);
+   expect(calls).toEqual(expect.arrayContaining(["DELETE https://api.linode.com/v4/linode/instances/101 Bearer token-default"]));
+   expect(db.presenceRuns.some((run)=>run.values.includes("delete_all_instances"))).toBe(true);
+  } finally { fetchMock.mockRestore(); }
+ });
+
  it("continues all-account delete final action across every active key even when one key fails", async()=>{
   const db=new FakeD1Database(); await addAccount(db); await addSecondAccount(db);
   db.presence={id:1,last_checkin_at:"2026-01-01T00:00:00.000Z",last_checkin_actor:"api:default",current_cycle_id:"cycle_1",created_at:"2026-01-01T00:00:00.000Z",updated_at:"2026-01-01T00:00:00.000Z"};

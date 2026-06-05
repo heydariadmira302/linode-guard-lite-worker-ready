@@ -63,10 +63,10 @@ function renderScheduleOverviewLines(data: StatusOverviewResult): string[] {
 function renderPresencePolicyLines(policies: NonNullable<StatusOverviewResult["admin_presence"]>["policies"]): string[] {
   if (policies.length === 0) return ["暂无保活策略"];
   return policies.slice(0, 3).map((policy) => {
-    const remind = `${formatPolicyMinutes(policy.remind_after_minutes).replace("后", "")}提醒`;
+    const remind = `${formatPolicyMinutes(policy.remind_after_minutes)}提醒`;
     const action = policy.action === "notify"
       ? "最终只通知"
-      : `${formatPolicyMinutes(policy.final_after_minutes).replace("后", "")}${formatPolicyAction(policy.action).replace(/^\\S+\\s*/, "")}`;
+      : `${formatPolicyMinutes(policy.final_after_minutes)}${formatPolicyAction(policy.action).replace(/^\\S+\\s*/, "")}`;
     return `• ${remind}｜${action}｜${formatPolicyScope(policy.scope)}`;
   });
 }

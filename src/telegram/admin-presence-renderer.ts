@@ -103,14 +103,18 @@ export function formatPolicyAction(action: string): string {
 }
 
 export function formatPolicyMinutes(minutes: number | null | undefined): string {
+  const plain = formatPolicyDurationPlain(minutes);
+  return plain === "-" ? plain : `最近打卡后满 ${plain}`;
+}
+
+export function formatPolicyDurationPlain(minutes: number | null | undefined): string {
   if (!Number.isFinite(minutes)) return "-";
   const value = Number(minutes);
-  if (value % (24 * 60) === 0) return `${value / (24 * 60)} 天后`;
   const hours = Math.floor(value / 60);
   const mins = value % 60;
-  if (hours > 0 && mins > 0) return `${hours} 小时${mins} 分钟后`;
-  if (hours > 0) return `${hours} 小时后`;
-  return `${mins} 分钟后`;
+  if (hours > 0 && mins > 0) return `${hours} 小时 ${mins} 分钟`;
+  if (hours > 0) return `${hours} 小时`;
+  return `${mins} 分钟`;
 }
 
 export function renderAdminPresencePolicyCreateText(): string {
@@ -231,7 +235,7 @@ export function renderAdminPresencePolicyTimeKeyboard(action: string, scope = "a
   ];
   return {
     inline_keyboard: [
-      ...chunkTimeOptions(options).map((row) => row.map((option) => ({ text: `${option.text}后提醒`, callback_data: `ap:cr:${encodePolicyAction(action)}:${encodePolicyScope(scope)}:${option.minutes}` }))),
+      ...chunkTimeOptions(options).map((row) => row.map((option) => ({ text: `满 ${option.text}提醒`, callback_data: `ap:cr:${encodePolicyAction(action)}:${encodePolicyScope(scope)}:${option.minutes}` }))),
       [{ text: "自定义提醒时间", callback_data: `ap:cth:r:${encodePolicyAction(action)}:${encodePolicyScope(scope)}` }],
       [{ text: "取消", callback_data: "admin_presence:policies" }]
     ]
@@ -253,13 +257,13 @@ export function renderAdminPresencePolicyFinalTimeText(action: string, remindAft
 
 export function renderAdminPresencePolicyFinalTimeKeyboard(action: string, remindAfter: number, scope = "all"): TelegramInlineKeyboardMarkup {
   const options = [
-    { text: "1 小时后", minutes: 60 },
-    { text: "2 小时后", minutes: 120 },
-    { text: "6 小时后", minutes: 360 },
-    { text: "12 小时后", minutes: 720 },
-    { text: "18 小时后", minutes: 1080 },
-    { text: "23 小时后", minutes: 1380 },
-    { text: "24 小时后", minutes: 1440 }
+    { text: "满 1 小时", minutes: 60 },
+    { text: "满 2 小时", minutes: 120 },
+    { text: "满 6 小时", minutes: 360 },
+    { text: "满 12 小时", minutes: 720 },
+    { text: "满 18 小时", minutes: 1080 },
+    { text: "满 23 小时", minutes: 1380 },
+    { text: "满 24 小时", minutes: 1440 }
   ].filter((option) => option.minutes > remindAfter);
   return {
     inline_keyboard: [
@@ -304,7 +308,7 @@ export function renderAdminPresencePolicyHourlyReminderKeyboard(action: string, 
 }
 
 export function renderAdminPresencePolicyNamePrompt(action: string, remindAfter?: number | null, finalAfter?: number | null, scope = "all", hourlyBefore?: number | null): string {
-  return ["➕ 新增保活策略", "━━━━━━━━━━━━", remindAfter ? `✅ 第一段通知：${formatPolicyMinutes(remindAfter)}` : null, action === "notify" ? "🛡 最终动作：只通知" : `🛡 最终动作：${formatPolicyAction(action)}`, `🎯 作用范围：${formatPolicyScope(scope)}`, finalAfter && action !== "notify" ? `⏰ 最终动作时间：${formatPolicyMinutes(finalAfter)}` : null, hourlyBefore && hourlyBefore > 0 ? `🔔 最终动作前每小时提醒：提前 ${formatPolicyMinutes(hourlyBefore).replace("后", "")}` : "🔕 每小时提醒：不重复提醒", "", "请输入策略名称。", "最后，给这条策略起个名字：", "例如：12小时未打卡提醒、24小时未打卡关机。", "", "不想继续可以点下方取消，或发送 /cancel。"].filter(Boolean).join("\n");
+  return ["➕ 新增保活策略", "━━━━━━━━━━━━", remindAfter ? `✅ 第一段通知：${formatPolicyMinutes(remindAfter)}` : null, action === "notify" ? "🛡 最终动作：只通知" : `🛡 最终动作：${formatPolicyAction(action)}`, `🎯 作用范围：${formatPolicyScope(scope)}`, finalAfter && action !== "notify" ? `⏰ 最终动作时间：${formatPolicyMinutes(finalAfter)}` : null, hourlyBefore && hourlyBefore > 0 ? `🔔 最终动作前每小时提醒：提前 ${formatPolicyDurationPlain(hourlyBefore)}` : "🔕 每小时提醒：不重复提醒", "", "请输入策略名称。", "最后，给这条策略起个名字：", "例如：满12小时未打卡提醒、满24小时未打卡关机。", "", "不想继续可以点下方取消，或发送 /cancel。"].filter(Boolean).join("\n");
 }
 
 export function renderAdminPresencePolicyNamePromptKeyboard(): TelegramInlineKeyboardMarkup {
@@ -401,23 +405,23 @@ export function renderAdminPresencePolicyEditGroupKeyboard(policyId: number, gro
 export function renderAdminPresencePolicyEditTimeKeyboard(policyId: number, field: "remind" | "final", minMinutes = 0): TelegramInlineKeyboardMarkup {
   const options = (field === "remind"
     ? [
-      { text: "30 分钟后", minutes: 30 },
-      { text: "1 小时后", minutes: 60 },
-      { text: "2 小时后", minutes: 120 },
-      { text: "6 小时后", minutes: 360 },
-      { text: "12 小时后", minutes: 720 },
-      { text: "18 小时后", minutes: 1080 },
-      { text: "23 小时后", minutes: 1380 },
-      { text: "24 小时后", minutes: 1440 }
+      { text: "满 30 分钟", minutes: 30 },
+      { text: "满 1 小时", minutes: 60 },
+      { text: "满 2 小时", minutes: 120 },
+      { text: "满 6 小时", minutes: 360 },
+      { text: "满 12 小时", minutes: 720 },
+      { text: "满 18 小时", minutes: 1080 },
+      { text: "满 23 小时", minutes: 1380 },
+      { text: "满 24 小时", minutes: 1440 }
     ]
     : [
-      { text: "1 小时后", minutes: 60 },
-      { text: "2 小时后", minutes: 120 },
-      { text: "6 小时后", minutes: 360 },
-      { text: "12 小时后", minutes: 720 },
-      { text: "18 小时后", minutes: 1080 },
-      { text: "23 小时后", minutes: 1380 },
-      { text: "24 小时后", minutes: 1440 }
+      { text: "满 1 小时", minutes: 60 },
+      { text: "满 2 小时", minutes: 120 },
+      { text: "满 6 小时", minutes: 360 },
+      { text: "满 12 小时", minutes: 720 },
+      { text: "满 18 小时", minutes: 1080 },
+      { text: "满 23 小时", minutes: 1380 },
+      { text: "满 24 小时", minutes: 1440 }
     ]).filter((option) => option.minutes > minMinutes);
   return {
     inline_keyboard: [
@@ -525,13 +529,13 @@ function renderAdminPresencePolicyDetailLines(policy: PublicAdminPresencePolicy)
     `范围：${formatPolicyScope(policy.scope)}`,
     `提醒时间：${formatPolicyMinutes(policy.remind_after_minutes)}`,
     policy.action === "notify" ? "最终动作：无" : `最终动作时间：${formatPolicyMinutes(policy.final_after_minutes)}`,
-    policy.action === "notify" || !policy.hourly_reminder_before_minutes ? null : `最终动作前每小时提醒：提前 ${formatPolicyMinutes(policy.hourly_reminder_before_minutes).replace("后", "")}`,
+    policy.action === "notify" || !policy.hourly_reminder_before_minutes ? null : `最终动作前每小时提醒：提前 ${formatPolicyDurationPlain(policy.hourly_reminder_before_minutes)}`,
     `最终动作：${formatPolicyAction(policy.action)}`,
     "",
     "⏱ 触发流程",
     `1. ${formatPolicyMinutes(policy.remind_after_minutes)}未打卡 → 通知提醒`,
     policy.action === "notify" ? "2. 最终动作 → 只通知，不执行服务器操作" : `2. ${formatPolicyMinutes(policy.final_after_minutes)}未打卡 → ${formatPolicyAction(policy.action)}`,
-    policy.action === "notify" || !policy.hourly_reminder_before_minutes ? null : `3. 最终动作前 ${formatPolicyMinutes(policy.hourly_reminder_before_minutes).replace("后", "")}开始 → 每小时提醒打卡`,
+    policy.action === "notify" || !policy.hourly_reminder_before_minutes ? null : `3. 最终动作前 ${formatPolicyDurationPlain(policy.hourly_reminder_before_minutes)}开始 → 每小时提醒打卡`,
     "",
     `创建时间：${policy.created_at}`,
     `更新时间：${policy.updated_at}`
@@ -551,8 +555,8 @@ export function renderAdminPresencePanelText(data: AdminPresencePanelData): stri
     `状态：${policy && Number(policy.enabled) === 1 ? "✅ 开启" : "⏸ 未开启"}`,
     "",
     policy ? [
-      `提醒阈值：${policy.remind_after_minutes && policy.remind_after_minutes > 0 ? formatPolicyMinutes(policy.remind_after_minutes).replace("后", "未打卡后提醒") : "不提醒"}`,
-      `最终动作阈值：${policy.final_after_minutes && policy.final_after_minutes > 0 ? formatPolicyMinutes(policy.final_after_minutes).replace("后", "未打卡后执行") : "不执行"}`,
+      `提醒阈值：${policy.remind_after_minutes && policy.remind_after_minutes > 0 ? `${formatPolicyMinutes(policy.remind_after_minutes)}提醒` : "不提醒"}`,
+      `最终动作阈值：${policy.final_after_minutes && policy.final_after_minutes > 0 ? `${formatPolicyMinutes(policy.final_after_minutes)}执行` : "不执行"}`,
       `最终动作：${formatPolicyAction(policy.action)}`,
       `作用范围：${formatPolicyScope(policy.scope)}`
     ].join("\n") : "当前还没有保活风控配置。建议先设置提醒时间和最终动作。",
