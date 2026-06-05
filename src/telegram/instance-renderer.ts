@@ -142,31 +142,17 @@ function instanceListNavigationRows(context: InstanceListContext): TelegramInlin
 
 export function renderInstanceDetailText(result: InstanceDetailResult): string {
   const instance = result.instance;
-  const ipv4Lines = instance.ipv4?.length ? instance.ipv4.map((ip) => `• ${ip}`) : ["• -"];
+  const primaryIp = instance.ipv4?.find(Boolean);
   return [
     `${statusIcon(instance.status)} 服务器详情`,
     "━━━━━━━━━━━━",
     `名称：${instance.label}`,
-    `ID：${instance.id}`,
     `状态：${translateInstanceStatus(instance.status)}`,
-    `地区：${instance.region}`,
+    `IP：${primaryIp ? `\`${primaryIp}\`` : "等待分配"}`,
+    `ID：\`${instance.id}\``,
+    `账号：${result.account.alias}`,
     "",
-    "归属：",
-    `• 账号：#${result.account.id} ${result.account.alias}`,
-    `• 分组：${result.account.group_name ?? "未分组"}`,
-    "",
-    "网络：",
-    ...ipv4Lines,
-    primaryConnectionLines(instance.ipv4?.[0]),
-    "",
-    "配置：",
-    ...renderSpecsLines(instance.specs).map((line) => `• ${line}`),
-    "",
-    "系统：",
-    instance.image ? `• 镜像：${instance.image}` : "• 镜像：-",
-    instance.created ? `• 创建：${instance.created}` : "• 创建：-",
-    instance.updated ? `• 更新：${instance.updated}` : "• 更新：-",
-    instance.tags?.length ? `• 标签：${instance.tags.join(", ")}` : "• 标签：-"
+    "常用操作在下方按钮。"
   ].join("\n");
 }
 
@@ -174,19 +160,10 @@ export function renderInstanceDetailKeyboard(result: InstanceDetailResult, sourc
   const accountId = result.account.id;
   const instanceId = result.instance.id;
   const rows: TelegramInlineKeyboardButton[][] = [];
-  const copyRows = instanceCopyRows(result.instance);
-  if (copyRows.length > 0) rows.push(...copyRows);
   rows.push(...statusActionRows(accountId, instanceId, result.instance.status, source));
   rows.push([{ text: "🚨 危险操作", callback_data: `instances:danger:${accountId}:${instanceId}:${source}`, style: "danger" }]);
   rows.push([{ text: "⬅️ 返回列表", callback_data: backToInstanceListCallback(source, accountId, result.account.group_id ?? undefined) }]);
   return { inline_keyboard: rows };
-}
-
-function instanceCopyRows(instance: LinodeInstance): TelegramInlineKeyboardButton[][] {
-  const rows: TelegramInlineKeyboardButton[][] = [[{ text: `ID ${instance.id}`, copy_text: { text: String(instance.id) } }]];
-  const primaryIp = instance.ipv4?.find(Boolean);
-  if (primaryIp) rows.unshift([{ text: primaryIp, copy_text: { text: primaryIp } }]);
-  return rows;
 }
 
 export function renderInstanceDangerText(result: InstanceDetailResult): string {

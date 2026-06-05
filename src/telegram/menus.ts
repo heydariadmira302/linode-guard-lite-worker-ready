@@ -9,27 +9,19 @@ export function renderMainMenuText(): string {
   return [
     "🛡 Linode Guard Lite",
     "━━━━━━━━━━━━",
-    "主菜单",
+    "常用功能在聊天框下方。",
     "",
-    "先看状态，再处理动作。",
-    "",
-    "📊 状态总览：服务器、安全、定时、保活一屏查看",
-    "🖥 服务器：查看状态，执行开机、关机、重启",
-    "❤️ 打卡：刷新保活周期，避免自动最终动作",
-    "📅 定时计划：自动开机、关机",
-    "🛡 安全：登录事件、Token 状态和保护设置",
-    "",
-    "批量、分组、审计、隐私和设置在「更多」。"
+    "这里放一些不常用、但需要快速进入的辅助入口。"
   ].join("\n");
 }
 
 export function renderMainMenuKeyboard(): TelegramInlineKeyboardMarkup {
   return {
     inline_keyboard: [
-      [{ text: "📊 状态总览", callback_data: "status:overview" }],
-      [{ text: "🖥 服务器", callback_data: "instances:list:all" }, { text: "👤 账号", callback_data: "menu:accounts" }],
-      [{ text: "❤️ 打卡", callback_data: "admin_presence:checkin" }, { text: "📅 定时计划", callback_data: "menu:schedules" }],
-      [{ text: "🛡 安全", callback_data: "menu:security" }, { text: "📋 更多", callback_data: "menu:more" }]
+      [{ text: "👤 账号管理", callback_data: "menu:accounts" }, { text: "📁 分组管理", callback_data: "menu:groups" }],
+      [{ text: "🛡 安全事件", callback_data: "menu:security" }, { text: "⚡ 批量操作", callback_data: "menu:batch" }],
+      [{ text: "📄 审计日志", callback_data: "menu:audit_logs" }, { text: "🔒 隐私清理", callback_data: "menu:privacy" }],
+      [{ text: "⚙️ 系统设置", callback_data: "menu:settings" }]
     ]
   };
 }

@@ -403,11 +403,12 @@ describe("Phase 6 Linode instance read-only management", () => {
       expect(createdBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).not.toContainEqual({ text: "🖥 打开服务器详情", callback_data: "instances:detail:1:92022:account_1" });
       const detailFlow = await worker.fetch(telegramRequest(callbackUpdate("instances:detail:1:92022:account_1")), env as never);
       const detailBody = await detailFlow.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<Record<string, unknown>>> } } } } };
-      expect(detailBody.data.telegram.payload.text).toContain("RDP：192.0.2.9:3389");
-      expect(detailBody.data.telegram.payload.text).toContain("Windows 用户名：Administrator");
-      expect(detailBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
-        expect.objectContaining({ text: "192.0.2.9", copy_text: { text: "192.0.2.9" } }),
-        expect.objectContaining({ text: "ID 92022", copy_text: { text: "92022" } })
+      expect(detailBody.data.telegram.payload.text).toContain("IP：`192.0.2.9`");
+      expect(detailBody.data.telegram.payload.text).toContain("ID：`92022`");
+      expect(detailBody.data.telegram.payload.text).not.toContain("RDP：192.0.2.9:3389");
+      expect(detailBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ copy_text: { text: "192.0.2.9" } }),
+        expect.objectContaining({ copy_text: { text: "92022" } })
       ]));
     } finally {
       fetchMock.mockRestore();

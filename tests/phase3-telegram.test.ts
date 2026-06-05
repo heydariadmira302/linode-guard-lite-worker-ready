@@ -141,12 +141,12 @@ describe("Phase 3 Telegram webhook and menu", () => {
       [{ text: "📋 更多功能" }]
     ]);
     expect(body.data.telegram[1].payload.text).toContain("🛡 Linode Guard Lite");
-    expect(body.data.telegram[1].payload.text).toContain("主菜单");
+    expect(body.data.telegram[1].payload.text).toContain("常用功能在聊天框下方");
     expect(body.data.telegram[1].payload.reply_markup.inline_keyboard?.flat()).toEqual(expect.arrayContaining([
-      { text: "📊 状态总览", callback_data: "status:overview" },
-      { text: "📅 定时计划", callback_data: "menu:schedules" },
-      { text: "🛡 安全", callback_data: "menu:security" },
-      { text: "📋 更多", callback_data: "menu:more" }
+      { text: "👤 账号管理", callback_data: "menu:accounts" },
+      { text: "📁 分组管理", callback_data: "menu:groups" },
+      { text: "🛡 安全事件", callback_data: "menu:security" },
+      { text: "⚡ 批量操作", callback_data: "menu:batch" }
     ]));
     expect(body.data.telegram[1].payload.reply_markup.inline_keyboard?.flat()).not.toContainEqual({ text: "🔄 刷新", callback_data: "menu:main" });
     expect(body.data.sent).toEqual([

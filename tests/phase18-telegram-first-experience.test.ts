@@ -186,14 +186,14 @@ describe("Phase 18 Telegram-first experience", () => {
       [{ text: "📊 状态总览" }, { text: "🪪 我的ID" }],
       [{ text: "📋 更多功能" }]
     ]);
+    expect(startBody.data.telegram[1].payload.text).toContain("常用功能在聊天框下方");
     expect(startBody.data.telegram[1].payload.reply_markup.inline_keyboard?.flat()).toEqual(expect.arrayContaining([
-      { text: "📊 状态总览", callback_data: "status:overview" },
-      { text: "🖥 服务器", callback_data: "instances:list:all" },
-      { text: "👤 账号", callback_data: "menu:accounts" },
-      { text: "❤️ 打卡", callback_data: "admin_presence:checkin" },
-      { text: "📅 定时计划", callback_data: "menu:schedules" },
-      { text: "🛡 安全", callback_data: "menu:security" },
-      { text: "📋 更多", callback_data: "menu:more" }
+      { text: "👤 账号管理", callback_data: "menu:accounts" },
+      { text: "📁 分组管理", callback_data: "menu:groups" },
+      { text: "🛡 安全事件", callback_data: "menu:security" },
+      { text: "⚡ 批量操作", callback_data: "menu:batch" },
+      { text: "📄 审计日志", callback_data: "menu:audit_logs" },
+      { text: "🔒 隐私清理", callback_data: "menu:privacy" }
     ]));
 
     const more = await worker.fetch(telegramRequest(messageUpdate("📋 更多功能")), env as never);
@@ -308,16 +308,17 @@ describe("Phase 18 Telegram-first experience", () => {
       const detail = await worker.fetch(telegramRequest(callbackUpdate("instances:detail:1:101")), env as never);
       const detailBody = await detail.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<Record<string, unknown>>> } } } } };
       const keyboard = detailBody.data.telegram.payload.reply_markup.inline_keyboard.flat();
-      expect(detailBody.data.telegram.payload.text).toContain("• 203.0.113.10");
-      expect(detailBody.data.telegram.payload.text).toContain("• 203.0.113.11");
+      expect(detailBody.data.telegram.payload.text).toContain("IP：`203.0.113.10`");
+      expect(detailBody.data.telegram.payload.text).toContain("ID：`101`");
+      expect(detailBody.data.telegram.payload.text).not.toContain("配置：");
+      expect(detailBody.data.telegram.payload.text).not.toContain("系统：");
       expect(detailBody.data.telegram.payload.text).not.toContain("IPv6");
       expect(keyboard).toEqual(expect.arrayContaining([
-        { text: "203.0.113.10", copy_text: { text: "203.0.113.10" } },
-        { text: "ID 101", copy_text: { text: "101" } },
         { text: "✅ 开机", callback_data: "instances:boot:1:101:account_1", style: "success" },
         { text: "🚨 危险操作", callback_data: "instances:danger:1:101:account_1", style: "danger" },
         { text: "⬅️ 返回列表", callback_data: "instances:list:account:1" }
       ]));
+      expect(JSON.stringify(keyboard)).not.toContain("copy_text");
       expect(keyboard).not.toContainEqual({ text: "删除这台服务器", callback_data: "i:cd:1:101" });
     } finally {
       fetchMock.mockRestore();
