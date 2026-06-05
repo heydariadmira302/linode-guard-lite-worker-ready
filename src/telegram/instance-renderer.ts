@@ -57,7 +57,7 @@ export function renderInstanceAccountsText(accounts: PublicAccount[]): string {
 export function renderInstanceAccountsKeyboard(accounts: PublicAccount[]): TelegramInlineKeyboardMarkup {
   return {
     inline_keyboard: [
-      ...accounts.map((account) => [{ text: `👤 #${account.id} ${account.alias}`, callback_data: `instances:list:account:${account.id}` }]),
+      ...chunkButtons(accounts.map((account) => ({ text: `👤 ${shortText(account.alias, 18)}`, callback_data: `instances:list:account:${account.id}` })), 2),
       [{ text: "↩️ 返回服务器管理", callback_data: "menu:instances" }]
     ]
   };
@@ -74,7 +74,7 @@ export function renderInstanceGroupsText(groups: Array<{ id: number; name: strin
 export function renderInstanceGroupsKeyboard(groups: Array<{ id: number; name: string }>): TelegramInlineKeyboardMarkup {
   return {
     inline_keyboard: [
-      ...groups.map((group) => [{ text: `📁 ${group.name}`, callback_data: `instances:list:group:${group.id}` }]),
+      ...chunkButtons(groups.map((group) => ({ text: `📁 ${shortText(group.name, 18)}`, callback_data: `instances:list:group:${group.id}` })), 2),
       [{ text: "↩️ 返回服务器管理", callback_data: "menu:instances" }]
     ]
   };
@@ -109,10 +109,10 @@ type InstanceListContext = "all" | "account" | "group" | "status_running" | "sta
 
 export function renderInstancesListKeyboard(results: AccountInstancesResult[], context: InstanceListContext = "all", accountId?: number, groupId?: number): TelegramInlineKeyboardMarkup {
   const source = buildInstanceSource(context, accountId, groupId);
-  const detailButtons = results.flatMap((result) => result.instances.map((instance) => [{
+  const detailButtons = chunkButtons(results.flatMap((result) => result.instances.map((instance) => ({
     text: instanceDetailButtonText(instance),
     callback_data: `instances:detail:${result.account.id}:${instance.id}:${source}`
-  }]));
+  }))), 2);
   return {
     inline_keyboard: [
       ...detailButtons,

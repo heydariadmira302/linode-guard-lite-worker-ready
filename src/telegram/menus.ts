@@ -350,7 +350,11 @@ export function renderMyIdText(data: { userId: string; username?: string | null;
   const username = data.username ? `@${data.username}` : "无用户名";
   return [
     username,
-    `Id: \`${data.userId}\``
+    `ID：\`${data.userId}\``,
+    `名：${data.firstName || "-"}`,
+    `姓：${data.lastName || "-"}`,
+    `语言：${data.languageCode || "-"}`,
+    `Chat ID：\`${data.chatId}\``
   ].join("\n");
 }
 

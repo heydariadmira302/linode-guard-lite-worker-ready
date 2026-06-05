@@ -173,12 +173,13 @@ describe("Phase 3 Telegram webhook and menu", () => {
     }
   });
 
-  it("renders my id in compact copy-friendly format", async () => {
+  it("renders my id with full Telegram metadata and copy buttons", async () => {
     const response = await worker.fetch(telegramRequest(messageUpdate("🪪 我的ID")), env as never);
     const body = await response.json() as { ok: boolean; data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; copy_text?: { text: string } }>> } } } } };
     expect(body.data.telegram.payload.text).toContain("@example_user");
-    expect(body.data.telegram.payload.text).toContain("Id: `123456789`");
-    expect(body.data.telegram.payload.text).not.toContain("Chat ID：");
+    expect(body.data.telegram.payload.text).toContain("ID：`123456789`");
+    expect(body.data.telegram.payload.text).toContain("名：Admin");
+    expect(body.data.telegram.payload.text).toContain("Chat ID：`123456789`");
     expect(body.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
       expect.objectContaining({ text: "123456789", copy_text: { text: "123456789" } })
     ]));
