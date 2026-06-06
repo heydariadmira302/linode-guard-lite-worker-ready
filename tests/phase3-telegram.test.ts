@@ -91,11 +91,11 @@ describe("Phase 3 Telegram webhook and menu", () => {
     const fakeDb = new FakeD1Database();
     const testEnv = { ...env, DB: fakeDb as unknown as D1Database, SUPER_ADMIN_TELEGRAM_ID: undefined as unknown as string };
     const response = await worker.fetch(telegramRequest(messageUpdate("/start", 987654321)), testEnv as never);
-    const body = await response.json() as { ok: boolean; data: { telegram: Array<{ method: string }> } };
+    const body = await response.json() as { ok: boolean; data: { telegram: { method: string } } };
 
     expect(response.status).toBe(200);
     expect(body.ok).toBe(true);
-    expect(body.data.telegram[0].method).toBe("sendMessage");
+    expect(body.data.telegram.method).toBe("sendMessage");
     expect(fakeDb.settings.get("super_admin")).toContain("987654321");
     expect(fakeDb.settings.get("super_admin")).toContain("chat_id");
     expect(fakeDb.botSessions.length).toBe(0);
@@ -128,29 +128,20 @@ describe("Phase 3 Telegram webhook and menu", () => {
 
   it("handles /start with reply keyboard main entries and inline checkin", async () => {
     const response = await worker.fetch(telegramRequest(messageUpdate("/start")), env as never);
-    const body = await response.json() as { ok: boolean; data: { telegram: Array<{ method: string; payload: { text: string; reply_markup: { keyboard?: Array<Array<{ text: string }>>; inline_keyboard?: Array<Array<{ text: string; callback_data: string }>> } } }>; sent: unknown[] } };
+    const body = await response.json() as { ok: boolean; data: { telegram: { method: string; payload: { text: string; reply_markup: { keyboard?: Array<Array<{ text: string }>>; inline_keyboard?: Array<Array<{ text: string; callback_data: string }>> } } }; sent: unknown[] } };
 
     expect(response.status).toBe(200);
     expect(body.ok).toBe(true);
-    expect(body.data.telegram).toHaveLength(2);
-    expect(body.data.telegram[0].method).toBe("sendMessage");
-    expect(body.data.telegram[0].payload.reply_markup.keyboard).toEqual([
+    expect(body.data.telegram.method).toBe("sendMessage");
+    expect(body.data.telegram.payload.text).toContain("主导航已放到聊天框下方");
+    expect(body.data.telegram.payload.reply_markup.keyboard).toEqual([
       [{ text: "🏠 主控菜单" }, { text: "🖥 云机管理" }],
       [{ text: "📅 定时计划" }, { text: "❤️ 打卡保活" }],
       [{ text: "📊 状态总览" }, { text: "🪪 我的ID" }],
       [{ text: "📋 更多功能" }]
     ]);
-    expect(body.data.telegram[1].payload.text).toContain("🛡 Linode Guard Lite");
-    expect(body.data.telegram[1].payload.text).toContain("常用功能在聊天框下方");
-    expect(body.data.telegram[1].payload.reply_markup.inline_keyboard?.flat()).toEqual(expect.arrayContaining([
-      { text: "👤 账号管理", callback_data: "menu:accounts" },
-      { text: "📁 分组管理", callback_data: "menu:groups" },
-      { text: "🛡 安全事件", callback_data: "menu:security" },
-      { text: "⚡ 批量操作", callback_data: "menu:batch" }
-    ]));
-    expect(body.data.telegram[1].payload.reply_markup.inline_keyboard?.flat()).not.toContainEqual({ text: "🔄 刷新", callback_data: "menu:main" });
+    expect(body.data.telegram.payload.reply_markup.inline_keyboard).toBeUndefined();
     expect(body.data.sent).toEqual([
-      expect.objectContaining({ ok: true, dry_run: true, method: "sendMessage" }),
       expect.objectContaining({ ok: true, dry_run: true, method: "sendMessage" })
     ]);
   });
@@ -164,10 +155,10 @@ describe("Phase 3 Telegram webhook and menu", () => {
     try {
       const response = await worker.fetch(telegramRequest(messageUpdate("/start")), { ...env, TELEGRAM_BOT_TOKEN: "123456:realish-token" } as never);
       expect(response.status).toBe(200);
-      expect(calls).toHaveLength(2);
+      expect(calls).toHaveLength(1);
       expect(calls[0].url).toBe("https://api.telegram.org/bot123456:realish-token/sendMessage");
       expect(calls[0].body).toContain("主导航");
-      expect(calls[1].body).toContain("Linode Guard Lite");
+      expect(calls[0].body).toContain("主控菜单");
     } finally {
       fetchMock.mockRestore();
     }

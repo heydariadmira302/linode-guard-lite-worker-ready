@@ -124,21 +124,13 @@ export class JobRunnerService {
       method: "sendMessage",
       payload: {
         chat_id: chatId,
-        text: renderLoginAlertText(newEvents),
-        reply_markup: {
-          inline_keyboard: newEvents.slice(0, 5).flatMap(({ event }) => [
-            [{ text: `✅ 是我登录 #${event.id}`, callback_data: `security:confirm:${event.id}` }],
-            [
-              { text: "🛑 一键关机", callback_data: "batch:all:shutdown" },
-              { text: "🚀 一键开机", callback_data: "batch:all:boot" }
-            ],
-            [{ text: "🗑 超时删机保护", callback_data: `security:login_delete:${event.id}` }]
-          ])
-        }
+        text: renderSecurityAlertText(newEvents),
+        reply_markup: renderSecurityAlertKeyboard(newEvents)
       }
     });
+    const hasTokenAlert = newEvents.some(({ event }) => isTokenSecurityEvent(event.type));
     const messageId = readTelegramMessageId(sent);
-    if (messageId !== null) await recordTelegramAutoDeleteMessage(this.env, { chatId, messageId, direction: "background_notification", purpose: "login_alert" });
+    if (!hasTokenAlert && messageId !== null) await recordTelegramAutoDeleteMessage(this.env, { chatId, messageId, direction: "background_notification", purpose: "login_alert" });
     return { ...result, notifications_sent: 1 };
   }
 
@@ -357,6 +349,45 @@ function renderLoginTimeoutText(count: number, timeoutMinutes: number): string {
   ].join("\n");
 }
 
+function renderSecurityAlertText(events: Array<{ accountAlias: string; event: { id: number; type: string; username: string | null; ip: string | null; country?: string | null; region?: string | null; city?: string | null; occurred_at: string } }>): string {
+  const tokenEvents = events.filter(({ event }) => isTokenSecurityEvent(event.type));
+  const loginEvents = events.filter(({ event }) => !isTokenSecurityEvent(event.type));
+  const lines: string[] = [];
+  if (tokenEvents.length > 0) {
+    lines.push("🚨 Linode Token 异常提醒", "━━━━━━━━━━━━");
+    for (const { accountAlias, event } of tokenEvents.slice(0, 10)) {
+      lines.push("", `账号：${accountAlias}`, `状态：${formatTokenAlertStatus(event.type)}`, `事件：#${event.id}`, `时间：${event.occurred_at}`);
+    }
+    lines.push("", "请尽快到账号管理更新 Token 或检查权限。Token 异常会影响服务器列表、定时任务、安全监控和批量操作。");
+  }
+  if (loginEvents.length > 0) {
+    if (lines.length > 0) lines.push("", "────────────");
+    lines.push(renderLoginAlertText(loginEvents));
+  }
+  if (events.length > 10) lines.push("", `另有 ${events.length - 10} 个事件，请打开安全事件列表查看。`);
+  return lines.join("\n").trimEnd();
+}
+
+function renderSecurityAlertKeyboard(events: Array<{ event: { id: number; type: string } }>) {
+  const tokenEvents = events.filter(({ event }) => isTokenSecurityEvent(event.type));
+  const loginEvents = events.filter(({ event }) => !isTokenSecurityEvent(event.type));
+  const rows = [];
+  if (tokenEvents.length > 0) rows.push([{ text: "👤 账号管理 / 更新 Token", callback_data: "menu:accounts" }]);
+  rows.push([{ text: "🛡 查看安全事件", callback_data: "security:events:open" }]);
+  for (const { event } of loginEvents.slice(0, 3)) {
+    rows.push([{ text: `✅ 是我登录 #${event.id}`, callback_data: `security:confirm:${event.id}` }]);
+    rows.push([{ text: "🗑 超时删机保护", callback_data: `security:login_delete:${event.id}` }]);
+  }
+  if (loginEvents.length > 0) {
+    rows.push([
+      { text: "🛑 一键关机", callback_data: "batch:all:shutdown" },
+      { text: "🚀 一键开机", callback_data: "batch:all:boot" }
+    ]);
+  }
+  rows.push([{ text: "🏠 主控菜单", callback_data: "menu:main" }]);
+  return { inline_keyboard: rows };
+}
+
 function renderLoginAlertText(events: Array<{ accountAlias: string; event: { id: number; type: string; username: string | null; ip: string | null; country?: string | null; region?: string | null; city?: string | null; occurred_at: string } }>): string {
   const lines: string[] = [];
   for (const { accountAlias, event } of events.slice(0, 10)) {
@@ -377,8 +408,17 @@ function renderLoginAlertText(events: Array<{ accountAlias: string; event: { id:
       ""
     );
   }
-  if (events.length > 10) lines.push(`另有 ${events.length - 10} 个事件，请打开安全事件列表查看。`);
   return lines.join("\n").trimEnd();
+}
+
+function isTokenSecurityEvent(type: string): boolean {
+  return type === "TOKEN_INVALID" || type === "TOKEN_PERMISSION_ERROR";
+}
+
+function formatTokenAlertStatus(type: string): string {
+  if (type === "TOKEN_INVALID") return "Token 无效";
+  if (type === "TOKEN_PERMISSION_ERROR") return "Token 权限不足";
+  return type;
 }
 
 function formatLoginLocation(event: { country?: string | null; region?: string | null; city?: string | null }): string {

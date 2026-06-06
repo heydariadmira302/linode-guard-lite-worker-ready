@@ -29,7 +29,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   login_event_retention_days: 1,
   boot_safety_mode: "bot_managed_only",
   protected_instances: [],
-  telegram_auto_delete_minutes: 0,
+  telegram_auto_delete_minutes: 5,
   dangerous_action_cooldown_enabled: true
 };
 
@@ -85,7 +85,7 @@ export function normalizeAppSettings(input: Partial<AppSettings>, env: Pick<Env,
     login_event_retention_days: normalizePositiveInteger(input.login_event_retention_days, normalizePositiveInteger(env.LOGIN_EVENT_RETENTION_DAYS, DEFAULT_APP_SETTINGS.login_event_retention_days)),
     boot_safety_mode: input.boot_safety_mode === "all_offline" ? "all_offline" : "bot_managed_only",
     protected_instances: normalizeProtectedInstances(input.protected_instances),
-    telegram_auto_delete_minutes: normalizeAutoDeleteMinutes(input.telegram_auto_delete_minutes),
+    telegram_auto_delete_minutes: input.telegram_auto_delete_minutes === undefined ? DEFAULT_APP_SETTINGS.telegram_auto_delete_minutes : normalizeAutoDeleteMinutes(input.telegram_auto_delete_minutes),
     dangerous_action_cooldown_enabled: input.dangerous_action_cooldown_enabled !== false
   };
 }

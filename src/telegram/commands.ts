@@ -14,7 +14,7 @@ import { InstanceService } from "../services/instance-service";
 import { validateWindowsPassword, validateWindowsUsername } from "../services/windows-instance-service";
 import { AuditRepository } from "../storage/audit-repository";
 import { renderCheckinInlineKeyboard, renderMainReplyKeyboard } from "./keyboards";
-import { renderAccountActionResultText, renderAccountDetailKeyboard, renderAccountsMenuKeyboard, renderAccountsMenuText, renderDiagnosticsMenuKeyboard, renderDiagnosticsMenuText, renderHelpText, renderMainMenuKeyboard, renderMainMenuText, renderMoreMenuKeyboard, renderMoreMenuText, renderMyIdKeyboard, renderMyIdText, renderPrivacyMenuKeyboard, renderPrivacyMenuText, renderSettingsMenuKeyboard, renderSettingsMenuText } from "./menus";
+import { renderAccountActionResultText, renderAccountDetailKeyboard, renderAccountsMenuKeyboard, renderAccountsMenuText, renderDiagnosticsMenuKeyboard, renderDiagnosticsMenuText, renderHelpText, renderMoreMenuText, renderMoreMenuKeyboard, renderMyIdKeyboard, renderMyIdText, renderPrivacyMenuKeyboard, renderPrivacyMenuText, renderSettingsMenuKeyboard, renderSettingsMenuText } from "./menus";
 import { renderAllInstancesText, renderCreateRegionKeyboard, renderCreateRegionText, renderInstancesListKeyboard, renderWindowsAdminFallbackKeyboard, renderWindowsAdminFallbackText, renderWindowsLabelModeKeyboard, renderWindowsLabelModeText, renderWindowsUsernameModeKeyboard, renderWindowsUsernameModeText } from "./instance-renderer";
 import { GroupService } from "../services/group-service";
 import { renderGroupsMenuKeyboard, renderGroupsMenuText } from "./group-renderer";
@@ -49,10 +49,7 @@ export async function handleTelegramMessageCommand(
     }
     if (replyText === "🏠 主控菜单" || replyText === "🏠 主菜单" || replyText === "主控菜单" || replyText === "主菜单") {
       await sessions.clearCurrentSession(update.fromId);
-      return [
-        client.sendMessage({ chat_id: update.chatId, text: "主导航已放到聊天框下方。", reply_markup: renderMainReplyKeyboard() }) as TelegramClientAction,
-        client.sendMessage({ chat_id: update.chatId, text: renderMainMenuText(), reply_markup: renderMainMenuKeyboard() }) as TelegramClientAction
-      ];
+      return client.sendMessage({ chat_id: update.chatId, text: "主导航已放到聊天框下方。请选择下方主按钮进入对应功能。", reply_markup: renderMainReplyKeyboard() });
     }
     if (replyText === "🖥 云机管理" || replyText === "🖥 服务器" || replyText === "云机管理" || replyText === "服务器") {
       await sessions.clearCurrentSession(update.fromId);
@@ -78,10 +75,7 @@ export async function handleTelegramMessageCommand(
     }
     if (update.text === "🏠 主控菜单" || update.text === "🏠 主菜单" || update.text === "主控菜单" || update.text === "主菜单") {
       await sessions.clearCurrentSession(update.fromId);
-      return [
-        client.sendMessage({ chat_id: update.chatId, text: "主导航已放到聊天框下方。", reply_markup: renderMainReplyKeyboard() }) as TelegramClientAction,
-        client.sendMessage({ chat_id: update.chatId, text: renderMainMenuText(), reply_markup: renderMainMenuKeyboard() }) as TelegramClientAction
-      ];
+      return client.sendMessage({ chat_id: update.chatId, text: "主导航已放到聊天框下方。请选择下方主按钮进入对应功能。", reply_markup: renderMainReplyKeyboard() });
     }
     if (update.text === "🖥 云机管理" || update.text === "🖥 服务器" || update.text === "云机管理" || update.text === "服务器") {
       await sessions.clearCurrentSession(update.fromId);
@@ -190,10 +184,7 @@ export async function handleTelegramMessageCommand(
 
   switch (update.command) {
     case "start":
-      return [
-        client.sendMessage({ chat_id: update.chatId, text: "主导航已放到聊天框下方。", reply_markup: renderMainReplyKeyboard() }) as TelegramClientAction,
-        client.sendMessage({ chat_id: update.chatId, text: renderMainMenuText(), reply_markup: renderMainMenuKeyboard() }) as TelegramClientAction
-      ];
+      return client.sendMessage({ chat_id: update.chatId, text: "主导航已放到聊天框下方。请选择下方主按钮进入对应功能。", reply_markup: renderMainReplyKeyboard() });
     case "help":
       return client.sendMessage({ chat_id: update.chatId, text: renderHelpText() });
     case "myid":

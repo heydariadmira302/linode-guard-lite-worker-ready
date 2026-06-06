@@ -78,7 +78,16 @@ export class InstanceService {
     const accounts = await this.accounts.listActive();
     const results: AccountInstancesResult[] = [];
     for (const account of accounts) {
-      results.push(await this.listForAccountRecord(account, requestId));
+      try {
+        results.push(await this.listForAccountRecord(account, requestId));
+      } catch (error) {
+        if (isRecoverableAccountListError(error)) {
+          await this.markTokenStatusFromError(account.id, error);
+          results.push({ account: await this.toPublicAccount({ ...account, token_status: tokenStatusFromError(error) }), instances: [] });
+          continue;
+        }
+        throw error;
+      }
     }
     return { accounts: results };
   }
@@ -92,7 +101,18 @@ export class InstanceService {
     if (!Number.isInteger(groupId) || groupId <= 0) throw new AppError(ErrorCode.VALIDATION_ERROR, "Invalid group id", requestId, 400);
     const accounts = (await this.accounts.listActive()).filter((account) => Number(account.group_id ?? 1) === groupId);
     const results: AccountInstancesResult[] = [];
-    for (const account of accounts) results.push(await this.listForAccountRecord(account, requestId));
+    for (const account of accounts) {
+      try {
+        results.push(await this.listForAccountRecord(account, requestId));
+      } catch (error) {
+        if (isRecoverableAccountListError(error)) {
+          await this.markTokenStatusFromError(account.id, error);
+          results.push({ account: await this.toPublicAccount({ ...account, token_status: tokenStatusFromError(error) }), instances: [] });
+          continue;
+        }
+        throw error;
+      }
+    }
     return { accounts: results };
   }
 
@@ -208,7 +228,12 @@ export class InstanceService {
   private async listForAccountRecord(account: LinodeAccountRecord, requestId: string): Promise<AccountInstancesResult> {
     const token = await decryptLinodeToken(account.encrypted_token, await getLinodeTokenEncryptionKey(this.env));
     const instances = await new LinodeClient(token).listInstances(requestId);
-    return { account: await this.toPublicAccount(account), instances };
+    if (account.token_status !== "valid") await this.accounts.updateTokenStatus(account.id, "valid").catch(() => undefined);
+    return { account: await this.toPublicAccount({ ...account, token_status: "valid" }), instances };
+  }
+
+  private async markTokenStatusFromError(accountId: number, error: unknown): Promise<void> {
+    await this.accounts.updateTokenStatus(accountId, tokenStatusFromError(error)).catch(() => undefined);
   }
 
   private validateInstanceId(instanceId: number, requestId: string): void {
@@ -293,6 +318,16 @@ export class InstanceService {
       group_name: groupName
     };
   }
+}
+
+function isRecoverableAccountListError(error: unknown): boolean {
+  return error instanceof AppError && (error.code === ErrorCode.TOKEN_INVALID || error.code === ErrorCode.TOKEN_PERMISSION_ERROR || error.code === ErrorCode.RATE_LIMITED);
+}
+
+function tokenStatusFromError(error: unknown): string {
+  if (error instanceof AppError && error.code === ErrorCode.TOKEN_PERMISSION_ERROR) return "permission_error";
+  if (error instanceof AppError && error.code === ErrorCode.RATE_LIMITED) return "rate_limited";
+  return "invalid";
 }
 
 function createDefaultInstanceLabel(): string {

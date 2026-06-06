@@ -146,6 +146,27 @@ describe("Phase 15 job runner",()=>{
   } finally { fetchMock.mockRestore(); }
  });
 
+ it("keeps token invalid alerts out of automatic privacy cleanup", async()=>{
+  const db=new FakeD1Database(); await addAccount(db);
+  const env={...baseEnv,TELEGRAM_BOT_TOKEN:"123456:realish-token",DB:db as unknown as D1Database};
+  const telegramBodies:string[]=[];
+  const originalAll = db.all.bind(db);
+  db.all = <T>(sql:string, values:unknown[]=[]):T[] => {
+    if(sql.includes("FROM jobs")) return ["login_monitor","login_timeout","checkin_monitor","schedule_power","message_cleanup","audit_log_cleanup","security_event_cleanup"].map(name=>({name,type:"system",enabled:1,last_run_at:null,next_run_at:name==="login_monitor"?"2026-01-01T00:09:00.000Z":"2026-01-01T00:15:00.000Z",last_status:null,summary:null})) as T[];
+    return originalAll<T>(sql, values);
+  };
+  const fetchMock=vi.spyOn(globalThis,"fetch").mockImplementation(async(input,init)=>{
+    if(String(input).includes("api.linode.com")&&String(input).endsWith("/account/logins")) return new Response(JSON.stringify({errors:[{reason:"Invalid token"}]}),{status:401});
+    if(String(input).includes("api.telegram.org")){ telegramBodies.push(String(init?.body??"")); return new Response(JSON.stringify({ok:true,result:{message_id:77}}),{status:200}); }
+    return new Response(JSON.stringify({data:[]}),{status:200});
+  });
+  try{
+   await worker.scheduled({ scheduledTime: Date.parse("2026-01-01T00:10:00.000Z"), cron: "* * * * *", noRetry(){} } as ScheduledController, env as never, { waitUntil(promise:Promise<unknown>){ return promise; }, passThroughOnException(){} } as unknown as ExecutionContext);
+   expect(telegramBodies.some((body)=>body.includes("Linode Token 异常提醒")&&body.includes("Token 无效")&&body.includes("账号管理 / 更新 Token"))).toBe(true);
+   expect(db.telegramMessages.some((message)=>message.message_id==="77"&&message.purpose==="auto_delete")).toBe(false);
+  } finally { fetchMock.mockRestore(); }
+ });
+
  it("message_cleanup deletes due Telegram messages and skips messages outside the deletion window", async()=>{
   const db=new FakeD1Database();
   db.settings.set("app_settings", JSON.stringify({ telegram_auto_delete_minutes: 1 }));

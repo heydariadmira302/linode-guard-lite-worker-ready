@@ -59,7 +59,7 @@ export function renderPrivacyMenuText(settings: Pick<AppSettings, "telegram_auto
     `当前策略：${formatAutoDeleteSetting(settings.telegram_auto_delete_minutes)}`,
     "",
     "开启后，Bot 只记录 Telegram 消息 ID，不保存消息正文。",
-    "主要清理 Bot 发出的菜单、通知和操作结果。",
+    "主要清理你的操作消息、Bot 发出的菜单、通知和操作结果。",
     "Token 等敏感输入会尽量即时删除，不依赖这里。",
     "",
     "注意：",

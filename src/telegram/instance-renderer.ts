@@ -89,6 +89,7 @@ export function renderAllInstancesText(results: AccountInstancesResult[]): strin
     "🖥 服务器列表",
     "━━━━━━━━━━━━",
     `共 ${total} 台 / 运行 ${running} / 离线 ${offline} / 账号 ${results.length}`,
+    ...renderAccountTokenWarnings(results),
     "",
     ...results.map((result) => renderAccountInstanceBlock(result.account.alias, result.account.group_name, result.instances))
   ].join("\n");
@@ -100,6 +101,7 @@ export function renderAccountInstancesText(result: AccountInstancesResult): stri
     "━━━━━━━━━━━━",
     `账号：${result.account.alias}`,
     `数量：${result.instances.length} 台`,
+    ...renderAccountTokenWarnings([result]),
     "",
     renderAccountInstanceBlock(result.account.alias, result.account.group_name, result.instances)
   ].join("\n");
@@ -120,6 +122,20 @@ export function renderInstancesListKeyboard(results: AccountInstancesResult[], c
       ...instanceListNavigationRows(context)
     ]
   };
+}
+
+function renderAccountTokenWarnings(results: AccountInstancesResult[]): string[] {
+  const failed = results.filter((result) => result.account.token_status !== "valid");
+  if (failed.length === 0) return [];
+  const names = failed.map((result) => `${result.account.alias}（${formatTokenStatusWarning(result.account.token_status)}）`).join("、");
+  return ["", `⚠️ ${failed.length} 个账号暂时无法读取服务器：${names}`, "请到账号管理更新 Token 或检查权限。"];
+}
+
+function formatTokenStatusWarning(status: string): string {
+  if (status === "invalid") return "Token 无效";
+  if (status === "permission_error") return "权限不足";
+  if (status === "rate_limited") return "接口限流";
+  return status || "异常";
 }
 
 function instanceDetailButtonText(instance: LinodeInstance): string {

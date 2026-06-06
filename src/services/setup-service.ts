@@ -43,7 +43,7 @@ export const DEFAULT_SETTINGS: Record<string, unknown> = {
     login_event_retention_days: 1,
     boot_safety_mode: "bot_managed_only",
     protected_instances: [],
-    telegram_auto_delete_minutes: 0,
+    telegram_auto_delete_minutes: 5,
     dangerous_action_cooldown_enabled: true
   }
 };

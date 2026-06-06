@@ -43,8 +43,10 @@ class FakeD1Database {
   accounts: AccountRecord[] = [];
   groups = [{ id: 1, name: "未分组", is_default: 1, created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", deleted_at: null }];
   botSessions: Record<string, unknown>[] = [];
+  telegramMessages: Array<{ id: number; chat_id: string; message_id: string; purpose: string; delete_status: string; attempts: number; last_error_code: string | null; created_at: string; deleted_at: string | null; metadata_json: string | null }> = [];
   settings = new Map<string, string>();
   nextAccountId = 1;
+  nextTelegramMessageId = 1;
 
   prepare(sql: string) { return new FakePreparedStatement(this, sql); }
 
@@ -70,6 +72,9 @@ class FakeD1Database {
     if (sql.includes("FROM settings")) {
       const value = this.settings.get(values[0] as string);
       return value ? ({ key: values[0], value_json: value } as T) : null;
+    }
+    if (sql.includes("FROM telegram_messages") && sql.includes("SELECT id")) {
+      return (this.telegramMessages.find((message) => message.chat_id === String(values[0]) && message.message_id === String(values[1]) && message.purpose === String(values[2])) as T | undefined) ?? null;
     }
     return null;
   }
@@ -118,6 +123,21 @@ class FakeD1Database {
     if (sql.includes("INTO settings")) {
       this.settings.set(values[0] as string, values[1] as string);
       return {};
+    }
+    if (sql.includes("INTO telegram_messages")) {
+      this.telegramMessages.push({
+        id: this.nextTelegramMessageId++,
+        chat_id: String(values[0]),
+        message_id: String(values[1]),
+        purpose: String(values[2]),
+        delete_status: "pending",
+        attempts: 0,
+        last_error_code: null,
+        created_at: new Date().toISOString(),
+        deleted_at: null,
+        metadata_json: values[3] as string | null
+      });
+      return { last_row_id: this.nextTelegramMessageId - 1 };
     }
     return {};
   }
@@ -178,23 +198,15 @@ describe("Phase 18 Telegram-first experience", () => {
     const env = { ...baseEnv, DB: db as unknown as D1Database };
 
     const start = await worker.fetch(telegramRequest(messageUpdate("🏠 主菜单")), env as never);
-    const startBody = await start.json() as { data: { telegram: Array<{ payload: { text: string; reply_markup: { keyboard?: Array<Array<{ text: string }>>; inline_keyboard?: Array<Array<{ text: string; callback_data: string }>> } } }> } };
-    expect(startBody.data.telegram[0].payload.text).toContain("主导航");
-    expect(startBody.data.telegram[0].payload.reply_markup.keyboard).toEqual([
+    const startBody = await start.json() as { data: { telegram: { payload: { text: string; reply_markup: { keyboard?: Array<Array<{ text: string }>>; inline_keyboard?: Array<Array<{ text: string; callback_data: string }>> } } } } };
+    expect(startBody.data.telegram.payload.text).toContain("主导航");
+    expect(startBody.data.telegram.payload.reply_markup.keyboard).toEqual([
       [{ text: "🏠 主控菜单" }, { text: "🖥 云机管理" }],
       [{ text: "📅 定时计划" }, { text: "❤️ 打卡保活" }],
       [{ text: "📊 状态总览" }, { text: "🪪 我的ID" }],
       [{ text: "📋 更多功能" }]
     ]);
-    expect(startBody.data.telegram[1].payload.text).toContain("常用功能在聊天框下方");
-    expect(startBody.data.telegram[1].payload.reply_markup.inline_keyboard?.flat()).toEqual(expect.arrayContaining([
-      { text: "👤 账号管理", callback_data: "menu:accounts" },
-      { text: "📁 分组管理", callback_data: "menu:groups" },
-      { text: "🛡 安全事件", callback_data: "menu:security" },
-      { text: "⚡ 批量操作", callback_data: "menu:batch" },
-      { text: "📄 审计日志", callback_data: "menu:audit_logs" },
-      { text: "🔒 隐私清理", callback_data: "menu:privacy" }
-    ]));
+    expect(startBody.data.telegram.payload.reply_markup.inline_keyboard).toBeUndefined();
 
     const more = await worker.fetch(telegramRequest(messageUpdate("📋 更多功能")), env as never);
     const moreBody = await more.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
@@ -231,8 +243,8 @@ describe("Phase 18 Telegram-first experience", () => {
     const privacy = await worker.fetch(telegramRequest(callbackUpdate("menu:privacy")), env as never);
     const privacyBody = await privacy.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
     expect(privacyBody.data.telegram.payload.text).toContain("隐私清理");
-    expect(privacyBody.data.telegram.payload.text).toContain("当前策略：关闭");
-    expect(privacyBody.data.telegram.payload.text).toContain("主要清理 Bot 发出的菜单、通知和操作结果");
+    expect(privacyBody.data.telegram.payload.text).toContain("当前策略：5 分钟后自动删除");
+    expect(privacyBody.data.telegram.payload.text).toContain("主要清理你的操作消息、Bot 发出的菜单、通知和操作结果");
     expect(privacyBody.data.telegram.payload.text).toContain("Token 等敏感输入会尽量即时删除");
     expect(privacyBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
       { text: "1分钟", callback_data: "privacy:auto_delete:1" },
@@ -252,6 +264,9 @@ describe("Phase 18 Telegram-first experience", () => {
     expect(settingsBody.data.telegram.payload.text).toContain("发布版只保留必要开关");
     expect(settingsBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
       { text: "🔒 隐私清理", callback_data: "menu:privacy" }
+    ]));
+    expect(db.telegramMessages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ chat_id: "123456789", message_id: "44", purpose: "auto_delete" })
     ]));
 
     const cleanup = await worker.fetch(telegramRequest(callbackUpdate("privacy:cleanup_now")), env as never);
