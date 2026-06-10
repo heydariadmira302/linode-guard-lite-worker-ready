@@ -24,7 +24,8 @@ export class NotificationService {
     return await this.safeSend({
       text: renderScheduleRunNotification(result),
       reply_markup: auditKeyboard([[{ text: "⏰ 查看定时", callback_data: "menu:schedules" }]]),
-      purpose: "schedule_run_notification"
+      purpose: "schedule_run_notification",
+      trackAutoDelete: false
     });
   }
 
@@ -80,11 +81,12 @@ function renderScheduleRunNotification(result: ScheduleRunResult): string {
   return lines.join("\n");
 }
 
-function formatScheduleRunTitle(result: ScheduleRunResult, primary?: { action: string }): string {
+function formatScheduleRunTitle(result: ScheduleRunResult, primary?: { action: string; scope?: string }): string {
   const prefix = result.result === "success" ? "#linode" : result.result === "partial_failed" ? "⚠️ #linode" : "❌ #linode";
-  if (primary?.action === "boot") return `${prefix} 定时批量开机`;
-  if (primary?.action === "shutdown") return `${prefix} 定时批量关机`;
-  if (primary?.action === "reboot") return `${prefix} 定时批量重启`;
+  const scopeLabel = primary?.scope === "instance" ? "单台服务器" : "批量";
+  if (primary?.action === "boot") return `${prefix} 定时${scopeLabel}开机`;
+  if (primary?.action === "shutdown") return `${prefix} 定时${scopeLabel}关机`;
+  if (primary?.action === "reboot") return `${prefix} 定时${scopeLabel}重启`;
   return result.result === "success" ? "✅ 定时任务已执行" : result.result === "partial_failed" ? "⚠️ 定时任务部分失败" : "❌ 定时任务执行失败";
 }
 

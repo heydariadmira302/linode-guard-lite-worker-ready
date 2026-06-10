@@ -25,6 +25,11 @@ export interface CreateAccountInput {
   security_baseline_at?: string | null;
 }
 
+export interface UpdateAccountAliasInput {
+  id: number;
+  alias: string;
+}
+
 export function isActiveAccountStatus(status: string | null | undefined): boolean {
   return !status || status === "active";
 }
@@ -102,6 +107,17 @@ export class AccountsRepository {
        SET encrypted_token = ?, token_fingerprint = ?, token_status = ?, last_seen_login_id = ?, last_login_check_at = ?, security_baseline_at = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ? AND COALESCE(status, 'active') = 'active'`
     ).bind(input.encrypted_token, input.token_fingerprint, input.token_status, input.last_seen_login_id ?? null, input.last_login_check_at ?? null, input.security_baseline_at ?? null, input.id).run();
+    const account = await this.getById(input.id);
+    if (!account) throw new Error("Failed to load updated account");
+    return account;
+  }
+
+  async updateAlias(input: UpdateAccountAliasInput): Promise<LinodeAccountRecord> {
+    await this.db.prepare(
+      `UPDATE linode_accounts
+       SET alias = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND COALESCE(status, 'active') = 'active'`
+    ).bind(input.alias, input.id).run();
     const account = await this.getById(input.id);
     if (!account) throw new Error("Failed to load updated account");
     return account;

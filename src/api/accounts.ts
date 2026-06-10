@@ -42,6 +42,14 @@ export async function handleUpdateAccountToken(request: Request, env: Env, reque
   return createJsonResponse({ ok: true, data: { account } }, { requestId });
 }
 
+export async function handleRenameAccount(request: Request, env: Env, requestId: string, accountId: number): Promise<Response> {
+  ensureDb(env, requestId);
+  const body = await readJsonBody(request, requestId) as { alias?: unknown };
+  if (typeof body.alias !== "string") throw new AppError(ErrorCode.VALIDATION_ERROR, "Alias is required", requestId, 400);
+  const account = await new AccountService(env).renameAccount(accountId, body.alias, { requestId, actor: "api:default", source: "api" });
+  return createJsonResponse({ ok: true, data: { account } }, { requestId });
+}
+
 export async function handleTestAccount(_request: Request, env: Env, requestId: string, accountId: number): Promise<Response> {
   ensureDb(env, requestId);
   const account = await new AccountService(env).testAccount(accountId, { requestId, actor: "api:default", source: "api" });

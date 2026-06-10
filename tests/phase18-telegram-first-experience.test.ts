@@ -201,16 +201,15 @@ describe("Phase 18 Telegram-first experience", () => {
     const startBody = await start.json() as { data: { telegram: { payload: { text: string; reply_markup: { keyboard?: Array<Array<{ text: string }>>; inline_keyboard?: Array<Array<{ text: string; callback_data: string }>> } } } } };
     expect(startBody.data.telegram.payload.text).toContain("主导航");
     expect(startBody.data.telegram.payload.reply_markup.keyboard).toEqual([
-      [{ text: "🏠 主控菜单" }, { text: "🖥 云机管理" }],
-      [{ text: "📅 定时计划" }, { text: "❤️ 打卡保活" }],
-      [{ text: "📊 状态总览" }, { text: "🪪 我的ID" }],
-      [{ text: "📋 更多功能" }]
+      [{ text: "🖥 服务器" }, { text: "⏰ 定时" }],
+      [{ text: "👤 账号" }, { text: "❤️ 打卡" }],
+      [{ text: "🏠 主菜单" }, { text: "📋 更多" }]
     ]);
     expect(startBody.data.telegram.payload.reply_markup.inline_keyboard).toBeUndefined();
 
-    const more = await worker.fetch(telegramRequest(messageUpdate("📋 更多功能")), env as never);
+    const more = await worker.fetch(telegramRequest(messageUpdate("📋 更多")), env as never);
     const moreBody = await more.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
-    expect(moreBody.data.telegram.payload.text).toContain("更多功能");
+    expect(moreBody.data.telegram.payload.text).toContain("更多");
     expect(moreBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
       { text: "⚡ 批量", callback_data: "menu:batch" },
       { text: "📁 分组", callback_data: "menu:groups" },
@@ -224,7 +223,7 @@ describe("Phase 18 Telegram-first experience", () => {
     expect(serversBody.data.telegram.payload.text).toContain("🖥 服务器列表");
     expect(serversBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
       { text: "🔎 筛选", callback_data: "instances:filter" },
-      { text: "↩️ 返回服务器管理", callback_data: "menu:instances" }
+      { text: "↩️ 上一层", callback_data: "menu:instances" }
     ]));
 
     const checkin = await worker.fetch(telegramRequest(messageUpdate("❤️ 打卡")), env as never);
@@ -361,9 +360,9 @@ describe("Phase 18 Telegram-first experience", () => {
     const db = new FakeD1Database();
     const env = { ...baseEnv, DB: db as unknown as D1Database };
 
-    const schedules = await worker.fetch(telegramRequest(messageUpdate("📅 定时计划", 41)), env as never);
+    const schedules = await worker.fetch(telegramRequest(messageUpdate("⏰ 定时", 41)), env as never);
     const schedulesBody = await schedules.json() as { data: { telegram: { payload: { text: string } } } };
-    expect(schedulesBody.data.telegram.payload.text).toContain("📅 定时计划");
+    expect(schedulesBody.data.telegram.payload.text).toContain("⏰ 定时");
     expect(schedulesBody.data.telegram.payload.text).toContain("到点后 Bot 会自动执行");
     expect(schedulesBody.data.telegram.payload.text).not.toContain("/help");
 

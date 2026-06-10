@@ -8,6 +8,7 @@ import { ErrorCode } from "../errors/error-codes";
 import { AccountsRepository, isActiveAccountStatus, type LinodeAccountRecord } from "../storage/accounts-repository";
 import { AuditRepository } from "../storage/audit-repository";
 import { GroupsRepository } from "../storage/groups-repository";
+import { SettingsRepository } from "../storage/settings-repository";
 import { AuditService } from "./audit-service";
 
 export interface AccountServiceContext {
@@ -45,9 +46,7 @@ export class AccountService {
     const alias = this.validateAlias(input.alias, context.requestId);
     const token = input.token?.trim();
     if (!token) throw new AppError(ErrorCode.VALIDATION_ERROR, "Token is required", context.requestId, 400);
-    if (await this.accounts.getByAlias(alias)) {
-      throw new AppError(ErrorCode.VALIDATION_ERROR, "Account alias already exists", context.requestId, 400);
-    }
+    await this.ensureAliasAvailable(alias, null, context.requestId);
     try {
       const tokenTest = await new LinodeClient(token).testToken(context.requestId);
       const fingerprint = await createTokenFingerprint(token);
@@ -95,6 +94,25 @@ export class AccountService {
     return await Promise.all(accounts.map((account) => toPublicAccount(account, this.env)));
   }
 
+  async renameAccount(accountId: number, alias: string, context: AccountServiceContext): Promise<PublicAccount> {
+    const account = await this.getActiveAccount(accountId, context.requestId);
+    const nextAlias = this.validateAlias(alias, context.requestId);
+    if (normalizeAliasKey(nextAlias) === normalizeAliasKey(account.alias)) {
+      return await toPublicAccount(account, this.env);
+    }
+    await this.ensureAliasAvailable(nextAlias, account.id, context.requestId);
+    try {
+      const updated = await this.accounts.updateAlias({ id: account.id, alias: nextAlias });
+      await this.recordAudit(context, "account.rename", "account", String(account.id), "medium", "success", null, { old_alias: account.alias, alias: nextAlias });
+      return await toPublicAccount(updated, this.env);
+    } catch (error) {
+      const code = error instanceof AppError ? error.code : ErrorCode.D1_ERROR;
+      await this.recordAudit(context, "account.rename", "account", String(account.id), "medium", "failed", code, { old_alias: account.alias, alias: nextAlias });
+      if (error instanceof AppError) throw error;
+      throw new AppError(ErrorCode.D1_ERROR, "Failed to rename account", context.requestId, 500);
+    }
+  }
+
   async updateAccountToken(accountId: number, token: string, context: AccountServiceContext): Promise<PublicAccount & { server_count?: number }> {
     const account = await this.getActiveAccount(accountId, context.requestId);
     const normalizedToken = token?.trim();
@@ -113,7 +131,8 @@ export class AccountService {
         last_login_check_at: baselineAt,
         security_baseline_at: baselineAt
       });
-      await this.recordAudit(context, "account.token.update", "account", String(account.id), "high", "success", null, { alias: account.alias, token_fingerprint: fingerprint, server_count: tokenTest.instance_count, security_baseline_at: baselineAt });
+      await this.clearWindowsStackScriptBinding(account.id);
+      await this.recordAudit(context, "account.token.update", "account", String(account.id), "high", "success", null, { alias: account.alias, token_fingerprint: fingerprint, server_count: tokenTest.instance_count, security_baseline_at: baselineAt, windows_stackscript_reset: true });
       return { ...await toPublicAccount(updated, this.env), server_count: tokenTest.instance_count };
     } catch (error) {
       const code = error instanceof AppError ? error.code : ErrorCode.D1_ERROR;
@@ -121,6 +140,11 @@ export class AccountService {
       if (error instanceof AppError) throw error;
       throw new AppError(ErrorCode.D1_ERROR, "Failed to update account token", context.requestId, 500);
     }
+  }
+
+  private async clearWindowsStackScriptBinding(accountId: number): Promise<void> {
+    if (!this.env.DB) return;
+    await new SettingsRepository(this.env.DB as D1Database).set(`windows_stackscript_id:${accountId}`, null).catch(() => undefined);
   }
 
   async testAccount(accountId: number, context: AccountServiceContext): Promise<PublicAccount> {
@@ -165,6 +189,15 @@ export class AccountService {
       throw new AppError(ErrorCode.VALIDATION_ERROR, "Alias must be 1-32 chars and only contain Chinese, letters, numbers, spaces, underscore, or hyphen", requestId, 400);
     }
     return normalized;
+  }
+
+  private async ensureAliasAvailable(alias: string, currentAccountId: number | null, requestId: string): Promise<void> {
+    const active = await this.accounts.listActive();
+    const nextKey = normalizeAliasKey(alias);
+    const duplicate = active.find((account) => account.id !== currentAccountId && normalizeAliasKey(account.alias) === nextKey);
+    if (duplicate) {
+      throw new AppError(ErrorCode.VALIDATION_ERROR, `账号昵称已存在：#${duplicate.id} ${duplicate.alias}`, requestId, 400);
+    }
   }
 
   private async resolveGroupId(groupId: number | null | undefined, requestId: string): Promise<number> {
@@ -231,4 +264,8 @@ async function toPublicAccount(account: LinodeAccountRecord, env: Env): Promise<
 
 function normalizeAccountStatus(status: string | null | undefined): string {
   return status && status.trim() ? status : "active";
+}
+
+function normalizeAliasKey(alias: string): string {
+  return alias.trim().replace(/\s+/g, " ").toLocaleLowerCase("zh-CN");
 }

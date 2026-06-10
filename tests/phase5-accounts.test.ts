@@ -57,6 +57,7 @@ class FakeD1Database {
   accounts: AccountRecord[] = [];
   auditLogs: AuditRecord[] = [];
   botSessions: Record<string, unknown>[] = [];
+  settings = new Map<string, string>();
   groups = [{ id: 1, name: "未分组", is_default: 1, created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", deleted_at: null }];
   nextAccountId = 1;
 
@@ -86,6 +87,10 @@ class FakeD1Database {
     }
     if (sql.includes("FROM bot_sessions")) {
       return (this.botSessions.find((session) => session.telegram_user_id === values[0]) as T | undefined) ?? null;
+    }
+    if (sql.includes("FROM settings")) {
+      const value = this.settings.get(String(values[0]));
+      return value === undefined ? null : ({ value_json: value } as T);
     }
     return null;
   }
@@ -134,6 +139,14 @@ class FakeD1Database {
       }
       return {};
     }
+    if (sql.includes("UPDATE linode_accounts") && sql.includes("SET alias =")) {
+      const account = this.accounts.find((item) => item.id === Number(values[1]));
+      if (account) {
+        account.alias = values[0] as string;
+        account.updated_at = new Date().toISOString();
+      }
+      return {};
+    }
     if (sql.includes("UPDATE linode_accounts") && sql.includes("token_status")) {
       const account = this.accounts.find((item) => item.id === Number(values[1]));
       if (account) account.token_status = values[0] as string;
@@ -175,6 +188,10 @@ class FakeD1Database {
     if (sql.includes("INTO bot_sessions")) {
       this.botSessions = this.botSessions.filter((session) => session.telegram_user_id !== values[0]);
       this.botSessions.push({ telegram_user_id: values[0], chat_id: values[1], state: values[2], data_json: values[3], expires_at: values[4] });
+      return {};
+    }
+    if (sql.includes("INTO settings")) {
+      this.settings.set(String(values[0]), String(values[1]));
       return {};
     }
     if (sql.includes("DELETE FROM bot_sessions")) {
@@ -283,6 +300,7 @@ describe("Phase 5 Linode account and token management", () => {
       expect(rawDetail).not.toContain("valid-linode-token");
       expect(rawDetail).not.toContain("encrypted_token");
 
+      db.settings.set("windows_stackscript_id:1", JSON.stringify(2022));
       const updateTokenResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/token", {
         method: "PUT",
         headers: { "content-type": "application/json" },
@@ -296,6 +314,8 @@ describe("Phase 5 Linode account and token management", () => {
       expect(rawUpdateToken).not.toContain("new-valid-linode-token");
       expect(rawUpdateToken).not.toContain("encrypted_token");
       expect(db.accounts[0].encrypted_token).not.toContain("new-valid-linode-token");
+      expect(db.settings.get("windows_stackscript_id:1")).toBe("null");
+      expect(db.auditLogs.find((log) => log.action === "account.token.update")?.metadata_json).toContain("windows_stackscript_reset");
 
       const testResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/test", { method: "POST" }), env as never);
       const testBody = await testResponse.json() as { ok: boolean; data: { account: { id: number; token_status: string } } };
@@ -334,6 +354,29 @@ describe("Phase 5 Linode account and token management", () => {
       expect(listBody.data.accounts).toEqual(expect.arrayContaining([
         expect.objectContaining({ alias: "spain", group_id: 2, group_name: "西班牙" })
       ]));
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("renames accounts through the HTTP API and blocks duplicate aliases", async () => {
+    const db = new FakeD1Database();
+    const env = { ...baseEnv, DB: db as unknown as D1Database };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ username: "admin" }), { status: 200 }));
+    try {
+      await worker.fetch(apiRequest("/api/v1/accounts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ alias: "alpha", token: "valid-linode-token" }) }), env as never);
+      await worker.fetch(apiRequest("/api/v1/accounts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ alias: "beta", token: "valid-linode-token-2" }) }), env as never);
+      const renameResponse = await worker.fetch(apiRequest("/api/v1/accounts/1/name", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ alias: "主号" }) }), env as never);
+      const renameBody = await renameResponse.json() as { ok: boolean; data: { account: Record<string, unknown> } };
+      expect(renameResponse.status).toBe(200);
+      expect(renameBody.data.account).toMatchObject({ alias: "主号" });
+      expect(db.accounts[0].alias).toBe("主号");
+
+      const duplicate = await worker.fetch(apiRequest("/api/v1/accounts/1/name", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ alias: " beta " }) }), env as never);
+      const duplicateBody = await duplicate.json() as { ok: boolean; error: { code: string; message: string } };
+      expect(duplicate.status).toBe(400);
+      expect(duplicateBody.error.code).toBe("VALIDATION_ERROR");
+      expect(duplicateBody.error.message).toContain("账号昵称已存在");
     } finally {
       fetchMock.mockRestore();
     }
@@ -419,12 +462,13 @@ describe("Phase 5 Linode account and token management", () => {
       const detailBody = await detail.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
       expect(detailBody.data.telegram.payload.text).toContain("账号详情");
       expect(detailBody.data.telegram.payload.text).toContain("Token：可用");
-      expect(detailBody.data.telegram.payload.text).toContain("常用操作：查看服务器、测试/更新 Token、移动分组。");
+      expect(detailBody.data.telegram.payload.text).toContain("常用操作：查看服务器、改名、更新 Token、移动分组。");
       expect(detailBody.data.telegram.payload.text).not.toContain("fp_123456789abc");
       expect(detailBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
         { text: "🖥 查看该账号服务器", callback_data: "instances:list:account:1" },
+        { text: "✏️ 修改账号名", callback_data: "accounts:rename:1" },
         { text: "🔍 测试 Token", callback_data: "accounts:test:1" },
-        { text: "✏️ 更新 Token", callback_data: "accounts:update_token:1" },
+        { text: "🔑 更新 Token", callback_data: "accounts:update_token:1" },
         { text: "📁 移动分组", callback_data: "accounts:move_group:1" },
         { text: "🚨 从 Bot 删除账号", callback_data: "accounts:delete_confirm:1" }
       ]));

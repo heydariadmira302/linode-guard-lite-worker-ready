@@ -4,10 +4,9 @@ import { renderCheckinShortcutKeyboard } from "./navigation-keyboards";
 export function renderMainReplyKeyboard(): TelegramReplyKeyboardMarkup {
   return {
     keyboard: [
-      [{ text: "🏠 主控菜单" }, { text: "🖥 云机管理" }],
-      [{ text: "📅 定时计划" }, { text: "❤️ 打卡保活" }],
-      [{ text: "📊 状态总览" }, { text: "🪪 我的ID" }],
-      [{ text: "📋 更多功能" }]
+      [{ text: "🖥 服务器" }, { text: "⏰ 定时" }],
+      [{ text: "👤 账号" }, { text: "❤️ 打卡" }],
+      [{ text: "🏠 主菜单" }, { text: "📋 更多" }]
     ],
     resize_keyboard: true,
     is_persistent: true

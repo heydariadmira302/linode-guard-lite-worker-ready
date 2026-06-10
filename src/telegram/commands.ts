@@ -1,5 +1,6 @@
 import type { TelegramClient } from "../clients/telegram-client";
 import type { Env } from "../env";
+import { AppError } from "../errors/app-error";
 import type { BotSessionService } from "../services/bot-session-service";
 import { AdminPresenceService } from "../services/admin-presence-service";
 import { AppSettingsService } from "../services/app-settings-service";
@@ -168,6 +169,8 @@ export async function handleTelegramMessageCommand(
     if (windowsUsernameFlowResult) return windowsUsernameFlowResult;
     const windowsLabelFlowResult = await continueWindowsLabelFlow(update, client, sessions, env, requestId);
     if (windowsLabelFlowResult) return windowsLabelFlowResult;
+    const accountRenameFlowResult = await continueAccountRenameFlow(update, client, sessions, env, requestId);
+    if (accountRenameFlowResult) return accountRenameFlowResult;
     const accountTokenFlowResult = await continueAccountTokenUpdateFlow(update, client, sessions, env, requestId);
     if (accountTokenFlowResult) return accountTokenFlowResult;
     const scheduleFlowResult = await continueScheduleFlow(update, client, sessions, env, requestId);
@@ -205,6 +208,8 @@ export async function handleTelegramMessageCommand(
       if (windowsUsernameFlowResult) return windowsUsernameFlowResult;
       const windowsLabelFlowResult = await continueWindowsLabelFlow(update, client, sessions, env, requestId);
       if (windowsLabelFlowResult) return windowsLabelFlowResult;
+      const accountRenameFlowResult = await continueAccountRenameFlow(update, client, sessions, env, requestId);
+      if (accountRenameFlowResult) return accountRenameFlowResult;
       const accountTokenFlowResult = await continueAccountTokenUpdateFlow(update, client, sessions, env, requestId);
       if (accountTokenFlowResult) return accountTokenFlowResult;
       const scheduleFlowResult = await continueScheduleFlow(update, client, sessions, env, requestId);
@@ -331,6 +336,32 @@ async function continueBatchDeleteConfirmFlow(
   } catch {
     await sessions.clearCurrentSession(update.fromId);
     return client.sendMessage({ chat_id: update.chatId, text: renderTelegramOperationResult({ title: "批量删除", status: "failed", requestId, errorMessage: "批量删除执行失败，请查看审计日志或稍后重试。", nextStep: "查看审计日志确认失败原因" }), reply_markup: renderCheckinInlineKeyboard() });
+  }
+}
+
+async function continueAccountRenameFlow(
+  update: Extract<ParsedTelegramUpdate, { kind: "message" }>,
+  client: TelegramClient,
+  sessions: Pick<BotSessionService, "clearCurrentSession" | "getCurrentSession" | "setCurrentSession">,
+  env: Env,
+  requestId: string
+): Promise<TelegramClientResult | null> {
+  if (!env.DB) return null;
+  const session = await sessions.getCurrentSession(update.fromId);
+  if (!session || session.state !== "renaming_account") return null;
+  const parsed = parseSessionData(session.data_json);
+  const accountId = Number(parsed.account_id);
+  if (!Number.isInteger(accountId) || accountId <= 0) {
+    await sessions.clearCurrentSession(update.fromId);
+    return client.sendMessage({ chat_id: update.chatId, text: "账号改名会话已失效，请重新进入账号详情。", reply_markup: renderCheckinInlineKeyboard() });
+  }
+  try {
+    const account = await new AccountService(env).renameAccount(accountId, update.text, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+    await sessions.clearCurrentSession(update.fromId);
+    return client.sendMessage({ chat_id: update.chatId, text: renderAccountActionResultText("✅ 账号名已更新", account), reply_markup: renderAccountDetailKeyboard(account) });
+  } catch (error) {
+    const appError = error instanceof AppError ? error : null;
+    return client.sendMessage({ chat_id: update.chatId, text: renderTelegramOperationResult({ title: "修改账号名", status: "failed", requestId, errorMessage: appError?.message ?? "账号名不符合要求或已存在。", errorCode: appError?.code, nextStep: "请重新发送一个不重复的账号名，或点下方按钮取消" }), reply_markup: { inline_keyboard: [[{ text: "取消改名", callback_data: `accounts:rename:cancel:${accountId}` }], [{ text: "返回账号详情", callback_data: `accounts:detail:${accountId}` }]] } });
   }
 }
 

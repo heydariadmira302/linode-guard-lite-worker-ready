@@ -13,19 +13,23 @@ const SCHEDULE_MINUTES = ["00", "05", "10", "15", "20", "25", "30", "35", "40", 
 export function renderSchedulesMenuText(settings?: QuickPowerSettings): string {
   if (!settings) {
     return [
-      "📅 定时计划",
+      "⏰ 定时",
       "━━━━━━━━━━━━",
-      "像老版一样，直接设置每天几点自动开机 / 关机。"
+      "这里是简单定时：每天固定时间自动开机 / 关机。",
+      "单台服务器、重启、自定义 Cron 放在「高级定时」。"
     ].join("\n");
   }
   return [
-    "📅 定时计划",
+    "⏰ 定时",
     "━━━━━━━━━━━━",
+    "简单定时：每天固定时间自动开机 / 关机。",
+    "",
     `当前状态：${formatQuickPowerEnabled(settings.enabled)}`,
     `🚀 自动开机：${settings.boot ? cronToTime(settings.boot.cron_expr) : "08:50（默认）"}`,
     `🛑 自动关机：${settings.shutdown ? cronToTime(settings.shutdown.cron_expr) : "23:05（默认）"}`,
     `🎯 执行范围：${formatScheduleScope(settings.scope, settings.account_id, settings.group_id, null)}`,
-    "到点后 Bot 会自动执行，并单独发送执行结果通知。"
+    "",
+    "到点后 Bot 会自动执行，并发送一条可回看的执行结果通知。"
   ].join("\n");
 }
 
@@ -33,10 +37,11 @@ export function renderSchedulesMenuKeyboard(settings?: QuickPowerSettings): Tele
   const enabled = settings?.enabled ?? "none";
   return {
     inline_keyboard: [
-      [{ text: "🚀 设置开机时间", callback_data: "qs:time:b" }, { text: "🛑 设置关机时间", callback_data: "qs:time:s" }],
-      [{ text: "🎯 设置执行范围", callback_data: "qs:scope" }, { text: "⚙️ 高级功能", callback_data: "schedules:advanced" }],
-      [{ text: enabled === "all" ? "⛔ 关闭定时" : "✅ 开启定时", callback_data: enabled === "all" ? "qs:disable" : "qs:enable" }],
-      [{ text: "🏠 返回主菜单", callback_data: "menu:main" }]
+      [{ text: "🚀 开机时间", callback_data: "qs:time:b" }, { text: "🛑 关机时间", callback_data: "qs:time:s" }],
+      [{ text: "🎯 执行范围", callback_data: "qs:scope" }],
+      [{ text: enabled === "all" ? "⛔ 关闭简单定时" : "✅ 开启简单定时", callback_data: enabled === "all" ? "qs:disable" : "qs:enable" }],
+      [{ text: "⚙️ 高级定时：单台/重启/Cron", callback_data: "schedules:advanced" }],
+      [{ text: "🏠 主菜单", callback_data: "menu:main" }]
     ]
   };
 }
@@ -45,21 +50,20 @@ export function renderScheduleAdvancedMenuText(): string {
   return [
     "⚙️ 高级定时",
     "━━━━━━━━━━━━",
-    "这里适合少数特殊需求：",
-    "• 单独给某台服务器设定时",
-    "• 添加重启计划",
-    "• 管理多条定时任务",
-    "• 使用自定义 Cron",
+    "这里才处理复杂任务：",
+    "• 单台服务器定时开机 / 关机 / 重启",
+    "• 自定义 Cron",
+    "• 管理多条任务",
     "",
-    "普通每天开关机，建议返回「定时计划」。"
+    "如果只是每天固定开关机，返回上一页用「简单定时」更省事。"
   ].join("\n");
 }
 
 export function renderScheduleAdvancedMenuKeyboard(): TelegramInlineKeyboardMarkup {
   return { inline_keyboard: [
-    [{ text: "📋 任务列表", callback_data: "schedules:advanced:list" }],
-    [{ text: "➕ 新增任务", callback_data: "schedules:create" }],
-    [{ text: "↩️ 返回定时计划", callback_data: "menu:schedules" }]
+    [{ text: "➕ 新增高级任务", callback_data: "schedules:create" }],
+    [{ text: "📋 管理任务列表", callback_data: "schedules:advanced:list" }],
+    [{ text: "↩️ 返回简单定时", callback_data: "menu:schedules" }]
   ] };
 }
 
@@ -115,11 +119,13 @@ export function renderQuickScheduleResultText(action: "updated_time" | "updated_
 
 export function renderScheduleCreateActionText(): string {
   return [
-    "⏰ 新增定时任务",
+    "⏰ 新增高级定时",
     "━━━━━━━━━━━━",
-    "第 1/3 步：先选择要做什么。",
+    "第 1/3 步：先选择动作。",
     "",
-    "产品逻辑：先选动作，再选对象，最后选时间。",
+    "适合单台服务器、重启、自定义 Cron。",
+    "普通每天开关机请返回「简单定时」。",
+    "",
     "开机会受 Boot safety 保护；关机和重启会写入审计日志。"
   ].join("\n");
 }

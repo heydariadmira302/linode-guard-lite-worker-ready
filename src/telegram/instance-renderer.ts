@@ -5,12 +5,14 @@ import type { TelegramInlineKeyboardButton, TelegramInlineKeyboardMarkup } from 
 
 export function renderInstancesMenuText(): string {
   return [
-    "🖥 服务器管理",
+    "🖥 服务器",
     "━━━━━━━━━━━━",
-    "默认展示全部服务器，适合日常巡检。",
-    "进入服务器详情后，可以执行开机、关机、重启等操作。",
+    "这里是日常主入口：找服务器、看状态、做操作。",
     "",
-    "需要缩小范围时，再按账号、分组或状态筛选。"
+    "建议：",
+    "• 巡检先看全部服务器",
+    "• 创建 Windows 从这里走，系统会自动检查初始化脚本和前置条件",
+    "• 批量和分组放在更多/筛选里，避免误点"
   ].filter(Boolean).join("\n");
 }
 
@@ -18,10 +20,10 @@ export function renderInstancesMenuKeyboard(): TelegramInlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [{ text: "🖥 查看全部服务器", callback_data: "instances:list:all" }],
-      [{ text: "➕ 创建 Linux 服务器", callback_data: "instances:create" }],
-      [{ text: "🪟 创建 Windows 服务器", callback_data: "windows:create" }],
-      [{ text: "🔎 筛选", callback_data: "instances:filter" }, { text: "⚡ 批量操作", callback_data: "menu:batch" }],
-      [{ text: "🏠 返回主菜单", callback_data: "menu:main" }]
+      [{ text: "🪟 创建 Windows", callback_data: "windows:create" }],
+      [{ text: "➕ 创建 Linux", callback_data: "instances:create" }],
+      [{ text: "🔎 筛选服务器", callback_data: "instances:filter" }],
+      [{ text: "🏠 主菜单", callback_data: "menu:main" }]
     ]
   };
 }
@@ -41,7 +43,7 @@ export function renderInstanceFilterKeyboard(): TelegramInlineKeyboardMarkup {
     inline_keyboard: [
       [{ text: "👤 按账号查看", callback_data: "instances:accounts" }, { text: "📁 按分组查看", callback_data: "instances:groups" }],
       [{ text: "🟢 运行中", callback_data: "instances:list:status:running" }, { text: "⚫️ 已关机", callback_data: "instances:list:status:offline" }],
-      [{ text: "↩️ 返回服务器管理", callback_data: "menu:instances" }]
+      [{ text: "↩️ 上一层", callback_data: "menu:instances" }]
     ]
   };
 }
@@ -58,7 +60,7 @@ export function renderInstanceAccountsKeyboard(accounts: PublicAccount[]): Teleg
   return {
     inline_keyboard: [
       ...chunkButtons(accounts.map((account) => ({ text: `👤 ${shortText(account.alias, 18)}`, callback_data: `instances:list:account:${account.id}` })), 2),
-      [{ text: "↩️ 返回服务器管理", callback_data: "menu:instances" }]
+      [{ text: "↩️ 上一层", callback_data: "menu:instances" }]
     ]
   };
 }
@@ -75,7 +77,7 @@ export function renderInstanceGroupsKeyboard(groups: Array<{ id: number; name: s
   return {
     inline_keyboard: [
       ...chunkButtons(groups.map((group) => ({ text: `📁 ${shortText(group.name, 18)}`, callback_data: `instances:list:group:${group.id}` })), 2),
-      [{ text: "↩️ 返回服务器管理", callback_data: "menu:instances" }]
+      [{ text: "↩️ 上一层", callback_data: "menu:instances" }]
     ]
   };
 }
@@ -145,20 +147,29 @@ function instanceDetailButtonText(instance: LinodeInstance): string {
 
 function instanceListNavigationRows(context: InstanceListContext): TelegramInlineKeyboardButton[][] {
   if (context === "status_running" || context === "status_offline") {
-    return [[{ text: "↩️ 返回筛选", callback_data: "instances:filter" }]];
+    return [[{ text: "↩️ 上一层", callback_data: "instances:filter" }], [{ text: "🏠 主菜单", callback_data: "menu:main" }]];
   }
   if (context === "account") {
-    return [[{ text: "↩️ 返回账号选择", callback_data: "instances:accounts" }], [{ text: "↩️ 返回服务器管理", callback_data: "menu:instances" }]];
+    return [[{ text: "↩️ 上一层", callback_data: "instances:accounts" }], [{ text: "🏠 主菜单", callback_data: "menu:main" }]];
   }
   if (context === "group") {
-    return [[{ text: "↩️ 返回分组选择", callback_data: "instances:groups" }], [{ text: "↩️ 返回服务器管理", callback_data: "menu:instances" }]];
+    return [[{ text: "↩️ 上一层", callback_data: "instances:groups" }], [{ text: "🏠 主菜单", callback_data: "menu:main" }]];
   }
-  return [[{ text: "↩️ 返回服务器管理", callback_data: "menu:instances" }]];
+  return [[{ text: "↩️ 上一层", callback_data: "menu:instances" }], [{ text: "🏠 主菜单", callback_data: "menu:main" }]];
 }
 
 export function renderInstanceDetailText(result: InstanceDetailResult): string {
   const instance = result.instance;
-  const primaryIp = instance.ipv4?.find(Boolean);
+  const ipv4 = instance.ipv4?.filter(Boolean) ?? [];
+  const primaryIp = ipv4[0];
+  const groupName = result.account.group_name ?? (result.account.group_id ? `#${result.account.group_id}` : "未分组");
+  const details = [
+    instance.updated ? `• 更新：${formatInstanceDateTime(instance.updated)}` : null,
+    Array.isArray(instance.tags) && instance.tags.length > 0 ? `• 标签：${instance.tags.join(", ")}` : null,
+    ...formatInstanceSpecs(instance.specs),
+    ipv4.length > 1 ? `• 全部 IPv4：${ipv4.map((ip) => `\`${ip}\``).join(", ")}` : null,
+    instance.image ? `• 镜像：${instance.image}` : null
+  ].filter(Boolean);
   return [
     `${statusIcon(instance.status)} 服务器详情`,
     "━━━━━━━━━━━━",
@@ -167,9 +178,12 @@ export function renderInstanceDetailText(result: InstanceDetailResult): string {
     `IP：${primaryIp ? `\`${primaryIp}\`` : "等待分配"}`,
     `ID：\`${instance.id}\``,
     `账号：${result.account.alias}`,
+    `分组：${groupName}`,
+    details.length > 0 ? "" : null,
+    ...details,
     "",
     "常用操作在下方按钮。"
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 export function renderInstanceDetailKeyboard(result: InstanceDetailResult, source = `account_${result.account.id}`): TelegramInlineKeyboardMarkup {
@@ -227,7 +241,7 @@ export function renderCreateInstanceAccountText(accounts: PublicAccount[]): stri
 }
 
 export function renderCreateInstanceAccountKeyboard(accounts: PublicAccount[]): TelegramInlineKeyboardMarkup {
-  return { inline_keyboard: [...accounts.map((account) => [{ text: `👤 #${account.id} ${account.alias}`, callback_data: `instances:create:account:${account.id}` }]), [{ text: "↩️ 返回服务器管理", callback_data: "menu:instances" }]] };
+  return { inline_keyboard: [...accounts.map((account) => [{ text: `👤 #${account.id} ${account.alias}`, callback_data: `instances:create:account:${account.id}` }]), [{ text: "↩️ 上一层", callback_data: "menu:instances" }], [{ text: "🏠 主菜单", callback_data: "menu:main" }]] };
 }
 
 
@@ -245,7 +259,8 @@ export function renderWindowsCreateModeKeyboard(): TelegramInlineKeyboardMarkup 
   return { inline_keyboard: [
     [{ text: "⚡ 快速创建", callback_data: "windows:create:quick" }],
     [{ text: "⚙️ 高级创建", callback_data: "windows:create:advanced" }],
-    [{ text: "↩️ 返回云机管理", callback_data: "menu:instances" }]
+    [{ text: "↩️ 上一层", callback_data: "menu:instances" }],
+    [{ text: "🏠 主菜单", callback_data: "menu:main" }]
   ] };
 }
 
@@ -613,6 +628,21 @@ export function renderWindowsCreatedText(result: { account: PublicAccount; insta
 
 export function renderCreatedInstanceText(result: { account: PublicAccount; instance: LinodeInstance; root_password?: string }): string {
   return ["✅ 创建请求已提交", "━━━━━━━━━━━━", `账号：#${result.account.id} ${result.account.alias}`, `服务器：${result.instance.label} (${result.instance.id})`, `状态：${translateInstanceStatus(result.instance.status)}`, `地区：${result.instance.region}`, `IPv4：${result.instance.ipv4?.join(", ") || "等待分配"}`, "", "🔐 临时 root 密码：", result.root_password ?? "只通过 API 响应返回一次", "", "请尽快登录后修改密码。"].join("\n");
+}
+
+function formatInstanceDateTime(value: string): string {
+  return value;
+}
+
+function formatInstanceSpecs(specs: unknown): string[] {
+  if (!specs || typeof specs !== "object") return [];
+  const data = specs as { vcpus?: unknown; memory?: unknown; disk?: unknown; transfer?: unknown };
+  const lines: string[] = [];
+  if (Number.isFinite(Number(data.vcpus))) lines.push(`CPU：${Number(data.vcpus)} vCPU`);
+  if (Number.isFinite(Number(data.memory))) lines.push(`内存：${Number(data.memory)} MB`);
+  if (Number.isFinite(Number(data.disk))) lines.push(`磁盘：${Number(data.disk)} MB`);
+  if (Number.isFinite(Number(data.transfer))) lines.push(`流量：${Number(data.transfer)} GB`);
+  return lines;
 }
 
 function filterRegions(regions: CreateInstanceChoice[]): CreateInstanceChoice[] {

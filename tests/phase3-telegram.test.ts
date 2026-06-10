@@ -135,10 +135,9 @@ describe("Phase 3 Telegram webhook and menu", () => {
     expect(body.data.telegram.method).toBe("sendMessage");
     expect(body.data.telegram.payload.text).toContain("主导航已放到聊天框下方");
     expect(body.data.telegram.payload.reply_markup.keyboard).toEqual([
-      [{ text: "🏠 主控菜单" }, { text: "🖥 云机管理" }],
-      [{ text: "📅 定时计划" }, { text: "❤️ 打卡保活" }],
-      [{ text: "📊 状态总览" }, { text: "🪪 我的ID" }],
-      [{ text: "📋 更多功能" }]
+      [{ text: "🖥 服务器" }, { text: "⏰ 定时" }],
+      [{ text: "👤 账号" }, { text: "❤️ 打卡" }],
+      [{ text: "🏠 主菜单" }, { text: "📋 更多" }]
     ]);
     expect(body.data.telegram.payload.reply_markup.inline_keyboard).toBeUndefined();
     expect(body.data.sent).toEqual([
@@ -158,7 +157,7 @@ describe("Phase 3 Telegram webhook and menu", () => {
       expect(calls).toHaveLength(1);
       expect(calls[0].url).toBe("https://api.telegram.org/bot123456:realish-token/sendMessage");
       expect(calls[0].body).toContain("主导航");
-      expect(calls[0].body).toContain("主控菜单");
+      expect(calls[0].body).toContain("服务器");
     } finally {
       fetchMock.mockRestore();
     }

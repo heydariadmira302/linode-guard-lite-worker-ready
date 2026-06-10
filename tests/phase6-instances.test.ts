@@ -263,7 +263,7 @@ describe("Phase 6 Linode instance read-only management", () => {
 
       const menuResponse = await worker.fetch(telegramRequest(callbackUpdate("menu:instances")), env as never);
       const menuBody = await menuResponse.json() as { data: { telegram: { payload: { reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
-      expect(menuBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "➕ 创建 Linux 服务器", callback_data: "instances:create" });
+      expect(menuBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "➕ 创建 Linux", callback_data: "instances:create" });
 
       const flowResponse = await worker.fetch(telegramRequest(callbackUpdate("instances:create")), env as never);
       const flowBody = await flowResponse.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
@@ -353,7 +353,7 @@ describe("Phase 6 Linode instance read-only management", () => {
       expect([...db.settings.keys()].some((key) => key.startsWith("windows_instance:"))).toBe(false);
       const menuResponse = await worker.fetch(telegramRequest(callbackUpdate("menu:instances")), env as never);
       const menuBody = await menuResponse.json() as { data: { telegram: { payload: { reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
-      expect(menuBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🪟 创建 Windows 服务器", callback_data: "windows:create" });
+      expect(menuBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🪟 创建 Windows", callback_data: "windows:create" });
 
       const startFlow = await worker.fetch(telegramRequest(callbackUpdate("windows:create:account:1")), env as never);
       expect(startFlow.status).toBe(200);
@@ -398,8 +398,8 @@ describe("Phase 6 Linode instance read-only management", () => {
       expect(createdBody.data.telegram.payload.text).toContain("当前结论：创建请求已提交，不代表 3389 已可连接");
       expect(createdBody.data.telegram.payload.text).toContain("只有第 ③ 条通知才表示可以远程登录");
       expect(createdBody.data.telegram.payload.text).not.toContain("RDP：3389（安装完成后连接）");
-      expect(createdBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🏠 返回主菜单", callback_data: "menu:main" });
-      expect(createdBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🖥 稍后查看服务器详情", callback_data: "instances:detail:1:92022:account_1" });
+      expect(createdBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🏠 主菜单", callback_data: "menu:main" });
+      expect(createdBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toContainEqual({ text: "🖥 查看服务器详情", callback_data: "instances:detail:1:92022:account_1" });
       expect(createdBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).not.toContainEqual({ text: "🖥 打开服务器详情", callback_data: "instances:detail:1:92022:account_1" });
       const detailFlow = await worker.fetch(telegramRequest(callbackUpdate("instances:detail:1:92022:account_1")), env as never);
       const detailBody = await detailFlow.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<Record<string, unknown>>> } } } } };
@@ -766,11 +766,11 @@ describe("Phase 6 Linode instance read-only management", () => {
       const menuResponse = await worker.fetch(telegramRequest(callbackUpdate("menu:instances")), env as never);
       const menuBody = await menuResponse.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
       expect(menuResponse.status).toBe(200);
-      expect(menuBody.data.telegram.payload.text).toContain("🖥 服务器管理");
+      expect(menuBody.data.telegram.payload.text).toContain("🖥 服务器");
       expect(menuBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
         { text: "🖥 查看全部服务器", callback_data: "instances:list:all" },
-        { text: "🔎 筛选", callback_data: "instances:filter" },
-        { text: "⚡ 批量操作", callback_data: "menu:batch" }
+        { text: "🔎 筛选服务器", callback_data: "instances:filter" },
+        { text: "🏠 主菜单", callback_data: "menu:main" }
       ]));
 
       const groupsResponse = await worker.fetch(telegramRequest(callbackUpdate("instances:groups")), env as never);

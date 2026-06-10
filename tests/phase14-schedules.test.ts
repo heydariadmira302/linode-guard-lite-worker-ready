@@ -211,16 +211,16 @@ describe("Phase 14 power schedules", () => {
     const env = { ...baseEnv, DB: db as unknown as D1Database };
     const menu = await worker.fetch(telegramRequest(callbackUpdate("menu:schedules")), env as never);
     const menuBody = await menu.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
-    expect(menuBody.data.telegram.payload.text).toContain("📅 定时计划");
+    expect(menuBody.data.telegram.payload.text).toContain("⏰ 定时");
     expect(menuBody.data.telegram.payload.text).toContain("到点后 Bot 会自动执行");
     expect(menuBody.data.telegram.payload.text).toContain("🚀 自动开机：08:50（默认）");
     expect(menuBody.data.telegram.payload.text).toContain("🛑 自动关机：23:05（默认）");
     expect(menuBody.data.telegram.payload.text).not.toContain("boot / shutdown");
     expect(menuBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
-      { text: "🚀 设置开机时间", callback_data: "qs:time:b" },
-      { text: "🛑 设置关机时间", callback_data: "qs:time:s" },
-      { text: "🎯 设置执行范围", callback_data: "qs:scope" },
-      { text: "⚙️ 高级功能", callback_data: "schedules:advanced" }
+      { text: "🚀 开机时间", callback_data: "qs:time:b" },
+      { text: "🛑 关机时间", callback_data: "qs:time:s" },
+      { text: "🎯 执行范围", callback_data: "qs:scope" },
+      { text: "⚙️ 高级定时：单台/重启/Cron", callback_data: "schedules:advanced" }
     ]));
 
     const list = await worker.fetch(telegramRequest(callbackUpdate("schedules:list")), env as never);
@@ -300,8 +300,8 @@ describe("Phase 14 power schedules", () => {
 
     const createMenu = await worker.fetch(telegramRequest(callbackUpdate("schedules:create")), env as never);
     const createMenuBody = await createMenu.json() as { data: { telegram: { payload: { text: string; reply_markup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } } } };
-    expect(createMenuBody.data.telegram.payload.text).toContain("新增定时任务");
-    expect(createMenuBody.data.telegram.payload.text).toContain("先选择要做什么");
+    expect(createMenuBody.data.telegram.payload.text).toContain("新增高级定时");
+    expect(createMenuBody.data.telegram.payload.text).toContain("先选择动作");
     expect(createMenuBody.data.telegram.payload.reply_markup.inline_keyboard.flat()).toEqual(expect.arrayContaining([
       { text: "✅ 定时开机", callback_data: "sc:a:b" },
       { text: "⚠️ 定时关机", callback_data: "sc:a:s" },

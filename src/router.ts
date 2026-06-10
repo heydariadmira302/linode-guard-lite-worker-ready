@@ -3,7 +3,7 @@ import { AppError } from "./errors/app-error";
 import { ErrorCode } from "./errors/error-codes";
 import { verifyApiBearerToken } from "./middleware/auth";
 import { getRuntimeSecrets } from "./services/runtime-secret-service";
-import { handleCreateAccount, handleDeleteAccount, handleGetAccount, handleListAccounts, handleTestAccount, handleUpdateAccountToken } from "./api/accounts";
+import { handleCreateAccount, handleDeleteAccount, handleGetAccount, handleListAccounts, handleRenameAccount, handleTestAccount, handleUpdateAccountToken } from "./api/accounts";
 import { handleCreateGroup, handleDeleteGroup, handleListGroups, handleMoveAccountToGroup, handleRenameGroup } from "./api/groups";
 import { handleListAuditLogs } from "./api/audit-logs";
 import { handleAddProtectedInstance, handleGetAppSettings, handleRemoveProtectedInstance, handleUpdateAppSettings } from "./api/app-settings";
@@ -114,6 +114,8 @@ export async function routeRequest(request: Request, env: Env, requestId: string
       if (request.method === "GET" && accountInstancesMatch) return await handleListAccountInstances(request, env, requestId, Number(accountInstancesMatch[1]));
       const accountTokenMatch = url.pathname.match(/^\/api\/v1\/accounts\/(\d+)\/token$/);
       if (request.method === "PUT" && accountTokenMatch) return await handleUpdateAccountToken(request, env, requestId, Number(accountTokenMatch[1]));
+      const accountNameMatch = url.pathname.match(/^\/api\/v1\/accounts\/(\d+)\/name$/);
+      if (request.method === "PATCH" && accountNameMatch) return await handleRenameAccount(request, env, requestId, Number(accountNameMatch[1]));
       const accountTestMatch = url.pathname.match(/^\/api\/v1\/accounts\/(\d+)\/test$/);
       if (request.method === "POST" && accountTestMatch) return await handleTestAccount(request, env, requestId, Number(accountTestMatch[1]));
       const accountDeleteMatch = url.pathname.match(/^\/api\/v1\/accounts\/(\d+)$/);

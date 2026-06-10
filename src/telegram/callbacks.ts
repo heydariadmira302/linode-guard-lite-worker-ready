@@ -335,6 +335,28 @@ export async function routeTelegramCallback(
     }
   }
 
+  const accountRenameMatch = update.data.match(/^accounts:rename:(\d+)$/);
+  if (accountRenameMatch && sessions && env?.DB) {
+    try {
+      const account = await new AccountService(env).getAccount(Number(accountRenameMatch[1]), requestId);
+      await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "renaming_account", data: { account_id: account.id } });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: [`✏️ 修改账号名`, "", `当前账号：#${account.id} ${account.alias}`, "", "请发送新的账号名。", "支持中文、英文、数字、空格、下划线、短横线，最多 32 位。", "账号名不能和已有账号重复。", "", "不想继续可以点下方按钮，或发送 /cancel。"].join("\n"), reply_markup: { inline_keyboard: [[{ text: "取消改名", callback_data: `accounts:rename:cancel:${account.id}` }], [{ text: "返回账号详情", callback_data: `accounts:detail:${account.id}` }]] } });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  const accountRenameCancelMatch = update.data.match(/^accounts:rename:cancel:(\d+)$/);
+  if (accountRenameCancelMatch && sessions && env?.DB) {
+    try {
+      await sessions.clearCurrentSession(update.fromId);
+      const account = await new AccountService(env).getAccount(Number(accountRenameCancelMatch[1]), requestId);
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: "已取消修改账号名。", reply_markup: renderAccountDetailKeyboard(account) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
   const accountUpdateTokenMatch = update.data.match(/^accounts:update_token:(\d+)$/);
   if (accountUpdateTokenMatch && sessions && env?.DB) {
     try {
@@ -1960,7 +1982,7 @@ export async function routeTelegramCallback(
   if ((update.data === "windows:create:quick" || update.data === "windows:create:advanced") && env?.DB) {
     try {
       const accounts = await new AccountService(env).listAccounts();
-      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderCreateInstanceAccountText(accounts).replace("➕ 创建服务器", update.data === "windows:create:quick" ? "⚡ 快速创建 Windows" : "⚙️ 高级创建 Windows").replace("先选择要用哪个 Linode 账号创建服务器。", "先选择要用哪个 Linode 账号创建 Windows。"), reply_markup: { inline_keyboard: [...accounts.map((account) => [{ text: `👤 #${account.id} ${account.alias}`, callback_data: `windows:create:account:${account.id}` }]), [{ text: "↩️ 返回创建方式", callback_data: "windows:create" }, { text: "↩️ 返回云机管理", callback_data: "menu:instances" }]] } });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderCreateInstanceAccountText(accounts).replace("➕ 创建服务器", update.data === "windows:create:quick" ? "⚡ 快速创建 Windows" : "⚙️ 高级创建 Windows").replace("先选择要用哪个 Linode 账号创建服务器。", "先选择要用哪个 Linode 账号创建 Windows。选好账号后，Bot 会自动检查并准备初始化脚本。"), reply_markup: { inline_keyboard: [...accounts.map((account) => [{ text: `👤 #${account.id} ${account.alias}`, callback_data: `windows:create:account:${account.id}` }]), [{ text: "↩️ 上一步", callback_data: "windows:create" }, { text: "🏠 主菜单", callback_data: "menu:main" }]] } });
     } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
   }
 
@@ -1969,15 +1991,10 @@ export async function routeTelegramCallback(
     try {
       const accountId = Number(windowsAccountMatch[1]);
       const service = new WindowsInstanceService(env);
-      const status = await service.getStatus(accountId, requestId);
-      if (!status.configured) {
-        return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: `🪟 Windows StackScript 未配置
-━━━━━━━━━━━━
-账号：#${status.account.id} ${status.account.alias}
-
-需要先在当前 Linode 账号创建私有 StackScript。这个操作只写入 StackScript，不会创建服务器。`, reply_markup: { inline_keyboard: [[{ text: "✅ 创建/更新私有 StackScript", callback_data: `windows:stackscript:ensure:${accountId}` }], [{ text: "❌ 取消", callback_data: "menu:instances" }]] } });
-      }
-      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsVersionText(), reply_markup: renderWindowsVersionKeyboard(accountId) });
+      const initialStatus = await service.getStatus(accountId, requestId);
+      const status = initialStatus.configured ? initialStatus : await service.ensureStackScript(accountId, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+      const prefix = initialStatus.configured ? "" : `✅ 已自动准备 Windows 初始化脚本\n账号：#${status.account.id} ${status.account.alias}\n\n`;
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: `${prefix}${renderWindowsVersionText()}`, reply_markup: renderWindowsVersionKeyboard(accountId) });
     } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
   }
 
@@ -2123,7 +2140,7 @@ export async function routeTelegramCallback(
 ━━━━━━━━━━━━
 账号：#${status.account.id} ${status.account.alias}
 StackScript ID：${status.stackscript_id}
-版本：${status.version_label}`, reply_markup: { inline_keyboard: [[{ text: "继续创建 Windows", callback_data: `windows:create:account:${accountId}` }], [{ text: "↩️ 返回服务器管理", callback_data: "menu:instances" }]] } });
+版本：${status.version_label}`, reply_markup: { inline_keyboard: [[{ text: "继续创建 Windows", callback_data: `windows:create:account:${accountId}` }], [{ text: "↩️ 上一层", callback_data: "menu:instances" }], [{ text: "🏠 主菜单", callback_data: "menu:main" }]] } });
     } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
   }
 
@@ -2150,7 +2167,7 @@ StackScript ID：${status.stackscript_id}
       const parsed = await getCreateInstanceSession(sessions, update.fromId);
       const data = await new WindowsInstanceService(env).createWindowsInstance(accountId, { region: String(parsed.state.region), type: String(parsed.state.type), label: typeof parsed.state.label === "string" ? parsed.state.label : undefined, firewall_id: parsed.state.firewall_id === undefined ? null : Number(parsed.state.firewall_id), version: parsed.state.windows_version as any, lang: parsed.state.windows_lang as any, administrator_password: typeof parsed.state.administrator_password === "string" ? parsed.state.administrator_password : undefined, windows_username: typeof parsed.state.windows_username === "string" ? parsed.state.windows_username : undefined, keep_administrator_fallback: typeof parsed.state.keep_administrator_fallback === "boolean" ? parsed.state.keep_administrator_fallback : undefined }, { requestId, actor: `telegram:${update.fromId}`, source: "telegram", telegramChatId: String(update.chatId), telegramUserId: String(update.fromId) });
       await sessions.clearCurrentSession(update.fromId);
-      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsCreatedText(data), reply_markup: { inline_keyboard: [[{ text: "🏠 返回主菜单", callback_data: "menu:main" }], [{ text: "↩️ 返回账号服务器", callback_data: `instances:list:account:${data.account.id}` }], [{ text: "🖥 稍后查看服务器详情", callback_data: `instances:detail:${data.account.id}:${data.instance.id}:account_${data.account.id}` }]] } });
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderWindowsCreatedText(data), reply_markup: { inline_keyboard: [[{ text: "🖥 查看服务器详情", callback_data: `instances:detail:${data.account.id}:${data.instance.id}:account_${data.account.id}` }], [{ text: "↩️ 上一层", callback_data: `instances:list:account:${data.account.id}` }], [{ text: "🏠 主菜单", callback_data: "menu:main" }]] } });
     } catch (error) { return renderTelegramCallbackError(update, client, error, requestId); }
   }
 

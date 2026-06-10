@@ -9,19 +9,23 @@ export function renderMainMenuText(): string {
   return [
     "🛡 Linode Guard Lite",
     "━━━━━━━━━━━━",
-    "常用功能在聊天框下方。",
+    "先按你要做的事进入，不用记功能藏在哪。",
     "",
-    "这里放一些不常用、但需要快速进入的辅助入口。"
+    "日常最常用：",
+    "• 🖥 服务器：查看、开关机、创建 Windows",
+    "• ⏰ 定时：每天自动开关机；单台/重启放在高级里",
+    "• 👤 账号：添加或更新 Linode Token",
+    "",
+    "低频工具统一放到「📋 更多」。"
   ].join("\n");
 }
 
 export function renderMainMenuKeyboard(): TelegramInlineKeyboardMarkup {
   return {
     inline_keyboard: [
-      [{ text: "👤 账号管理", callback_data: "menu:accounts" }, { text: "📁 分组管理", callback_data: "menu:groups" }],
-      [{ text: "🛡 安全事件", callback_data: "menu:security" }, { text: "⚡ 批量操作", callback_data: "menu:batch" }],
-      [{ text: "📄 审计日志", callback_data: "menu:audit_logs" }, { text: "🔒 隐私清理", callback_data: "menu:privacy" }],
-      [{ text: "⚙️ 系统设置", callback_data: "menu:settings" }]
+      [{ text: "🖥 服务器", callback_data: "menu:instances" }, { text: "⏰ 定时", callback_data: "menu:schedules" }],
+      [{ text: "👤 账号", callback_data: "menu:accounts" }, { text: "🛡 安全", callback_data: "menu:security" }],
+      [{ text: "📄 审计", callback_data: "menu:audit_logs" }, { text: "📋 更多", callback_data: "menu:more" }]
     ]
   };
 }
@@ -30,14 +34,14 @@ export function renderMoreMenuText(): string {
   return [
     "📋 更多功能",
     "━━━━━━━━━━━━",
-    "这里放低频但重要的管理入口。",
+    "这些是低频管理工具，日常不用先进这里。",
     "",
-    "⚡ 批量：按账号、分组或全部范围处理服务器",
-    "📁 分组：按业务或地区管理账号",
-    "📄 审计：查看操作记录、失败原因和请求编号",
+    "⚡ 批量：批量开关机/删除",
+    "📁 分组：整理账号和服务器范围",
+    "📄 审计：查操作记录、失败原因、请求编号",
     "🔒 隐私：设置 Telegram 消息自动清理",
-    "⚙️ 设置：系统诊断和安全开关",
-    "🪪 我的ID：查看 Telegram 用户名、User ID 和 Chat ID"
+    "⚙️ 设置：系统诊断、安全开关和保护规则",
+    "🪪 我的ID：查看 Telegram User ID / Chat ID"
   ].join("\n");
 }
 
@@ -46,7 +50,8 @@ export function renderMoreMenuKeyboard(): TelegramInlineKeyboardMarkup {
     inline_keyboard: [
       [{ text: "⚡ 批量", callback_data: "menu:batch" }, { text: "📁 分组", callback_data: "menu:groups" }],
       [{ text: "📄 审计", callback_data: "menu:audit_logs" }, { text: "🔒 隐私", callback_data: "menu:privacy" }],
-      [{ text: "⚙️ 设置", callback_data: "menu:settings" }, { text: "🪪 我的ID", callback_data: "menu:myid" }],
+      [{ text: "📊 总览", callback_data: "menu:status_overview" }, { text: "🪪 我的ID", callback_data: "menu:myid" }],
+      [{ text: "⚙️ 设置", callback_data: "menu:settings" }],
       [{ text: "🏠 主菜单", callback_data: "menu:main" }]
     ]
   };
@@ -162,7 +167,7 @@ export function renderAccountDetailText(account: PublicAccount): string {
     "",
     `Token：${formatTokenStatus(account.token_status)}`,
     "",
-    "常用操作：查看服务器、测试/更新 Token、移动分组。"
+    "常用操作：查看服务器、改名、更新 Token、移动分组。"
   ].join("\n");
 }
 
@@ -170,8 +175,8 @@ export function renderAccountDetailKeyboard(account: PublicAccount): TelegramInl
   return {
     inline_keyboard: [
       [{ text: "🖥 查看该账号服务器", callback_data: `instances:list:account:${account.id}` }],
-      [{ text: "🔍 测试 Token", callback_data: `accounts:test:${account.id}` }],
-      [{ text: "✏️ 更新 Token", callback_data: `accounts:update_token:${account.id}` }],
+      [{ text: "✏️ 修改账号名", callback_data: `accounts:rename:${account.id}` }, { text: "🔍 测试 Token", callback_data: `accounts:test:${account.id}` }],
+      [{ text: "🔑 更新 Token", callback_data: `accounts:update_token:${account.id}` }],
       [{ text: "📁 移动分组", callback_data: `accounts:move_group:${account.id}` }],
       [{ text: "🚨 从 Bot 删除账号", callback_data: `accounts:delete_confirm:${account.id}` }],
       [{ text: "↩️ 返回账号列表", callback_data: "accounts:list" }],
