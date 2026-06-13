@@ -28,6 +28,7 @@ import { renderSecurityMenuKeyboard, renderSecurityMenuText } from "./security-r
 import { renderAuditLogsKeyboard, renderAuditLogsText } from "./audit-renderer";
 import { renderStatusOverviewKeyboard, renderStatusOverviewText } from "./status-overview-renderer";
 import { SecurityService } from "../services/security-service";
+import { notifyNewSuperAdmin } from "../services/super-admin-notification-service";
 import { addD1SuperAdmin, canManageSuperAdmins, listSuperAdmins } from "../services/super-admin-service";
 import { acquireActionCooldown, renderActionCooldownText } from "./action-cooldown";
 import { renderTelegramOperationResult } from "./result-template";
@@ -265,9 +266,13 @@ async function continueSuperAdminFlow(
   }
   try {
     await addD1SuperAdmin(env, raw, `telegram:${update.fromId}`);
+    const notification = await notifyNewSuperAdmin(env, raw);
     const admins = await listSuperAdmins(env);
     await sessions.clearCurrentSession(update.fromId);
-    return client.sendMessage({ chat_id: update.chatId, text: renderAdminsMenuText(admins, true), reply_markup: renderAdminsMenuKeyboard(admins, true) });
+    const suffix = notification.ok
+      ? `\n\n✅ 已主动通知新管理员 ${raw}。`
+      : `\n\n⚠️ 管理员已添加，但主动通知 ${raw} 失败。通常是对方还没给 Bot 发过 /start，请让对方先打开 Bot 后再试。`;
+    return client.sendMessage({ chat_id: update.chatId, text: `${renderAdminsMenuText(admins, true)}${suffix}`, reply_markup: renderAdminsMenuKeyboard(admins, true) });
   } catch (error) {
     await sessions.clearCurrentSession(update.fromId);
     return client.sendMessage({ chat_id: update.chatId, text: renderTelegramOperationResult({ title: "添加管理员失败", status: "failed", requestId, errorMessage: error instanceof Error ? error.message : "未知错误", nextStep: "请确认输入的是 Telegram 数字 ID，然后重试。" }), reply_markup: renderCheckinInlineKeyboard() });

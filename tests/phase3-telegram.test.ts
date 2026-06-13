@@ -191,6 +191,7 @@ describe("Phase 3 Telegram webhook and menu", () => {
     const addBody = await addResponse.json() as { data: { telegram: { payload: { text: string } } } };
     expect(addResponse.status).toBe(200);
     expect(addBody.data.telegram.payload.text).toContain("987654321");
+    expect(addBody.data.telegram.payload.text).toContain("已主动通知新管理员");
     const storedAdmins = JSON.parse(fakeDb.settings.get("super_admins_d1") ?? "[]") as Array<{ telegram_user_id: string }>;
     expect(storedAdmins.map((admin) => admin.telegram_user_id)).toEqual(["987654321"]);
 
@@ -242,6 +243,7 @@ describe("Phase 3 Telegram webhook and menu", () => {
     const addBody = await addResponse.json() as { ok: boolean; data: { telegram: { payload: { text: string } } } };
     expect(addResponse.status).toBe(200);
     expect(addBody.data.telegram.payload.text).toContain("987654321");
+    expect(addBody.data.telegram.payload.text).toContain("已主动通知新管理员");
     expect(fakeDb.settings.get("super_admins_d1")).toContain("987654321");
 
     const allowedResponse = await worker.fetch(telegramRequest(messageUpdate("/start", 987654321)), testEnv as never);
