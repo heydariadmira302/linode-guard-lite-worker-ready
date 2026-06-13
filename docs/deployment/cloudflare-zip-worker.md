@@ -174,7 +174,7 @@ curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
 /start
 ```
 
-如果没有手动设置 `SUPER_ADMIN_TELEGRAM_ID`，第一次给 bot 发消息的人会自动绑定为 Super Admin。
+如果没有手动设置 `SUPER_ADMIN_TELEGRAM_IDS` 或旧的 `SUPER_ADMIN_TELEGRAM_ID`，第一次给 bot 发消息的人会自动绑定为 Super Admin。
 
 ## 如果你一定要用 ZIP
 

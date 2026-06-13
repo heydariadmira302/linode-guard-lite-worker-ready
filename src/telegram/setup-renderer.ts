@@ -3,7 +3,7 @@ import type { DeploymentDiagnostics, JobsDiagnostics } from "../services/setup-s
 const DEPLOYMENT_LABELS: Record<string, string> = {
   telegram_bot_token: "Telegram Bot Token",
   telegram_webhook_secret: "Webhook Secret",
-  super_admin_telegram_id: "Super Admin Telegram ID",
+  super_admin_telegram_id: "Super Admin Telegram IDs",
   api_auth_token: "API Auth Token",
   linode_token_encryption_key: "Token 加密密钥",
   worker_version_metadata: "Worker 版本元数据",
@@ -39,7 +39,7 @@ export function renderSetupWizardText(deployment: DeploymentDiagnostics, jobs: J
     lines.push("", "问题：", ...problems.map((problem) => `- ${problem}`));
   }
 
-  lines.push("", "下一步：", "1. 如有缺失项，先修复 Cloudflare Worker Secrets / D1 binding / migrations", "2. 调用 POST /api/v1/setup/initialize 初始化默认 settings、jobs 和运行时密钥", "3. 打开 Telegram 后首次消息会自动绑定 Super Admin", "4. Phase 5 再添加 Linode 账号 Token");
+  lines.push("", "下一步：", "1. 如有缺失项，先修复 Cloudflare Worker Secrets / D1 binding / migrations", "2. 调用 POST /api/v1/setup/initialize 初始化默认 settings、jobs 和运行时密钥", "3. 推荐配置 SUPER_ADMIN_TELEGRAM_IDS；如未配置显式管理员，打开 Telegram 后首次消息会自动绑定 Super Admin", "4. Phase 5 再添加 Linode 账号 Token");
 
   return lines.join("\n");
 }

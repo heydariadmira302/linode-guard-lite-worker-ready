@@ -37,7 +37,7 @@ https://github.com/<YOUR_GITHUB_REPO>
 - `TELEGRAM_WEBHOOK_SECRET` 会在首次 `/setup initialize` 时自动生成
 - `API_AUTH_TOKEN` 会在首次 `/setup initialize` 时自动生成
 - `LINODE_TOKEN_ENCRYPTION_KEY` 会在首次 `/setup initialize` 时自动生成
-- `SUPER_ADMIN_TELEGRAM_ID` 可以在首次 Telegram 消息时自动绑定
+- 推荐设置 `SUPER_ADMIN_TELEGRAM_IDS`（逗号或空白分隔多个管理员）；未设置时兼容旧的 `SUPER_ADMIN_TELEGRAM_ID`；两者都不设置时才会在首次 Telegram 消息自动绑定
 
 如果你希望更安全，后面再逐个单独设置也可以。
 
@@ -630,22 +630,26 @@ openssl rand -base64 32
 
 如果你不会用命令，也可以用密码管理器生成一串随机值。
 
-### 11.3 SUPER_ADMIN_TELEGRAM_ID
+### 11.3 SUPER_ADMIN_TELEGRAM_IDS / SUPER_ADMIN_TELEGRAM_ID
 
-这是你的 Telegram 数字 user id，不是用户名，不是 `@xxx`。
+这是允许使用 Bot 的 Super Admin Telegram 数字 user id，不是用户名，不是 `@xxx`。
+
+推荐使用新变量 `SUPER_ADMIN_TELEGRAM_IDS` 配置一个或多个管理员；多个 ID 可用逗号、空格或换行分隔。为了向后兼容，如果没有设置 `SUPER_ADMIN_TELEGRAM_IDS`，Worker 会继续读取旧的 `SUPER_ADMIN_TELEGRAM_ID` 单值。
 
 - Type：Secret
 - Name：
 
 ```text
-SUPER_ADMIN_TELEGRAM_ID
+SUPER_ADMIN_TELEGRAM_IDS
 ```
 
-- Value：你的 Telegram numeric user id，例如：
+- Value：一个或多个 Telegram numeric user id，例如：
 
 ```text
-123456789
+123456789,987654321
 ```
+
+如两个变量都未设置，首次 Telegram 消息会自动绑定一个 Super Admin；一旦配置了任一显式管理员变量，自动绑定不会发生。生产环境建议显式设置 `SUPER_ADMIN_TELEGRAM_IDS`，避免部署窗口期被错误账号抢占。
 
 获取方式：可以在 Telegram 搜索 `userinfobot` 或类似工具查询自己的数字 ID。
 
@@ -834,7 +838,7 @@ curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/getWebhookInfo"
 /setup
 ```
 
-如果你是已绑定的 Super Admin，Bot 会返回部署检查和初始化入口；未手动设置 `SUPER_ADMIN_TELEGRAM_ID` 时，首次 Telegram 消息会自动绑定。
+如果你是已配置或已绑定的 Super Admin，Bot 会返回部署检查和初始化入口；未手动设置 `SUPER_ADMIN_TELEGRAM_IDS` 或旧的 `SUPER_ADMIN_TELEGRAM_ID` 时，首次 Telegram 消息会自动绑定。
 
 ### 方式 B：HTTP API 初始化
 
@@ -999,7 +1003,7 @@ curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/getWebhookInfo"
 
 - URL 是 `https://<你的Worker地址>/telegram/webhook`
 - `secret_token` 和初始化生成或手动设置的 `TELEGRAM_WEBHOOK_SECRET` 一致
-- 如果手动设置了 `SUPER_ADMIN_TELEGRAM_ID`，确认它和你的 Telegram 数字 ID 一致
+- 如果手动设置了 `SUPER_ADMIN_TELEGRAM_IDS`（或旧的 `SUPER_ADMIN_TELEGRAM_ID`），确认其中包含你的 Telegram 数字 ID
 
 ### 20.6 Cron 没执行
 
@@ -1066,7 +1070,7 @@ Cloudflare Git 集成会自动重新部署，或者你可以在 Cloudflare 的 D
   - `API_AUTH_TOKEN`
   - `TELEGRAM_WEBHOOK_SECRET`
   - `LINODE_TOKEN_ENCRYPTION_KEY`
-- `SUPER_ADMIN_TELEGRAM_ID` 可选；不设置时，首次 Telegram 消息会自动绑定。
+- `SUPER_ADMIN_TELEGRAM_IDS` 可选；支持逗号/空白分隔多个管理员；未设置时兼容旧的 `SUPER_ADMIN_TELEGRAM_ID`；两者都不设置时，首次 Telegram 消息会自动绑定。
 - Cron Trigger 默认已在 `wrangler.toml` 设置：`* * * * *`
 - `/api/v1/health` 正常。
 - `/api/v1/diagnostics/deployment` 正常。

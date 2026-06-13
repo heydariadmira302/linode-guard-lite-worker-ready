@@ -36,6 +36,9 @@ describe("Phase 2 auth, errors, audit foundations", () => {
     await expect(verifyTelegramWebhookSecret(new Request("https://example.com", { headers: { "X-Telegram-Bot-Api-Secret-Token": "bot-token" } }), { ...env, TELEGRAM_WEBHOOK_SECRET: undefined })).resolves.toBe(false);
     expect(isSuperAdmin(123456789, env)).toBe(true);
     expect(isSuperAdmin(987654321, env)).toBe(false);
+    expect(isSuperAdmin(987654321, { ...env, SUPER_ADMIN_TELEGRAM_IDS: "123456789, 987654321" })).toBe(true);
+    expect(isSuperAdmin(555555555, { ...env, SUPER_ADMIN_TELEGRAM_ID: "111111111", SUPER_ADMIN_TELEGRAM_IDS: "123456789\n555555555" })).toBe(true);
+    expect(isSuperAdmin(111111111, { ...env, SUPER_ADMIN_TELEGRAM_ID: "111111111", SUPER_ADMIN_TELEGRAM_IDS: "123456789\n555555555" })).toBe(false);
     expect(isSuperAdmin(undefined, { ...env, SUPER_ADMIN_TELEGRAM_ID: undefined as unknown as string })).toBe(false);
   });
 

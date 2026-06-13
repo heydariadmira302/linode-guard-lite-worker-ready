@@ -88,7 +88,7 @@ TELEGRAM_WEBHOOK_SECRET
 LINODE_TOKEN_ENCRYPTION_KEY
 ```
 
-`SUPER_ADMIN_TELEGRAM_ID` 也可以不填，首次给 Bot 发消息的人会自动绑定为管理员。
+`SUPER_ADMIN_TELEGRAM_IDS` 也可以不填，首次给 Bot 发消息的人会自动绑定为管理员；如需多个最高权限管理员，填多个 Telegram 数字 ID（逗号/空格/换行分隔）。旧的 `SUPER_ADMIN_TELEGRAM_ID` 仍兼容。
 
 ## 5. 设置 Cron Trigger
 
@@ -163,7 +163,7 @@ curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
 /start
 ```
 
-如果没有设置 `SUPER_ADMIN_TELEGRAM_ID`，第一位成功发送消息的 Telegram 用户会自动绑定为 Super Admin。
+如果没有设置 `SUPER_ADMIN_TELEGRAM_IDS` / `SUPER_ADMIN_TELEGRAM_ID`，第一位成功发送消息的 Telegram 用户会自动绑定为 Super Admin。
 
 ## 9. 添加 Linode 账号
 

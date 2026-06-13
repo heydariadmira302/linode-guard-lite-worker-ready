@@ -51,9 +51,9 @@ Telegram Webhook 校验 `X-Telegram-Bot-Api-Secret-Token`，必须与独立的 `
 
 ## Super Admin
 
-MVP 只允许一个 Super Admin Telegram 用户使用 Bot。可手动设置 `SUPER_ADMIN_TELEGRAM_ID`，也可让首次 Telegram 消息自动绑定。请给 Telegram 账号开启 2FA。
+Bot 支持一个或多个最高权限 Super Admin Telegram 用户。优先手动设置 `SUPER_ADMIN_TELEGRAM_IDS`（多个数字 ID 用逗号/空格/换行分隔），旧的 `SUPER_ADMIN_TELEGRAM_ID` 仍兼容；也可让首次 Telegram 消息自动绑定一个 Super Admin。请给 Telegram 账号开启 2FA。
 
-首次自动绑定方便部署，但也意味着安装窗口期需要保护好 webhook 地址、Bot Token 和测试环境。生产环境更建议显式设置 `SUPER_ADMIN_TELEGRAM_ID`。
+首次自动绑定方便部署，但也意味着安装窗口期需要保护好 webhook 地址、Bot Token 和测试环境。生产环境更建议显式设置 `SUPER_ADMIN_TELEGRAM_IDS`；只要配置了 `SUPER_ADMIN_TELEGRAM_IDS` 或旧的 `SUPER_ADMIN_TELEGRAM_ID`，首次消息自动绑定就不会发生，不会扩大未授权窗口。
 
 ## Telegram Callback 安全
 

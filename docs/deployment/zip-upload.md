@@ -87,7 +87,7 @@ LINODE_TOKEN_ENCRYPTION_KEY
 
 如果你愿意，也可以手动预先设置这三个值。
 
-SUPER_ADMIN_TELEGRAM_ID 可选：不设置时，首次 Telegram 消息会自动绑定。
+SUPER_ADMIN_TELEGRAM_IDS 可选：多个最高权限管理员用逗号/空格/换行分隔；旧的 SUPER_ADMIN_TELEGRAM_ID 仍兼容。不设置时，首次 Telegram 消息会自动绑定。
 
 Cron：
 * * * * *
@@ -135,11 +135,11 @@ lg_webhook_8f3a9c2d7e1b4a6f9c0d2e5a
 - 不要太短
 - 不要和 Bot Token 一样
 
-### 6.3 `SUPER_ADMIN_TELEGRAM_ID`
+### 6.3 `SUPER_ADMIN_TELEGRAM_IDS` / `SUPER_ADMIN_TELEGRAM_ID`
 
-这是你的 Telegram 用户 ID，不是用户名，也不是手机号。
+这是最高权限管理员的 Telegram 用户 ID，不是用户名，也不是手机号。
 
-如果不设置，首次 Telegram 消息会自动绑定当前用户。
+如果不设置，首次 Telegram 消息会自动绑定当前用户。多个管理员优先使用 `SUPER_ADMIN_TELEGRAM_IDS`，用逗号/空格/换行分隔；旧的 `SUPER_ADMIN_TELEGRAM_ID` 仍兼容。
 
 如果你想手动设置，也可以填 Telegram 数字 ID，例如：
 

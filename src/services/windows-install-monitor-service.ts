@@ -1,4 +1,5 @@
 import type { Env } from "../env";
+import { getSuperAdminTelegramId } from "../env";
 import { ErrorCode } from "../errors/error-codes";
 import { AppError } from "../errors/app-error";
 import { WindowsInstallRepository, type WindowsInstallRecord } from "../storage/windows-install-repository";
@@ -57,7 +58,7 @@ export class WindowsInstallMonitorService {
   }
 
   private async notifyTimeout(record: WindowsInstallRecord, olderThanMinutes: number): Promise<boolean> {
-    const chatId = record.telegram_chat_id || this.env.SUPER_ADMIN_TELEGRAM_ID;
+    const chatId = record.telegram_chat_id || getSuperAdminTelegramId(this.env);
     if (!chatId || !this.env.TELEGRAM_BOT_TOKEN) return false;
     const text = [
       "⏱ Windows 安装可能已接近完成，但还没收到完成回调",
@@ -97,7 +98,7 @@ export class WindowsInstallMonitorService {
   }
 
   private async notifyInstallCallback(record: WindowsInstallRecord): Promise<boolean> {
-    const chatId = record.telegram_chat_id || this.env.SUPER_ADMIN_TELEGRAM_ID;
+    const chatId = record.telegram_chat_id || getSuperAdminTelegramId(this.env);
     if (!chatId || !this.env.TELEGRAM_BOT_TOKEN) return false;
     const ip = record.ip_address || "请在 Linode 控制台查看公网 IPv4";
     const text = [

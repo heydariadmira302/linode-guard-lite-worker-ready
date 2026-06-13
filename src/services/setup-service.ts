@@ -122,7 +122,7 @@ export class DiagnosticsService {
     const checks: DeploymentDiagnostics["checks"] = {
       telegram_bot_token: envCheck(hasValue(this.env.TELEGRAM_BOT_TOKEN), "Missing TELEGRAM_BOT_TOKEN"),
       telegram_webhook_secret: envCheck(hasValue(runtimeSecrets.telegram_webhook_secret), "Missing TELEGRAM_WEBHOOK_SECRET; run /setup initialize to auto-generate"),
-      super_admin_telegram_id: envCheck(true, "Super Admin can be bootstrapped from first Telegram message"),
+      super_admin_telegram_id: envCheck(true, "Super Admin can be configured with SUPER_ADMIN_TELEGRAM_IDS/SUPER_ADMIN_TELEGRAM_ID or bootstrapped from first Telegram message"),
       api_auth_token: envCheck(hasValue(runtimeSecrets.api_auth_token), "Missing API_AUTH_TOKEN; run /setup initialize to auto-generate"),
       linode_token_encryption_key: envCheck(hasValue(runtimeSecrets.linode_token_encryption_key), "Missing LINODE_TOKEN_ENCRYPTION_KEY; run /setup initialize to auto-generate"),
       worker_version_metadata: { ok: true, message: this.env.CF_VERSION_METADATA?.id ? "Worker version metadata enabled" : "Worker version metadata is optional; update notifications will start after Cloudflare provides CF_VERSION_METADATA" },
@@ -264,7 +264,7 @@ async function ensurePublicBaseUrl(settingsRepository: SettingsRepository, env: 
 
 async function sendInstallNotification(env: Env, webhookUrl: string | null, webhookOk: boolean): Promise<{ attempted: boolean; ok: boolean; chat_id?: string; error?: string }> {
   const chatId = await getSuperAdminChatId(env);
-  if (!chatId) return { attempted: false, ok: false, error: "SUPER_ADMIN_TELEGRAM_ID 未设置，且还没有 Telegram 自动绑定管理员" };
+  if (!chatId) return { attempted: false, ok: false, error: "SUPER_ADMIN_TELEGRAM_IDS / SUPER_ADMIN_TELEGRAM_ID 未设置，且还没有 Telegram 自动绑定管理员" };
   try {
     const result = await sendTelegramAction(env.TELEGRAM_BOT_TOKEN, {
       method: "sendMessage",

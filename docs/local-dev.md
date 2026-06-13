@@ -23,7 +23,7 @@ TELEGRAM_BOT_TOKEN="你的测试 Telegram Bot Token"
 API_AUTH_TOKEN="<YOUR_API_AUTH_TOKEN>"
 TELEGRAM_WEBHOOK_SECRET="<YOUR_TELEGRAM_WEBHOOK_SECRET>"
 LINODE_TOKEN_ENCRYPTION_KEY="<YOUR_LINODE_TOKEN_ENCRYPTION_KEY>"
-# SUPER_ADMIN_TELEGRAM_ID="你的 Telegram 数字 ID，可选"
+# SUPER_ADMIN_TELEGRAM_IDS="你的 Telegram 数字 ID，可选，多个用逗号分隔"
 ```
 
 注意：
@@ -107,7 +107,7 @@ curl -sS "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
 
 4. 给测试 Bot 发送 `/start`。
 
-如果 `.dev.vars` 没设置 `SUPER_ADMIN_TELEGRAM_ID`，第一条 Telegram 消息会自动绑定为 Super Admin。
+如果 `.dev.vars` 没设置 `SUPER_ADMIN_TELEGRAM_IDS` / `SUPER_ADMIN_TELEGRAM_ID`，第一条 Telegram 消息会自动绑定为 Super Admin。
 
 ## 8. 本地 API 测试示例
 

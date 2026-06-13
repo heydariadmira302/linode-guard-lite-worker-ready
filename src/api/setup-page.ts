@@ -184,7 +184,7 @@ function formatInstallResult(response) {
     'Telegram Webhook：' + formatWebhookStatus(data.telegram_webhook),
     '安装成功通知：' + formatNotificationStatus(data.install_notification),
     '',
-    '如果 Webhook 显示成功，直接给 bot 发送 /start；如果设置了 SUPER_ADMIN_TELEGRAM_ID，系统也会尝试主动发送安装成功通知。',
+    '如果 Webhook 显示成功，直接给 bot 发送 /start；如果设置了 SUPER_ADMIN_TELEGRAM_IDS / SUPER_ADMIN_TELEGRAM_ID，系统也会尝试主动发送安装成功通知。',
     '',
     '后续进入 /setup 使用 API_AUTH_TOKEN，不要再使用 Bot Token。',
     '',
@@ -200,7 +200,7 @@ function formatWebhookStatus(webhook) {
 }
 
 function formatNotificationStatus(notification) {
-  if (!notification || !notification.attempted) return '未主动发送（未设置 SUPER_ADMIN_TELEGRAM_ID，或尚未绑定管理员）';
+  if (!notification || !notification.attempted) return '未主动发送（未设置 SUPER_ADMIN_TELEGRAM_IDS / SUPER_ADMIN_TELEGRAM_ID，或尚未绑定管理员）';
   if (notification.ok) return '✅ 已发送到 chat_id=' + notification.chat_id;
   return '⚠️ 发送失败：' + (notification.error || '未知错误') + '。如果你还没和 bot 说过话，请先给 bot 发 /start。';
 }

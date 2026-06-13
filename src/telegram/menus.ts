@@ -1,6 +1,7 @@
 import type { PublicAccount } from "../services/account-service";
 import type { AppSettings } from "../services/app-settings-service";
 import type { PublicGroup } from "../services/group-service";
+import type { ListedSuperAdmin } from "../services/super-admin-service";
 
 import type { TelegramInlineKeyboardMarkup } from "./types";
 import { renderTelegramOperationResult } from "./result-template";
@@ -40,6 +41,7 @@ export function renderMoreMenuText(): string {
     "📁 分组：整理账号和服务器范围",
     "📄 审计：查操作记录、失败原因、请求编号",
     "🔒 隐私：设置 Telegram 消息自动清理",
+    "👑 管理员：查看、添加或删除 D1 最高权限管理员",
     "⚙️ 设置：系统诊断、安全开关和保护规则",
     "🪪 我的ID：查看 Telegram User ID / Chat ID"
   ].join("\n");
@@ -51,6 +53,7 @@ export function renderMoreMenuKeyboard(): TelegramInlineKeyboardMarkup {
       [{ text: "⚡ 批量", callback_data: "menu:batch" }, { text: "📁 分组", callback_data: "menu:groups" }],
       [{ text: "📄 审计", callback_data: "menu:audit_logs" }, { text: "🔒 隐私", callback_data: "menu:privacy" }],
       [{ text: "📊 总览", callback_data: "menu:status_overview" }, { text: "🪪 我的ID", callback_data: "menu:myid" }],
+      [{ text: "👑 管理员管理", callback_data: "menu:admins" }],
       [{ text: "⚙️ 设置", callback_data: "menu:settings" }],
       [{ text: "🏠 主菜单", callback_data: "menu:main" }]
     ]
@@ -307,11 +310,68 @@ export function renderSettingsMenuKeyboard(settings?: Pick<AppSettings, "dangero
     inline_keyboard: [
       [{ text: cooldownEnabled ? "关闭高危操作冷却" : "开启高危操作冷却", callback_data: `settings:danger_cooldown:${cooldownEnabled ? "off" : "on"}` }],
       [{ text: "🔒 隐私清理", callback_data: "menu:privacy" }],
+      [{ text: "👑 管理员管理", callback_data: "admins:menu" }],
       [{ text: "系统自检 / 诊断中心", callback_data: "menu:diagnostics" }],
       [{ text: "🪪 我的ID", callback_data: "menu:myid" }],
       [{ text: "返回主菜单", callback_data: "menu:main" }]
     ]
   };
+}
+
+export function renderAdminsMenuText(admins: ListedSuperAdmin[], canManage = false): string {
+  const lines = ["👑 管理员管理", "━━━━━━━━━━━━", "这里管理能操作 Bot 的最高权限 Telegram 管理员。", "", `当前管理员：${admins.length} 个`, ""];
+  if (admins.length === 0) lines.push("暂无管理员。建议先配置 SUPER_ADMIN_TELEGRAM_IDS 或重新完成首次绑定。");
+  for (const admin of admins) {
+    lines.push(
+      `${formatAdminSourceIcon(admin.source)} ${admin.telegram_user_id}`,
+      `来源：${formatAdminSource(admin.source)}`,
+      `可删除：${!admin.protected ? "是" : "否（配置/首次绑定管理员需在部署配置中调整）"}`,
+      admin.chat_id && admin.chat_id !== admin.telegram_user_id ? `Chat ID：${admin.chat_id}` : "",
+      ""
+    );
+  }
+  if (canManage) {
+    lines.push("新增管理员请点击下方按钮，然后发送对方 Telegram 数字 ID。不是 @用户名。", "如果对方不知道 ID，让他用 @userinfobot 查询。", "⚠️ 新增后拥有最高权限，包括删机/批量/保活策略。");
+  } else {
+    lines.push("只有 Cloudflare Secret 里配置的根管理员可以添加或删除管理员。", "Bot 内新增的管理员可以使用日常最高权限，但不能继续扩权拉人。");
+  }
+  return lines.filter(Boolean).join("\n").trimEnd();
+}
+
+export function renderAdminsMenuKeyboard(admins: ListedSuperAdmin[] = [], canManage = false): TelegramInlineKeyboardMarkup {
+  const removable = canManage ? admins.filter((admin) => !admin.protected) : [];
+  return {
+    inline_keyboard: [
+      ...(canManage ? [[{ text: "➕ 添加管理员", callback_data: "admins:add" }]] : []),
+      ...removable.map((admin) => [{ text: `🗑 删除 ${admin.telegram_user_id}`, callback_data: `admins:remove_confirm:${admin.telegram_user_id}` }]),
+      [{ text: "🔄 刷新", callback_data: "admins:menu" }],
+      [{ text: "↩️ 返回设置", callback_data: "menu:settings" }]
+    ]
+  };
+}
+
+export function renderAdminAddPromptText(): string {
+  return ["➕ 添加最高权限管理员", "", "请发送对方 Telegram 数字 ID。", "", "注意：", "• 不是 @username", "• 添加后立刻拥有最高权限", "• 如果填错，可以回到管理员管理里删除", "", "不想继续可以发送 /cancel。"].join("\n");
+}
+
+export function renderAdminRemoveConfirmText(adminId: string): string {
+  return ["⚠️ 删除管理员？", "", `管理员 ID：${adminId}`, "", "删除后，对方将不能再操作 Bot。", "如果这是 Cloudflare Secret 里配置的管理员，不能在这里删除，需要改 Worker Secret。"].join("\n");
+}
+
+export function renderAdminRemoveConfirmKeyboard(adminId: string): TelegramInlineKeyboardMarkup {
+  return { inline_keyboard: [[{ text: "🚨 确认删除", callback_data: `admins:remove:${adminId}` }], [{ text: "取消", callback_data: "admins:menu" }]] };
+}
+
+function formatAdminSource(source: ListedSuperAdmin["source"]): string {
+  if (source === "env") return "Cloudflare Secret 配置";
+  if (source === "bootstrap") return "首次 Telegram 自动绑定";
+  return "Bot 内添加";
+}
+
+function formatAdminSourceIcon(source: ListedSuperAdmin["source"]): string {
+  if (source === "env") return "🔐";
+  if (source === "bootstrap") return "⭐";
+  return "👑";
 }
 
 function formatDiagnosticsStatus(status: string): string {

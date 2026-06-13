@@ -17,6 +17,7 @@ import { SecurityService } from "../services/security-service";
 import { SecuritySettingsService } from "../services/security-settings-service";
 import { AppSettingsService } from "../services/app-settings-service";
 import { StatusOverviewService } from "../services/status-overview-service";
+import { canManageSuperAdmins, listSuperAdmins, removeManagedSuperAdmin } from "../services/super-admin-service";
 import { AuditRepository } from "../storage/audit-repository";
 import type { ParsedTelegramUpdate, TelegramClientResult } from "./types";
 import { acquireActionCooldown, renderActionCooldownText, type ActionCooldownResult } from "./action-cooldown";
@@ -31,7 +32,7 @@ import { renderProtectionAccountKeyboard, renderProtectionAccountText, renderPro
 import { renderSecuritySettingsKeyboard, renderSecuritySettingsText, renderSecurityTokenAccountsKeyboard, renderSecurityTokenAccountsText, renderSecurityTokenConfirmKeyboard, renderSecurityTokenConfirmText, renderSecurityTokenGeneratedKeyboard, renderSecurityTokenGeneratedText } from "./security-settings-renderer";
 import { renderStatusOverviewKeyboard, renderStatusOverviewText } from "./status-overview-renderer";
 import { renderCheckinInlineKeyboard } from "./keyboards";
-import { renderAccountActionResultText, renderAccountDeleteConfirmKeyboard, renderAccountDeleteConfirmText, renderAccountDetailKeyboard, renderAccountDetailText, renderAccountListKeyboard, renderAccountListText, renderAccountsMenuKeyboard, renderAccountsMenuText, renderDiagnosticsMenuKeyboard, renderDiagnosticsMenuText, renderMainMenuKeyboard, renderMainMenuText, renderMoreMenuKeyboard, renderMoreMenuText, renderMyIdKeyboard, renderMyIdText, renderPrivacyCleanupResultText, renderPrivacyMenuKeyboard, renderPrivacyMenuText, renderSettingsMenuKeyboard, renderSettingsMenuText } from "./menus";
+import { renderAccountActionResultText, renderAccountDeleteConfirmKeyboard, renderAccountDeleteConfirmText, renderAccountDetailKeyboard, renderAccountDetailText, renderAccountListKeyboard, renderAccountListText, renderAccountsMenuKeyboard, renderAccountsMenuText, renderAdminAddPromptText, renderAdminRemoveConfirmKeyboard, renderAdminRemoveConfirmText, renderAdminsMenuKeyboard, renderAdminsMenuText, renderDiagnosticsMenuKeyboard, renderDiagnosticsMenuText, renderMainMenuKeyboard, renderMainMenuText, renderMoreMenuKeyboard, renderMoreMenuText, renderMyIdKeyboard, renderMyIdText, renderPrivacyCleanupResultText, renderPrivacyMenuKeyboard, renderPrivacyMenuText, renderSettingsMenuKeyboard, renderSettingsMenuText } from "./menus";
 import { GroupService } from "../services/group-service";
 import { renderGroupAccountsKeyboard, renderGroupAccountsText, renderGroupDeleteConfirmKeyboard, renderGroupDeleteConfirmText, renderGroupDetailKeyboard, renderGroupDetailText, renderGroupInstancesKeyboard, renderGroupInstancesText, renderGroupsListKeyboard, renderGroupsMenuKeyboard, renderGroupsMenuText } from "./group-renderer";
 import { renderAddAccountAliasKeyboard, renderAddAccountAliasPrompt, startAddAccountFlow } from "./account-flow";
@@ -142,6 +143,48 @@ export async function routeTelegramCallback(
       text: renderMoreMenuText(),
       reply_markup: renderMoreMenuKeyboard()
     });
+  }
+
+  if ((update.data === "admins:menu" || update.data === "menu:admins") && env?.DB) {
+    try {
+      const admins = await listSuperAdmins(env);
+      const canManage = canManageSuperAdmins(env, update.fromId);
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAdminsMenuText(admins, canManage), reply_markup: renderAdminsMenuKeyboard(admins, canManage) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
+  }
+
+  if (update.data === "admins:add" && env?.DB && sessions) {
+    if (!canManageSuperAdmins(env, update.fromId)) {
+      const admins = await listSuperAdmins(env);
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: `${renderAdminsMenuText(admins, false)}\n\n⛔ 只有 Cloudflare Secret 里配置的根管理员可以添加管理员。`, reply_markup: renderAdminsMenuKeyboard(admins, false) });
+    }
+    await sessions.setCurrentSession({ telegramUserId: update.fromId, chatId: update.chatId, state: "adding_super_admin" });
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAdminAddPromptText(), reply_markup: { inline_keyboard: [[{ text: "取消", callback_data: "admins:menu" }]] } });
+  }
+
+  const adminRemoveConfirmMatch = update.data.match(/^admins:remove_confirm:(\d+)$/);
+  if (adminRemoveConfirmMatch && env?.DB) {
+    if (!canManageSuperAdmins(env, update.fromId)) {
+      const admins = await listSuperAdmins(env);
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: `${renderAdminsMenuText(admins, false)}\n\n⛔ 只有 Cloudflare Secret 里配置的根管理员可以删除管理员。`, reply_markup: renderAdminsMenuKeyboard(admins, false) });
+    }
+    return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAdminRemoveConfirmText(adminRemoveConfirmMatch[1]), reply_markup: renderAdminRemoveConfirmKeyboard(adminRemoveConfirmMatch[1]) });
+  }
+
+  const adminRemoveMatch = update.data.match(/^admins:remove:(\d+)$/);
+  if (adminRemoveMatch && env?.DB) {
+    try {
+      if (!canManageSuperAdmins(env, update.fromId)) {
+        const admins = await listSuperAdmins(env);
+        return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: `${renderAdminsMenuText(admins, false)}\n\n⛔ 只有 Cloudflare Secret 里配置的根管理员可以删除管理员。`, reply_markup: renderAdminsMenuKeyboard(admins, false) });
+      }
+      const admins = await removeManagedSuperAdmin(env, adminRemoveMatch[1]);
+      return client.editMessage({ chat_id: update.chatId, message_id: update.messageId, text: renderAdminsMenuText(admins, true), reply_markup: renderAdminsMenuKeyboard(admins, true) });
+    } catch (error) {
+      return renderTelegramCallbackError(update, client, error, requestId);
+    }
   }
 
   if (update.data === "menu:privacy" && env?.DB) {

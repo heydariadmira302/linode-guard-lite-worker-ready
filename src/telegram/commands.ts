@@ -15,7 +15,7 @@ import { InstanceService } from "../services/instance-service";
 import { validateWindowsPassword, validateWindowsUsername } from "../services/windows-instance-service";
 import { AuditRepository } from "../storage/audit-repository";
 import { renderCheckinInlineKeyboard, renderMainReplyKeyboard } from "./keyboards";
-import { renderAccountActionResultText, renderAccountDetailKeyboard, renderAccountsMenuKeyboard, renderAccountsMenuText, renderDiagnosticsMenuKeyboard, renderDiagnosticsMenuText, renderHelpText, renderMoreMenuText, renderMoreMenuKeyboard, renderMyIdKeyboard, renderMyIdText, renderPrivacyMenuKeyboard, renderPrivacyMenuText, renderSettingsMenuKeyboard, renderSettingsMenuText } from "./menus";
+import { renderAccountActionResultText, renderAccountDetailKeyboard, renderAccountsMenuKeyboard, renderAccountsMenuText, renderAdminsMenuKeyboard, renderAdminsMenuText, renderDiagnosticsMenuKeyboard, renderDiagnosticsMenuText, renderHelpText, renderMoreMenuText, renderMoreMenuKeyboard, renderMyIdKeyboard, renderMyIdText, renderPrivacyMenuKeyboard, renderPrivacyMenuText, renderSettingsMenuKeyboard, renderSettingsMenuText } from "./menus";
 import { renderAllInstancesText, renderCreateRegionKeyboard, renderCreateRegionText, renderInstancesListKeyboard, renderWindowsAdminFallbackKeyboard, renderWindowsAdminFallbackText, renderWindowsLabelModeKeyboard, renderWindowsLabelModeText, renderWindowsUsernameModeKeyboard, renderWindowsUsernameModeText } from "./instance-renderer";
 import { GroupService } from "../services/group-service";
 import { renderGroupsMenuKeyboard, renderGroupsMenuText } from "./group-renderer";
@@ -28,6 +28,7 @@ import { renderSecurityMenuKeyboard, renderSecurityMenuText } from "./security-r
 import { renderAuditLogsKeyboard, renderAuditLogsText } from "./audit-renderer";
 import { renderStatusOverviewKeyboard, renderStatusOverviewText } from "./status-overview-renderer";
 import { SecurityService } from "../services/security-service";
+import { addD1SuperAdmin, canManageSuperAdmins, listSuperAdmins } from "../services/super-admin-service";
 import { acquireActionCooldown, renderActionCooldownText } from "./action-cooldown";
 import { renderTelegramOperationResult } from "./result-template";
 
@@ -139,6 +140,15 @@ export async function handleTelegramMessageCommand(
       await sessions.clearCurrentSession(update.fromId);
       return client.sendMessage({ chat_id: update.chatId, text: renderMyIdText({ userId: update.fromId, username: update.fromUsername, firstName: update.fromFirstName, lastName: update.fromLastName, languageCode: update.fromLanguageCode, chatId: update.chatId }), reply_markup: renderMyIdKeyboard({ userId: update.fromId, username: update.fromUsername, chatId: update.chatId }) });
     }
+    if (update.text === "👑 管理员" || update.text === "管理员" || update.text === "管理员管理") {
+      await sessions.clearCurrentSession(update.fromId);
+      if (env.DB) {
+        const admins = await listSuperAdmins(env);
+        const canManage = canManageSuperAdmins(env, update.fromId);
+        return client.sendMessage({ chat_id: update.chatId, text: renderAdminsMenuText(admins, canManage), reply_markup: renderAdminsMenuKeyboard(admins, canManage) });
+      }
+      return client.sendMessage({ chat_id: update.chatId, text: "管理员管理需要数据库支持。", reply_markup: renderCheckinInlineKeyboard() });
+    }
     if (update.text === "⚙️ 设置" || update.text === "设置") {
       await sessions.clearCurrentSession(update.fromId);
       const settings = env.DB ? await new AppSettingsService(env).getSettings() : undefined;
@@ -181,6 +191,8 @@ export async function handleTelegramMessageCommand(
     if (batchDeleteFlowResult) return batchDeleteFlowResult;
     const groupFlowResult = await continueGroupFlow(update, client, sessions, env, requestId);
     if (groupFlowResult) return groupFlowResult;
+    const adminFlowResult = await continueSuperAdminFlow(update, client, sessions, env, requestId);
+    if (adminFlowResult) return adminFlowResult;
     const flowResult = await continueAddAccountFlow(update, client, sessions, env, requestId);
     if (flowResult) return flowResult;
   }
@@ -220,10 +232,45 @@ export async function handleTelegramMessageCommand(
       if (batchDeleteFlowResult) return batchDeleteFlowResult;
       const groupFlowResult = await continueGroupFlow(update, client, sessions, env, requestId);
       if (groupFlowResult) return groupFlowResult;
+      const adminFlowResult = await continueSuperAdminFlow(update, client, sessions, env, requestId);
+      if (adminFlowResult) return adminFlowResult;
       const flowResult = await continueAddAccountFlow(update, client, sessions, env, requestId);
       if (flowResult) return flowResult;
       return client.sendMessage({ chat_id: update.chatId, text: renderHelpText() });
     }
+  }
+}
+
+async function continueSuperAdminFlow(
+  update: Extract<ParsedTelegramUpdate, { kind: "message" }>,
+  client: TelegramClient,
+  sessions: Pick<BotSessionService, "clearCurrentSession" | "getCurrentSession" | "setCurrentSession">,
+  env: Env,
+  requestId: string
+): Promise<TelegramClientResult | null> {
+  const session = await sessions.getCurrentSession(update.fromId);
+  if (!session || session.state !== "adding_super_admin") return null;
+  if (!env.DB) {
+    await sessions.clearCurrentSession(update.fromId);
+    return client.sendMessage({ chat_id: update.chatId, text: "管理员管理需要数据库支持。", reply_markup: renderCheckinInlineKeyboard() });
+  }
+  if (!canManageSuperAdmins(env, update.fromId)) {
+    await sessions.clearCurrentSession(update.fromId);
+    const admins = await listSuperAdmins(env);
+    return client.sendMessage({ chat_id: update.chatId, text: `${renderAdminsMenuText(admins, false)}\n\n⛔ 只有 Cloudflare Secret 里配置的根管理员可以添加管理员。`, reply_markup: renderAdminsMenuKeyboard(admins, false) });
+  }
+  const raw = update.text.trim();
+  if (!/^\d{4,20}$/.test(raw)) {
+    return client.sendMessage({ chat_id: update.chatId, text: "管理员 ID 格式不正确。请发送 Telegram 数字 ID，不是 @用户名。" });
+  }
+  try {
+    await addD1SuperAdmin(env, raw, `telegram:${update.fromId}`);
+    const admins = await listSuperAdmins(env);
+    await sessions.clearCurrentSession(update.fromId);
+    return client.sendMessage({ chat_id: update.chatId, text: renderAdminsMenuText(admins, true), reply_markup: renderAdminsMenuKeyboard(admins, true) });
+  } catch (error) {
+    await sessions.clearCurrentSession(update.fromId);
+    return client.sendMessage({ chat_id: update.chatId, text: renderTelegramOperationResult({ title: "添加管理员失败", status: "failed", requestId, errorMessage: error instanceof Error ? error.message : "未知错误", nextStep: "请确认输入的是 Telegram 数字 ID，然后重试。" }), reply_markup: renderCheckinInlineKeyboard() });
   }
 }
 

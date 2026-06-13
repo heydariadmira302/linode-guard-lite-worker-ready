@@ -20,7 +20,7 @@ TELEGRAM_WEBHOOK_SECRET
 LINODE_TOKEN_ENCRYPTION_KEY
 ```
 
-生成后请从初始化结果里复制：
+初始化结果默认只会在首次生成时返回 `API_AUTH_TOKEN`，不会返回 `TELEGRAM_WEBHOOK_SECRET` 或 `LINODE_TOKEN_ENCRYPTION_KEY` 明文。若生产环境需要自己掌握这些值，建议部署前在 Cloudflare Worker Secrets 中手动设置。
 
 - `API_AUTH_TOKEN`：后续 HTTP API 的 Bearer Token。
 - `TELEGRAM_WEBHOOK_SECRET`：设置 Telegram webhook 时的 `secret_token`。
@@ -31,10 +31,13 @@ LINODE_TOKEN_ENCRYPTION_KEY
 ## 可选 Secret
 
 ```text
-SUPER_ADMIN_TELEGRAM_ID
+SUPER_ADMIN_TELEGRAM_IDS
+# 或旧兼容变量：SUPER_ADMIN_TELEGRAM_ID
 ```
 
-如果不设置，首次通过 Telegram 访问 bot 的用户会自动绑定为 Super Admin。
+`SUPER_ADMIN_TELEGRAM_IDS` 用于配置多个最高权限管理员，填写 Telegram 数字 ID，多个值可用逗号、空格或换行分隔。如果同时设置了 `SUPER_ADMIN_TELEGRAM_IDS` 和旧的 `SUPER_ADMIN_TELEGRAM_ID`，系统优先使用 `SUPER_ADMIN_TELEGRAM_IDS`。
+
+如果都不设置，首次通过 Telegram 访问 bot 的用户会自动绑定为 Super Admin。
 
 ## 普通变量
 

@@ -84,7 +84,7 @@ npm run build:upload
 
 也可以选择手动设置这些 Worker Secrets；环境 Secret 优先级高于 D1 自动生成值。不要把这些值写入 README、docs、日志、Telegram 消息、`.env`、`.dev.vars` 或截图。
 
-`SUPER_ADMIN_TELEGRAM_ID` 可选：不设置时，首次 Telegram 消息会自动绑定 Super Admin。
+`SUPER_ADMIN_TELEGRAM_IDS` 可选：多个最高权限管理员用逗号/空格/换行分隔；旧的 `SUPER_ADMIN_TELEGRAM_ID` 仍兼容。两者都不设置时，首次 Telegram 消息会自动绑定 Super Admin。
 
 ## D1
 

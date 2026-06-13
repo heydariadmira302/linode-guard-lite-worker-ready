@@ -37,7 +37,7 @@ curl -H "Authorization: Bearer <API_AUTH_TOKEN>" \
 - Webhook URL 是否是 `/telegram/webhook`
 - `secret_token` 是否等于 `TELEGRAM_WEBHOOK_SECRET`
 - Worker 是否已部署
-- `SUPER_ADMIN_TELEGRAM_ID` 是否正确
+- `SUPER_ADMIN_TELEGRAM_IDS` / `SUPER_ADMIN_TELEGRAM_ID` 是否正确
 
 ## Telegram 消息发送失败
 

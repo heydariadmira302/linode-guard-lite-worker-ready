@@ -1,6 +1,6 @@
 import type { Env } from "../env";
+import { getExplicitSuperAdminTelegramIds } from "../env";
 import { getRuntimeSecrets } from "../services/runtime-secret-service";
-import { hasExplicitSuperAdmin } from "../env";
 
 export async function verifyApiBearerToken(request: Request, env: Env): Promise<boolean> {
   const secrets = await getRuntimeSecrets(env);
@@ -15,7 +15,8 @@ export async function verifyTelegramWebhookSecret(request: Request, env: Env): P
   return request.headers.get("X-Telegram-Bot-Api-Secret-Token") === secrets.telegram_webhook_secret;
 }
 
-export function isSuperAdmin(userId: string | number | undefined | null, env: Pick<Env, "SUPER_ADMIN_TELEGRAM_ID">): boolean {
-  if (!hasExplicitSuperAdmin(env)) return false;
-  return String(userId ?? "") === env.SUPER_ADMIN_TELEGRAM_ID;
+export function isSuperAdmin(userId: string | number | undefined | null, env: Pick<Env, "SUPER_ADMIN_TELEGRAM_ID" | "SUPER_ADMIN_TELEGRAM_IDS">): boolean {
+  const normalized = String(userId ?? "").trim();
+  if (!normalized) return false;
+  return getExplicitSuperAdminTelegramIds(env).includes(normalized);
 }
