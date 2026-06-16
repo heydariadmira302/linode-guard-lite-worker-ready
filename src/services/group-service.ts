@@ -43,8 +43,9 @@ export class GroupService {
     const normalized = validateName(name, context.requestId);
     const existing = await this.groups.getByName(normalized);
     if (existing) throw new AppError(ErrorCode.VALIDATION_ERROR, "Group name already exists", context.requestId, 400);
-    const group = toPublicGroup(await this.groups.create(normalized));
-    await this.recordAudit(context, "group.create", String(group.id), "medium", "success", null, { name: group.name });
+    const deleted = await this.groups.getDeletedByName(normalized);
+    const group = toPublicGroup(deleted ? await this.groups.restore(deleted.id) : await this.groups.create(normalized));
+    await this.recordAudit(context, deleted ? "group.restore" : "group.create", String(group.id), "medium", "success", null, { name: group.name });
     return { group };
   }
 

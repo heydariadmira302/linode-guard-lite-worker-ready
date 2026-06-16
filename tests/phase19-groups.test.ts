@@ -33,6 +33,7 @@ class FakeD1Database {
   first<T>(sql: string, values: unknown[]): T | null {
     if (sql.includes("FROM groups") && sql.includes("WHERE is_default = 1")) return (this.groups.find((group) => group.is_default === 1 && group.deleted_at === null) as T | undefined) ?? null;
     if (sql.includes("FROM groups") && sql.includes("WHERE id = ?")) return (this.groups.find((group) => group.id === Number(values[0]) && group.deleted_at === null) as T | undefined) ?? null;
+    if (sql.includes("FROM groups") && sql.includes("WHERE name = ?") && sql.includes("deleted_at IS NOT NULL")) return (this.groups.filter((group) => group.name === values[0] && group.deleted_at !== null).sort((a, b) => b.id - a.id)[0] as T | undefined) ?? null;
     if (sql.includes("FROM groups") && sql.includes("WHERE name = ?")) return (this.groups.find((group) => group.name === values[0] && group.deleted_at === null) as T | undefined) ?? null;
     if (sql.includes("FROM linode_accounts") && sql.includes("WHERE alias = ?")) return (this.accounts.find((account) => account.alias === values[0] && account.status === "active") as T | undefined) ?? null;
     if (sql.includes("FROM linode_accounts") && sql.includes("WHERE id = ?")) return (this.accounts.find((account) => account.id === Number(values[0]) && account.status === "active") as T | undefined) ?? null;
@@ -56,6 +57,11 @@ class FakeD1Database {
     if (sql.includes("UPDATE groups") && sql.includes("deleted_at = CURRENT_TIMESTAMP")) {
       const group = this.groups.find((item) => item.id === Number(values[0]));
       if (group) group.deleted_at = new Date().toISOString();
+      return {};
+    }
+    if (sql.includes("UPDATE groups") && sql.includes("deleted_at = NULL")) {
+      const group = this.groups.find((item) => item.id === Number(values[0]));
+      if (group) group.deleted_at = null;
       return {};
     }
     if (sql.includes("UPDATE groups") && sql.includes("name = ?")) {
@@ -143,6 +149,12 @@ describe("Phase 19 groups", () => {
     const del = await worker.fetch(apiRequest("/api/v1/groups/2", { method: "DELETE" }), env as never);
     expect(del.status).toBe(200);
     expect(db.groups[1].deleted_at).toBeTruthy();
+
+    const recreate = await worker.fetch(apiRequest("/api/v1/groups", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "西班牙主力" }) }), env as never);
+    const recreateBody = await recreate.json() as { data: { group: { id: number; name: string; deleted_at: string | null } } };
+    expect(recreate.status).toBe(200);
+    expect(recreateBody.data.group).toMatchObject({ id: 2, name: "西班牙主力", deleted_at: null });
+    expect(db.groups.filter((group) => group.name === "西班牙主力")).toHaveLength(1);
   });
 
   it("supports Telegram group list, create, rename, delete, and account list flows", async () => {

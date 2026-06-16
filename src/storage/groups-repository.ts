@@ -57,6 +57,19 @@ export class GroupsRepository {
       LIMIT 1`).bind(name).first<GroupRecord>();
   }
 
+  async getDeletedByName(name: string): Promise<GroupRecord | null> {
+    return await this.db.prepare(`SELECT id, name, is_default, created_at, updated_at, deleted_at
+      FROM groups
+      WHERE name = ? AND deleted_at IS NOT NULL
+      ORDER BY id DESC
+      LIMIT 1`).bind(name).first<GroupRecord>();
+  }
+
+  async restore(id: number): Promise<GroupRecord> {
+    await this.db.prepare(`UPDATE groups SET deleted_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NOT NULL AND is_default = 0`).bind(id).run();
+    return this.getById(id);
+  }
+
   async list(): Promise<GroupWithCountsRecord[]> {
     await this.ensureDefaultGroup();
     const result = await this.db.prepare(`SELECT g.id, g.name, g.is_default, g.created_at, g.updated_at, g.deleted_at,
