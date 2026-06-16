@@ -221,11 +221,24 @@ function filterLoginsAfterCursor(logins: LinodeLoginEvent[], lastSeenLoginId: st
 
 function filterByCursor(logins: LinodeLoginEvent[], lastSeenLoginId: string | null): LinodeLoginEvent[] {
   if (!lastSeenLoginId) return logins;
-  const cursorIndex = logins.findIndex((login) => login.id === lastSeenLoginId);
-  if (cursorIndex >= 0) return logins.slice(0, cursorIndex);
+  const cursorLogin = logins.find((login) => login.id === lastSeenLoginId);
+  if (cursorLogin) return logins.filter((login) => isLoginNewerThanCursor(login, cursorLogin));
   const cursorNumber = Number(lastSeenLoginId);
   if (Number.isFinite(cursorNumber)) return logins.filter((login) => Number.isFinite(Number(login.id)) && Number(login.id) > cursorNumber);
   return [];
+}
+
+function isLoginNewerThanCursor(login: LinodeLoginEvent, cursor: LinodeLoginEvent): boolean {
+  if (login.id === cursor.id) return false;
+  const loginTime = Date.parse(login.datetime);
+  const cursorTime = Date.parse(cursor.datetime);
+  if (Number.isFinite(loginTime) && Number.isFinite(cursorTime)) {
+    if (loginTime !== cursorTime) return loginTime > cursorTime;
+    const loginNumber = Number(login.id);
+    const cursorNumber = Number(cursor.id);
+    if (Number.isFinite(loginNumber) && Number.isFinite(cursorNumber)) return loginNumber > cursorNumber;
+  }
+  return false;
 }
 
 function parseOptionalTime(value: string | null): number | null {

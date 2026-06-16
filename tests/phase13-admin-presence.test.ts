@@ -364,12 +364,13 @@ describe("Phase 13 admin presence", () => {
     ]);
 
     const createDeleteNoReminder = await worker.fetch(apiRequest("/api/v1/admin-presence/policies", { method: "POST", body: JSON.stringify({ name: "delete stale servers guarded", scope: "all", action: "delete_all_instances", remind_after_minutes: 720, final_after_minutes: 1440, hourly_reminder_before_minutes: 0 }) }), env as never);
-    const deleteNoReminderBody = await createDeleteNoReminder.json() as { data: { policy: { rules: Array<{ rule_id: string; action: string; after_minutes: number }> } } };
+    const deleteNoReminderBody = await createDeleteNoReminder.json() as { data: { policy: { hourly_reminder_before_minutes: number | null; rules: Array<{ rule_id: string; action: string; after_minutes: number }> } } };
     expect(createDeleteNoReminder.status).toBe(200);
-    expect(deleteNoReminderBody.data.policy.rules).toEqual(expect.arrayContaining([
-      { rule_id: "notify_countdown_1080", after_minutes: 1080, action: "notify" },
+    expect(deleteNoReminderBody.data.policy.hourly_reminder_before_minutes).toBeNull();
+    expect(deleteNoReminderBody.data.policy.rules).toEqual([
+      { rule_id: "notify", after_minutes: 720, action: "notify" },
       { rule_id: "delete_all_instances", after_minutes: 1440, action: "delete_all_instances" }
-    ]));
+    ]);
 
     const listResponse = await worker.fetch(apiRequest("/api/v1/admin-presence/policies?limit=10&offset=0"), env as never);
     const listBody = await listResponse.json() as { data: { policies: Array<AdminPresencePolicyRecord & { action: string }>; limit: number; offset: number } };

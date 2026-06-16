@@ -342,6 +342,29 @@ describe("Phase 12 account security event monitor", () => {
     }
   });
 
+  it("does not treat older logins as new when Linode returns login records oldest-first", async () => {
+    const db = new FakeD1Database();
+    await addAccount(db, { id: 1, alias: "default", token: "token-default", lastSeenLoginId: "900", lastLoginCheckAt: "2026-01-02T00:00:00.000Z" });
+    const env = { ...baseEnv, DB: db as unknown as D1Database };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify(linodeLogins(
+      { id: 899, username: "history", ip: "203.0.113.8", datetime: "2026-01-01T23:59:00.000Z", status: "successful" },
+      { id: 900, username: "baseline", ip: "203.0.113.9", datetime: "2026-01-02T00:00:00.000Z", status: "successful" },
+      { id: 901, username: "alice", ip: "203.0.113.10", datetime: "2026-01-02T00:01:00.000Z", status: "successful" }
+    )), { status: 200 }));
+    try {
+      const response = await worker.fetch(apiRequest("/api/v1/security/check", { method: "POST" }), env as never);
+      const body = await response.json() as { data: { new_login_events: number; new_security_events: number } };
+
+      expect(response.status).toBe(200);
+      expect(body.data).toMatchObject({ new_login_events: 1, new_security_events: 1 });
+      expect(db.loginEvents.map((event) => event.linode_login_id)).toEqual(["901"]);
+      expect(db.securityEvents.map((event) => event.linode_login_id)).toEqual(["901"]);
+      expect(db.accounts[0].last_seen_login_id).toBe("901");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
   it("manual security check fetches /account/logins for active accounts, deduplicates login_events, creates LOGIN_SUCCESS/LOGIN_FAILED events, updates cursors, audits, and never returns tokens", async () => {
     const db = new FakeD1Database();
     await addAccount(db, { id: 1, alias: "default", token: "token-default" });

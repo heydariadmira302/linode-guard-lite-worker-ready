@@ -203,8 +203,7 @@ export class AdminPresenceService {
     const finalAfter = action === "notify" ? remindAfter : normalizePolicyMinutes(input.final_after_minutes, 24 * 60, "最终动作时间", requestId);
     if (action !== "notify" && finalAfter <= remindAfter) throw new AppError(ErrorCode.VALIDATION_ERROR, "Final action time must be later than reminder time", requestId, 400);
     const rawHourlyBefore = action === "notify" ? 0 : normalizePolicyMinutes(input.hourly_reminder_before_minutes, 6 * 60, "最终动作前每小时提醒窗口", requestId, true);
-    const hourlyBefore = action === "delete_all_instances" && rawHourlyBefore <= 0 ? 6 * 60 : rawHourlyBefore;
-    return { action, scope, remindAfter, finalAfter, hourlyBefore, rules: buildRules(action, remindAfter, finalAfter, hourlyBefore) };
+    return { action, scope, remindAfter, finalAfter, hourlyBefore: rawHourlyBefore, rules: buildRules(action, remindAfter, finalAfter, rawHourlyBefore) };
   }
 
   private async resolveScope(input: { scope?: unknown; account_id?: unknown; group_id?: unknown }, requestId: string): Promise<string> {

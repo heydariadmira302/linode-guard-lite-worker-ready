@@ -527,7 +527,7 @@ async function continueAdminPresencePolicyFlow(
   }
   const name = update.text.trim();
   try {
-    const data = await new AdminPresenceService(env).createPolicy({ name, scope, action, enabled: true, remind_after_minutes: remindAfter || undefined, final_after_minutes: finalAfter || undefined, hourly_reminder_before_minutes: hourlyBefore || undefined }, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
+    const data = await new AdminPresenceService(env).createPolicy({ name, scope, action, enabled: true, remind_after_minutes: remindAfter || undefined, final_after_minutes: finalAfter || undefined, hourly_reminder_before_minutes: Number.isFinite(hourlyBefore) ? hourlyBefore : undefined }, { requestId, actor: `telegram:${update.fromId}`, source: "telegram" });
     await sessions.clearCurrentSession(update.fromId);
     return client.sendMessage({ chat_id: update.chatId, text: renderAdminPresencePolicyCreatedText(data.policy), reply_markup: renderAdminPresencePolicyDetailKeyboard(data.policy) });
   } catch {
