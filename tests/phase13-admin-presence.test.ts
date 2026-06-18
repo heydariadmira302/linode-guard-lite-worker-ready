@@ -320,6 +320,9 @@ describe("Phase 13 admin presence", () => {
     expect(enableBody.data.telegram.payload.text).toContain("保活策略已启用");
     expect(enableBody.data.telegram.payload.text).toContain("最终动作：⚠️ 关闭全部服务器");
     expect(db.policies[1].enabled).toBe(1);
+    expect(db.presence?.last_checkin_at).toEqual(expect.any(String));
+    expect(db.presence?.last_checkin_actor).toBe("telegram:123456789:auto_start");
+    expect(db.presence?.current_cycle_id).toMatch(/^presence_cycle_/);
 
     expect(db.auditLogs).toEqual(expect.arrayContaining([
       expect.objectContaining({ action: "admin_presence.policy.disable", target_id: "1", source: "telegram" }),
@@ -346,6 +349,8 @@ describe("Phase 13 admin presence", () => {
     const createNotify = await worker.fetch(apiRequest("/api/v1/admin-presence/policies", { method: "POST", body: JSON.stringify({ name: "notify after 7 days", scope: "all", action: "notify", enabled: true, remind_after_minutes: 720, final_after_minutes: 1440 }) }), env as never);
     const notifyBody = await createNotify.json() as { data: { policy: AdminPresencePolicyRecord & { action: string; remind_after_minutes: number; final_after_minutes: number; rules: Array<{ action: string; after_minutes: number }> } }; error?: { code: string; message: string } };
     expect(createNotify.status, JSON.stringify(notifyBody)).toBe(200);
+    expect(db.presence?.last_checkin_actor).toBe("api:default:auto_start");
+    expect(db.presence?.current_cycle_id).toMatch(/^presence_cycle_/);
     expect(notifyBody.data.policy).toMatchObject({ id: 1, name: "notify after 7 days", enabled: 1, scope: "all", action: "notify", remind_after_minutes: 720, final_after_minutes: 720 });
     expect(notifyBody.data.policy.rules).toEqual([{ rule_id: "notify", after_minutes: 720, action: "notify" }]);
 

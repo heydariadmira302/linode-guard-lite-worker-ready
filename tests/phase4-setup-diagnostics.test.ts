@@ -48,6 +48,7 @@ class FakeD1Database {
   settings = new Map<string, string>();
   jobs = new Map<string, Record<string, unknown>>();
   existingTables = new Set<string>(requiredTables);
+  columns = new Map<string, Set<string>>(requiredTables.map((table) => [table, new Set<string>()]));
   adminPresenceInitialized = false;
   botManagedInstances = [{ account_id: 1, instance_id: 101, label: "vm-101", last_action: "shutdown", last_action_at: "2026-01-01T00:00:00.000Z" }];
 
@@ -72,14 +73,31 @@ class FakeD1Database {
   }
 
   all<T>(sql: string): T[] {
+    const pragmaMatch = sql.match(/PRAGMA table_info\(([^)]+)\)/i);
+    if (pragmaMatch) return [...(this.columns.get(pragmaMatch[1]) ?? new Set<string>())].map((name) => ({ name })) as T[];
     if (sql.includes("FROM jobs")) return [...this.jobs.values()] as T[];
     if (sql.includes("FROM bot_managed_instances")) return this.botManagedInstances as T[];
     return [];
   }
 
+  resetColumns() {
+    this.columns = new Map<string, Set<string>>([
+      ["linode_accounts", new Set(["id", "alias", "encrypted_token", "token_fingerprint", "status"])],
+      ["power_schedules", new Set(["id", "name", "enabled", "action", "scope", "account_id", "cron_expr", "timezone", "next_run_at"])],
+      ["schedule_runs", new Set(["id", "schedule_id", "action", "scope", "started_at", "status"])],
+      ["jobs", new Set(["id", "name", "type", "enabled", "last_run_at", "next_run_at"])],
+      ["windows_installs", new Set(["id", "account_id", "status", "callback_token_hash"])]
+    ]);
+  }
+
   run(sql: string, values: unknown[]) {
     const createTableMatch = sql.match(/CREATE TABLE IF NOT EXISTS\s+([a-z_]+)/i);
-    if (createTableMatch) this.existingTables.add(createTableMatch[1]);
+    if (createTableMatch) {
+      this.existingTables.add(createTableMatch[1]);
+      if (!this.columns.has(createTableMatch[1])) this.columns.set(createTableMatch[1], new Set<string>());
+    }
+    const alterColumnMatch = sql.match(/ALTER TABLE\s+([a-z_]+)\s+ADD COLUMN\s+([a-z_]+)/i);
+    if (alterColumnMatch) this.columns.get(alterColumnMatch[1])?.add(alterColumnMatch[2]);
     if (sql.includes("INTO settings")) {
       if (!this.existingTables.has("settings")) throw new Error("D1_ERROR: no such table: settings: SQLITE_ERROR");
       const key = values[0] as string;
@@ -215,6 +233,24 @@ describe("Phase 4 setup wizard and diagnostics", () => {
     expect(JSON.stringify(body)).not.toContain("lg_enc_");
     expect(body.data.jobs.created).toEqual(expect.arrayContaining(["login_monitor", "security_event_cleanup"]));
     expect(db.existingTables).toEqual(new Set(requiredTables));
+  });
+
+  it("repairs legacy D1 tables that exist but are missing newer columns", async () => {
+    const db = new FakeD1Database();
+    db.resetColumns();
+    const env = { ...baseEnv, DB: db as unknown as D1Database };
+
+    const response = await worker.fetch(apiRequest("/api/v1/setup/initialize", { method: "POST", body: JSON.stringify({ runtime_secrets: {} }) }), env as never);
+    const body = await response.json() as { ok: boolean; data: { schema: { initialized: boolean; missing_after: string[] } } };
+
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.data.schema).toMatchObject({ initialized: true, missing_after: [] });
+    expect([...(db.columns.get("linode_accounts") ?? [])]).toEqual(expect.arrayContaining(["group_id"]));
+    expect([...(db.columns.get("power_schedules") ?? [])]).toEqual(expect.arrayContaining(["group_id", "instance_id"]));
+    expect([...(db.columns.get("schedule_runs") ?? [])]).toEqual(expect.arrayContaining(["instance_id"]));
+    expect([...(db.columns.get("jobs") ?? [])]).toEqual(expect.arrayContaining(["locked_until", "locked_by", "lock_started_at"]));
+    expect([...(db.columns.get("windows_installs") ?? [])]).toEqual(expect.arrayContaining(["rdp_ready_at", "rdp_notified_at", "rdp_check_attempts", "last_rdp_check_error"]));
   });
 
 

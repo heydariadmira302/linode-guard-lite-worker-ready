@@ -438,11 +438,12 @@ describe("Phase 11 batch operations", () => {
     });
     try {
       const response = await worker.fetch(apiRequest("/api/v1/accounts/1/instances/batch/boot", { method: "POST" }), env as never);
-      const body = await response.json() as { data: { total: number; success: number; items: Array<{ instance_id: number }> } };
+      const body = await response.json() as { data: { total: number; success: number; items: Array<{ instance_id: number; result: string; message?: string }> } };
       expect(response.status).toBe(200);
-      expect(body.data.total).toBe(1);
+      expect(body.data.total).toBe(3);
       expect(body.data.success).toBe(1);
-      expect(body.data.items.map((item) => item.instance_id)).toEqual([101]);
+      expect(body.data.items.map((item) => item.instance_id)).toEqual([101, 102, 103]);
+      expect(body.data.items.filter((item) => item.result === "skipped").map((item) => item.message)).toEqual(["Boot safety：不是 Bot 上次关停，已跳过", "Boot safety：不是 Bot 上次关停，已跳过"]);
       expect(calls).toEqual(expect.arrayContaining(["POST https://api.linode.com/v4/linode/instances/101/boot"]));
       expect(calls.join("\n")).not.toContain("/102/boot");
       expect(calls.join("\n")).not.toContain("/103/boot");

@@ -140,6 +140,15 @@ export class BatchService {
       return { ...baseItem, result: "failed", error_code: code, message: mapBatchItemMessage(code) };
     }
     try {
+      if (action === "boot" && isBootSafetySkipped(target)) {
+        await this.recordAudit(context, action, String(target.instance.id), riskLevelForAction(action), "skipped", ErrorCode.VALIDATION_ERROR, {
+          account_id: target.account.id,
+          account_alias: target.account.alias,
+          label: target.instance.label,
+          reason: "boot_safety_not_bot_managed_offline"
+        });
+        return { ...baseItem, result: "skipped", error_code: ErrorCode.VALIDATION_ERROR, message: "Boot safety：不是 Bot 上次关停，已跳过" };
+      }
       if (isProtectedForAction(target, action, await this.getProtectedInstances())) {
         await this.recordAudit(context, action, String(target.instance.id), riskLevelForAction(action), "skipped", ErrorCode.VALIDATION_ERROR, {
           account_id: target.account.id,
@@ -182,10 +191,12 @@ export class BatchService {
     const managed = this.managed;
     if (!managed) return scoped;
     const safe: LinodeInstance[] = [];
+    const skipped: LinodeInstance[] = [];
     for (const instance of scoped) {
       if (await managed.isBotManagedOffline(accountId, instance.id)) safe.push(instance);
+      else skipped.push(instance);
     }
-    return safe;
+    return [...safe, ...skipped.map((instance) => ({ ...instance, raw: { ...(typeof instance.raw === "object" && instance.raw !== null ? instance.raw : {}), boot_safety_skipped: true } }))];
   }
 
   private validateAction(action: string, requestId: string): asserts action is BatchAction {
@@ -280,6 +291,10 @@ async function mapWithConcurrency<T, R>(items: T[], concurrency: number, mapper:
   });
   await Promise.all(workers);
   return results;
+}
+
+function isBootSafetySkipped(target: BatchTarget): boolean {
+  return Boolean((target.instance.raw as { boot_safety_skipped?: unknown } | undefined)?.boot_safety_skipped);
 }
 
 function isProtectedForAction(target: BatchTarget, action: BatchAction, rules: Array<{ account_id?: number | null; instance_id?: number | null; label?: string | null }>): boolean {

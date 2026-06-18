@@ -153,8 +153,9 @@ function appendBatchSummary(lines: string[], batch: BatchOperationResult): void 
   }
   if (skipped.length > 0) {
     lines.push("", "保护跳过：");
-    for (const item of skipped.slice(0, 10)) lines.push(`- ${formatBatchItemInstance(item)}`);
+    for (const item of skipped.slice(0, 10)) lines.push(`- ${formatBatchItemInstance(item)}${item.message ? `：${item.message}` : ""}`);
     if (skipped.length > 10) lines.push(`还有 ${skipped.length - 10} 条保护跳过未展示`);
+    if (batch.action === "boot") lines.push("", "提示：定时开机默认只开机上次由 Bot 关停的服务器；手动关机的服务器会被安全跳过。如需开机范围内全部离线实例，请在设置里把 Boot safety 改为“开机所有离线实例”。");
   }
 }
 

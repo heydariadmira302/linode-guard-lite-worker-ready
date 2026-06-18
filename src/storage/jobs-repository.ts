@@ -9,11 +9,17 @@ export class JobsRepository {
   }
 
   async getByName(name: string): Promise<Record<string, unknown> | null> {
-    return await this.db.prepare("SELECT name, type, enabled, last_run_at, next_run_at, locked_until, locked_by, lock_started_at, NULL AS last_status, NULL AS summary FROM jobs WHERE name = ?").bind(name).first<Record<string, unknown>>();
+    return await this.db.prepare(`SELECT j.name, j.type, j.enabled, j.last_run_at, j.next_run_at, j.locked_until, j.locked_by, j.lock_started_at,
+      (SELECT r.status FROM job_runs r WHERE r.job_name = j.name ORDER BY r.started_at DESC, r.id DESC LIMIT 1) AS last_status,
+      (SELECT r.summary FROM job_runs r WHERE r.job_name = j.name ORDER BY r.started_at DESC, r.id DESC LIMIT 1) AS summary
+      FROM jobs j WHERE j.name = ?`).bind(name).first<Record<string, unknown>>();
   }
 
   async list(): Promise<Array<Record<string, unknown>>> {
-    const result = await this.db.prepare("SELECT name, type, enabled, last_run_at, next_run_at, locked_until, locked_by, lock_started_at, NULL AS last_status, NULL AS summary FROM jobs ORDER BY name").all<Record<string, unknown>>();
+    const result = await this.db.prepare(`SELECT j.name, j.type, j.enabled, j.last_run_at, j.next_run_at, j.locked_until, j.locked_by, j.lock_started_at,
+      (SELECT r.status FROM job_runs r WHERE r.job_name = j.name ORDER BY r.started_at DESC, r.id DESC LIMIT 1) AS last_status,
+      (SELECT r.summary FROM job_runs r WHERE r.job_name = j.name ORDER BY r.started_at DESC, r.id DESC LIMIT 1) AS summary
+      FROM jobs j ORDER BY j.name`).all<Record<string, unknown>>();
     return [...(result.results ?? [])];
   }
 

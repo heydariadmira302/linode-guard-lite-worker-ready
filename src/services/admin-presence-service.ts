@@ -113,6 +113,7 @@ export class AdminPresenceService {
     const risk = riskForAction(config.action);
     try {
       const policy = toPublicPolicy(await this.repository.createPolicy({ name, enabled: input.enabled !== false, scope: config.scope, rules_json: JSON.stringify({ rules: config.rules }) }));
+      if (Number(policy.enabled) === 1) await this.ensureCheckinCycleStarted(context);
       await this.auditPolicyChange("admin_presence.policy.create", policy, risk, context, "success");
       return { policy };
     } catch (error) {
@@ -146,6 +147,7 @@ export class AdminPresenceService {
       };
       const config = await this.resolvePolicyConfig(configInput, context.requestId);
       const policy = toPublicPolicy(await this.repository.updatePolicy(id, { name: nextName, enabled: nextEnabled, scope: config.scope, rules_json: JSON.stringify({ rules: config.rules }) }));
+      if (Number(policy.enabled) === 1) await this.ensureCheckinCycleStarted(context);
       await this.auditPolicyChange("admin_presence.policy.update", policy, riskForAction(config.action), context, "success");
       return { policy };
     } catch (error) {
@@ -184,6 +186,7 @@ export class AdminPresenceService {
   private async changePolicy(id: number, context: AdminPresenceContext, actionName: string, fn: () => Promise<AdminPresencePolicyRecord>): Promise<{ policy: PublicAdminPresencePolicy }> {
     try {
       const policy = toPublicPolicy(await fn());
+      if (actionName === "admin_presence.policy.enable" && Number(policy.enabled) === 1) await this.ensureCheckinCycleStarted(context);
       await this.auditPolicyChange(actionName, policy, riskForAction(policy.action), context, "success");
       return { policy };
     } catch (error) {
@@ -194,6 +197,16 @@ export class AdminPresenceService {
 
   private async auditPolicyChange(action: string, policy: PublicAdminPresencePolicy, risk_level: string, context: AdminPresenceContext, result: "success" | "failed"): Promise<void> {
     await this.audit?.record({ request_id: context.requestId, actor: context.actor, source: context.source, action, target_type: "admin_presence_policy", target_id: String(policy.id), risk_level, result, error_code: null, metadata_json: JSON.stringify({ scope: policy.scope, action: policy.action }) });
+  }
+
+  private async ensureCheckinCycleStarted(context: AdminPresenceContext): Promise<void> {
+    const status = await this.repository.getStatus();
+    if (status.last_checkin_at && status.current_cycle_id) return;
+    await this.repository.updateCheckin({
+      last_checkin_at: new Date().toISOString(),
+      last_checkin_actor: `${context.actor}:auto_start`,
+      current_cycle_id: createCycleId()
+    });
   }
 
   private async resolvePolicyConfig(input: { scope?: unknown; account_id?: unknown; group_id?: unknown; action?: unknown; remind_after_minutes?: unknown; final_after_minutes?: unknown; hourly_reminder_before_minutes?: unknown }, requestId: string): Promise<{ action: AdminPresenceAction; scope: string; remindAfter: number; finalAfter: number; hourlyBefore: number; rules: AdminPresenceRule[] }> {

@@ -112,6 +112,46 @@ function envCheck(ok: boolean, message: string): CheckResult {
 async function executeSchema(db: D1Database): Promise<void> {
   const statements = SCHEMA_SQL.split(";").map((statement) => statement.trim()).filter(Boolean);
   for (const statement of statements) await db.prepare(statement).run();
+  await repairLegacySchema(db);
+}
+
+async function repairLegacySchema(db: D1Database): Promise<void> {
+  await addMissingColumn(db, "linode_accounts", "group_id", "INTEGER NOT NULL DEFAULT 1");
+  await runIfTableExists(db, "linode_accounts", "CREATE INDEX IF NOT EXISTS idx_linode_accounts_group_id ON linode_accounts(group_id)");
+
+  await addMissingColumn(db, "power_schedules", "group_id", "INTEGER");
+  await addMissingColumn(db, "power_schedules", "instance_id", "INTEGER");
+  await addMissingColumn(db, "schedule_runs", "instance_id", "INTEGER");
+
+  await addMissingColumn(db, "jobs", "locked_until", "TEXT");
+  await addMissingColumn(db, "jobs", "locked_by", "TEXT");
+  await addMissingColumn(db, "jobs", "lock_started_at", "TEXT");
+  await runIfTableExists(db, "jobs", "CREATE INDEX IF NOT EXISTS idx_jobs_locked_until ON jobs(locked_until)");
+
+  await addMissingColumn(db, "windows_installs", "rdp_ready_at", "TEXT");
+  await addMissingColumn(db, "windows_installs", "rdp_notified_at", "TEXT");
+  await addMissingColumn(db, "windows_installs", "rdp_check_attempts", "INTEGER NOT NULL DEFAULT 0");
+  await addMissingColumn(db, "windows_installs", "last_rdp_check_error", "TEXT");
+  await runIfTableExists(db, "windows_installs", "CREATE INDEX IF NOT EXISTS idx_windows_installs_rdp_ready ON windows_installs(status, rdp_ready_at, rdp_notified_at)");
+}
+
+async function addMissingColumn(db: D1Database, table: string, column: string, definition: string): Promise<void> {
+  if (!(await tableExists(db, table)) || await columnExists(db, table, column)) return;
+  await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`).run();
+}
+
+async function runIfTableExists(db: D1Database, table: string, sql: string): Promise<void> {
+  if (await tableExists(db, table)) await db.prepare(sql).run();
+}
+
+async function tableExists(db: D1Database, table: string): Promise<boolean> {
+  const row = await db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").bind(table).first<{ name: string }>();
+  return Boolean(row);
+}
+
+async function columnExists(db: D1Database, table: string, column: string): Promise<boolean> {
+  const result = await db.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
+  return (result.results ?? []).some((item) => item.name === column);
 }
 
 export class DiagnosticsService {
@@ -198,8 +238,7 @@ export class SetupService {
       throw new Error("Missing D1 binding DB");
     }
 
-    const missing = await listMissingTables(this.env.DB);
-    const schema = missing.length > 0 ? await this.initializeSchema() : { schema: { initialized: true, missing_before: [], missing_after: [] } };
+    const schema = await this.initializeSchema();
 
     const settingsRepository = new SettingsRepository(this.env.DB);
     const jobsRepository = new JobsRepository(this.env.DB);
